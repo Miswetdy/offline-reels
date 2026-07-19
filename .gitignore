@@ -1,0 +1,43 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Instagram sessions and cookies
+cookies/
+sessions/
+*.cookies.json
+storage-state.json
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+.next/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Tests and tooling
+coverage/
+.playwright/
+test-results/
+
+# Local media and databases
+media/
+downloads/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
