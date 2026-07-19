@@ -1,23 +1,35 @@
 # Product
 
-## Цель
+## Vision
 
-Дать пользователю возможность заранее сохранить персональную ленту Instagram Reels и смотреть её без интернета.
+Create a personal offline Reels experience.
+
+The user should be able to:
+- connect Instagram;
+- prepare a personalized Reels feed;
+- download videos;
+- watch them offline through a vertical feed.
 
 ## MVP
 
-- получение персональной ленты Reels;
-- скачивание видео на сервер;
-- синхронизация видео с телефоном;
-- вертикальная офлайн-лента;
-- учёт просмотренных роликов;
-- управление объёмом локального хранилища.
+The first version includes:
 
-## Не входит в MVP
+- collecting personalized Reels;
+- downloading videos;
+- storing videos;
+- synchronizing with phone;
+- offline playback;
+- vertical swipe feed;
+- watched status;
+- storage management.
 
-- комментарии;
-- лайки;
-- ответы;
-- публикация контента;
-- собственная рекомендательная система;
-- публичное распространение приложения.
+## Out of scope
+
+The first version does not include:
+
+- comments;
+- likes;
+- replies;
+- publishing;
+- social features;
+- custom recommendations.

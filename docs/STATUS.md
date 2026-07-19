@@ -1,15 +1,25 @@
 # Status
 
-## Текущий этап
+## Current stage
 
-Подготовка документации и структуры проекта.
+Project initialization.
 
-## Готово
+## Completed
 
-- определена основная идея продукта;
-- определён состав MVP;
-- выбрана предварительная архитектура.
+- Defined product idea.
+- Defined MVP scope.
+- Created initial architecture.
+- Created project documentation.
+- Connected GitHub repository.
+- Defined Codex workflow.
 
-## Следующий шаг
+## Current focus
 
-Подготовить правила работы Codex в AGENTS.md.
+Preparing development environment.
+
+## Next steps
+
+1. Verify Codex understanding of the project.
+2. Create initial repository structure.
+3. Prepare backend and frontend skeleton.
+4. Build first local offline video flow.

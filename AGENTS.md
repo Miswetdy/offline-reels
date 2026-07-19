@@ -1,64 +1,130 @@
 # Project rules
 
-## Project
+## Project overview
 
 We are building a personal offline Reels application.
 
-The first version must:
+The goal:
+Allow a user to automatically prepare a personalized Instagram Reels feed and watch it offline without internet access.
+
+The system will:
 - collect personalized Reels on the server;
 - download video files;
-- synchronize them with the phone;
+- synchronize videos with the phone;
 - provide a vertical offline feed;
-- track viewed videos;
+- track watched videos;
 - manage local storage limits.
 
-The first version must not include:
+## MVP scope
+
+Included:
+- server-side Reels collection;
+- video downloading;
+- backend API;
+- offline video synchronization;
+- vertical feed UI;
+- local video storage;
+- watched status tracking;
+- storage management.
+
+Not included:
 - comments;
 - likes;
 - replies;
-- content publishing;
-- a custom recommendation algorithm.
+- publishing content;
+- custom recommendation algorithm;
+- social features.
 
-## Architecture boundaries
+## Architecture rules
 
-- The frontend communicates only with our Backend API.
-- Instagram credentials, cookies, and sessions must stay on the server.
+- Frontend communicates only with our Backend API.
+- Instagram credentials, cookies, and sessions must never be stored on the client.
 - Instagram integration must be isolated from the core application logic.
-- Offline playback must use locally stored video files.
 - External integrations must be replaceable behind clear interfaces.
+- Offline playback must work using locally stored files.
+- Every external input must be validated.
 
-## Engineering rules
+## Engineering principles
 
 - Prefer simple and explicit solutions.
-- Do not add unnecessary abstractions or dependencies.
-- Validate all external input.
+- Avoid unnecessary abstractions.
+- Do not add dependencies without explaining why.
+- Keep modules isolated and maintainable.
+- Use clear naming.
 - Handle errors explicitly.
-- Do not log secrets, cookies, tokens, or passwords.
-- Never commit secrets or real account data.
-- Database changes must use migrations.
-- New behavior must include tests.
-- Do not make unrelated changes.
+- Add tests for new functionality.
+- Do not make unrelated changes during a task.
 
-## Workflow
+## Security rules
 
-Before changing code:
-1. Read the relevant documentation and existing files.
-2. Briefly explain the proposed solution.
-3. List the files that will be changed.
-4. Ask for clarification only when the task cannot be completed safely without it.
+Never:
+- commit passwords;
+- commit tokens;
+- commit Instagram cookies;
+- commit session files;
+- expose secrets in logs.
 
-Before completing a task:
+Never use real user credentials or production data in tests.
+
+## Documentation maintenance
+
+Documentation is part of the project and must stay synchronized with the code.
+
+After completing a major task:
+
+1. Update `docs/STATUS.md`.
+2. Describe:
+   - what was implemented;
+   - what changed;
+   - current project state;
+   - next steps.
+
+If architecture, data flow, or service boundaries change:
+- update `docs/ARCHITECTURE.md`.
+
+For important architectural decisions:
+- create an ADR inside `docs/adr/`.
+
+Do not change product scope without explicit confirmation.
+
+## Git workflow
+
+GitHub is the main source of project history, backup, and rollback.
+
+After every major logical change:
+
 1. Run relevant tests and checks.
-2. Review the final diff.
-3. Report changed files.
-4. Report commands that were run.
-5. Mention remaining risks or unfinished work.
+2. Review Git diff.
+3. Verify there are no secrets or temporary files.
+4. Update documentation if needed.
+5. Create a clear Git commit.
+6. Push changes to GitHub.
 
-## Source of truth
+Major changes include:
+- new features;
+- new services;
+- database changes;
+- API changes;
+- architecture changes;
+- completed milestones;
+- large refactors.
 
-The repository is the source of truth:
-- `docs/PRODUCT.md` defines product scope.
-- `docs/ARCHITECTURE.md` defines architecture.
-- `docs/STATUS.md` defines current progress.
+Do not mix unrelated changes in one commit.
 
-Do not rely only on chat history or memory.
+## Task workflow
+
+Before implementing:
+1. Read relevant documentation.
+2. Understand existing architecture.
+3. Explain the proposed approach.
+4. List affected files.
+5. Identify risks.
+
+Before finishing:
+1. Run tests/checks.
+2. Review the diff.
+3. Update documentation.
+4. Report:
+   - changed files;
+   - executed commands;
+   - remaining risks.
