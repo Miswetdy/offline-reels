@@ -23,3 +23,16 @@ Preparing development environment.
 2. Create initial repository structure.
 3. Prepare backend and frontend skeleton.
 4. Build first local offline video flow.
+
+## Recent decisions
+
+Added:
+- Technical decisions documentation.
+- Technical risks documentation.
+
+## Current open questions
+
+- Final offline storage approach on iOS.
+- Exact synchronization strategy.
+- Instagram session management.
+- Media delivery architecture.
