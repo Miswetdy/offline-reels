@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Offline Reels">
+  <rect width="512" height="512" rx="112" fill="#111827"/>
+  <path d="M181 128h150c30 0 53 23 53 53v150c0 30-23 53-53 53H181c-30 0-53-23-53-53V181c0-30 23-53 53-53Z" fill="#f43f5e"/>
+  <path d="m224 203 107 53-107 53V203Z" fill="#fff"/>
+</svg>

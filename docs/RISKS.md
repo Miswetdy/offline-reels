@@ -19,15 +19,17 @@ This directly affects the main product value.
 
 ## Mitigation
 
-Before finalizing storage architecture:
-- test on real iOS devices;
-- measure available storage;
-- verify Cache Storage and IndexedDB behavior;
-- define cleanup strategy.
+The baseline offline flow was confirmed on an iPhone 16 Pro running iOS 26.5.2: a 13,864,238-byte video survived a PWA restart and played in Airplane Mode. Deletion also persisted across restart.
+
+The following risks remain open:
+- iOS can still evict origin data under storage pressure or according to its storage policy;
+- behavior near the storage quota has not been measured;
+- the capacity and performance of storing a large number of videos have not been measured;
+- a cleanup policy is still required before production implementation.
 
 ## Status
 
-Open.
+Partially mitigated: basic offline storage behavior is confirmed; quota, eviction, and large-library behavior remain open.
 
 ---
 
@@ -47,6 +49,10 @@ Design synchronization as resumable:
 - server prepares content independently;
 - client downloads when opened;
 - interrupted downloads can continue.
+
+## Confirmed limitation
+
+The PWA offline flow works after the user opens the app, but the experiment does not provide or rely on background synchronization while the PWA is closed. Background downloads and synchronization must remain resumable and user-initiated when the app is opened.
 
 ## Status
 

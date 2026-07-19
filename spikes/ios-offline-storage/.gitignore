@@ -1,0 +1,4 @@
+node_modules/
+dist/
+public/media/*.mp4
+!public/media/.gitkeep

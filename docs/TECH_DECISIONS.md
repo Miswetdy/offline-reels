@@ -120,14 +120,25 @@ Accepted.
 
 ## Decision
 
-The exact offline video storage mechanism is not finalized yet.
+For the MVP, store downloaded video files in Cache Storage and store ready-video metadata in IndexedDB.
 
-Possible approaches:
-- Cache Storage for video files.
-- IndexedDB for metadata and state.
+The exact saved-video size is calculated only from ready video `byteSize` values in IndexedDB. Browser storage usage is an approximate origin-wide diagnostic value and is displayed separately.
 
-A technical experiment on real iOS devices is required.
+## Experiment result
+
+TASK-001 was completed on an iPhone 16 Pro running iOS 26.5.2 with 44.2 GB of free device storage.
+
+- The PWA was installed successfully on the Home Screen.
+- A 13,864,238-byte video downloaded and played while online.
+- The saved video remained available after a full PWA restart.
+- The PWA started in Airplane Mode and played the video offline; a second offline launch also worked.
+- Deletion worked: the exact saved-video size immediately became `0 B`, and the removed video did not return after restarting the PWA.
+- Approximate browser storage can remain non-zero after deletion because it also includes the app shell, service worker, IndexedDB, and other origin data.
+
+## Remaining validation
+
+This experiment does not confirm long-term persistence, behavior near the storage quota, or behavior with a large number of videos.
 
 ## Status
 
-Open.
+Accepted.
