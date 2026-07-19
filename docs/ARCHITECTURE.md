@@ -168,6 +168,8 @@ Responsibilities:
 - Provide access to Backend and synchronization services.
 - Manage file lifecycle.
 
+For the first video vertical slice, the Backend accesses MinIO through a replaceable storage adapter. The PWA receives video bytes only from `GET /videos/{id}/stream`; it never receives MinIO credentials or a direct object URL. The API streams a single HTTP byte range from storage in chunks.
+
 ---
 
 # Security Principles

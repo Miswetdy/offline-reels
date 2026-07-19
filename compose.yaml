@@ -52,6 +52,7 @@ services:
   api:
     build:
       context: ./apps/api
+      target: production
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -60,6 +61,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_BUCKET: ${MINIO_BUCKET:-offline-reels}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me-local-minio-password}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -73,6 +76,58 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+
+  postgres-test:
+    image: postgres:17.10-alpine3.23
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-offline_reels_test}
+      POSTGRES_USER: ${TEST_POSTGRES_USER:-offline_reels_test}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:-change-me-test-postgres-password}
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  minio-test:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    profiles: ["test"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${TEST_MINIO_ROOT_USER:-minio-test-admin}
+      MINIO_ROOT_PASSWORD: ${TEST_MINIO_ROOT_PASSWORD:-change-me-test-minio-password}
+    volumes:
+      - minio_test_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  api-tests:
+    profiles: ["test"]
+    build:
+      context: ./apps/api
+      target: test
+    environment:
+      APP_ENV: test
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:-offline_reels_test}:${TEST_POSTGRES_PASSWORD:-change-me-test-postgres-password}@postgres-test:5432/${TEST_POSTGRES_DB:-offline_reels_test}
+      REDIS_URL: redis://unused:6379/0
+      MINIO_ENDPOINT: http://minio-test:9000
+      MINIO_BUCKET: ${TEST_MINIO_BUCKET:-offline-reels-test}
+      MINIO_ACCESS_KEY: ${TEST_MINIO_ROOT_USER:-minio-test-admin}
+      MINIO_SECRET_KEY: ${TEST_MINIO_ROOT_PASSWORD:-change-me-test-minio-password}
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      minio-test:
+        condition: service_healthy
 
   web:
     build:
@@ -97,3 +152,5 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  postgres_test_data:
+  minio_test_data:

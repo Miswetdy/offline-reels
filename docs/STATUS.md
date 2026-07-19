@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Production project bootstrap (TASK-002).
+First video vertical slice (TASK-003).
 
 ## Completed
 
@@ -14,14 +14,15 @@ Production project bootstrap (TASK-002).
 - Defined Codex workflow.
 - Completed TASK-001: iOS offline video storage spike.
 - Completed TASK-002: production bootstrap with Next.js web app, FastAPI API, PostgreSQL, Redis, MinIO, Docker Compose, health checks and an empty reversible Alembic migration.
+- Implemented TASK-003: videos table, MinIO adapter, idempotent MP4 seed, video list and Backend API streaming with single HTTP Range support.
 
 ## Current focus
 
-TASK-002 is complete. The next product-development stage has not started.
+TASK-003 is complete and validated with the existing sample MP4.
 
 ## Next step
 
-Implement the next agreed production capability. Before offline-client delivery, plan validation of iOS quotas, long-term persistence, and a large offline library.
+Plan the next agreed production capability. Before offline-client delivery, plan validation of iOS quotas, long-term persistence, and a large offline library.
 
 ## Recent decisions
 
@@ -39,6 +40,8 @@ Added:
 - API exposes `/health/live` (FastAPI process only), `/health/ready` (PostgreSQL and Redis only), and independent `/health/minio` diagnostics.
 - Alembic has an empty, reversible initial migration; Instagram collection, downloads, authentication, feed logic, Celery and production offline caching remain unimplemented.
 - Web dependency security triage updated Vitest to 4.1.10 and removed its critical development-only advisory. The moderate PostCSS advisory remains open through Next.js 16.2.10's nested PostCSS 8.4.31; no unsafe audit fix or Next.js downgrade was applied.
+- TASK-003 streams video through Backend API rather than presigned storage URLs. Integration tests use isolated PostgreSQL and MinIO infrastructure.
+- TASK-003 was validated end-to-end: idempotent seed uploaded the 13,864,238-byte spike MP4, `/videos` returned one record, HTTP streaming returned `200` and `206`, multipart Range returned `416`, and the video remained available after `make down`/`make up`.
 
 ## Current open questions
 

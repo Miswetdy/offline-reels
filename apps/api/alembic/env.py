@@ -1,9 +1,11 @@
 from logging.config import fileConfig
 
-from sqlalchemy import MetaData, engine_from_config, pool
+from sqlalchemy import engine_from_config, pool
 
+import app.db.models  # noqa: F401
 from alembic import context
 from app.core.settings import get_settings
+from app.db.base import Base
 
 config = context.config
 
@@ -13,8 +15,7 @@ if config.config_file_name is not None:
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
-# TASK-002 deliberately has no domain models. The empty metadata validates the migration cycle.
-target_metadata = MetaData()
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

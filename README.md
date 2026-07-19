@@ -53,6 +53,22 @@ $make = 'C:\Users\Misha\AppData\Local\Microsoft\WinGet\Links\make.exe'
 - `GET /health/ready` — confirms PostgreSQL and Redis; MinIO is deliberately excluded.
 - `GET /health/minio` — diagnostic MinIO check, independent from readiness.
 
+## First video vertical slice
+
+`GET /videos` returns up to 20 videos by default (`limit` is 1–100), ordered by `created_at DESC, id DESC`. `GET /videos/{id}` returns metadata and `GET /videos/{id}/stream` streams MP4 through the Backend API with one HTTP byte range. The browser never accesses MinIO directly.
+
+Seed an existing local MP4 after starting Docker Compose:
+
+```powershell
+& $make seed-video FILE="C:\path\to\video.mp4"
+```
+
+The command accepts only a non-empty `.mp4` file, copies it temporarily into the API container, hashes it in chunks, and uses `videos/<sha256>.mp4` as the idempotent object key. The temporary container file is removed even if the seed fails. Do not add MP4 files to Git.
+
+MinIO root credentials (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) configure the MinIO server. Application credentials (`MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are used only by the API. They may be identical in `.env.example` for local development; production must use a separate least-privileged application user.
+
+`make check` starts and tears down isolated integration infrastructure automatically. It uses a separate Compose project, PostgreSQL volume and MinIO bucket, so it never changes the dev database, dev volume or `offline-reels` bucket.
+
 ## Optional host-mode development
 
 Start infrastructure with Compose, then use host URLs for API variables:

@@ -130,3 +130,23 @@ Define synchronization rules before production implementation.
 ## Status
 
 Open.
+
+---
+
+# Risk 6: PostgreSQL and object storage are not one transaction
+
+## Problem
+
+Creating a video requires an object in MinIO and a metadata record in PostgreSQL. These systems do not share an atomic transaction.
+
+## Mitigation
+
+TASK-003 creates or verifies the object first and then upserts metadata by the deterministic object key. Repeating the seed repairs a missing object or missing database record without creating duplicates.
+
+## Remaining limitation
+
+If PostgreSQL fails after a successful upload, an orphan object can remain. Automatic orphan cleanup is outside TASK-003. If an object is deleted after metadata exists, the streaming endpoint returns the safe `video_object_not_found` error without exposing storage internals.
+
+## Status
+
+Accepted limitation for the first vertical slice.

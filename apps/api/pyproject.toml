@@ -6,6 +6,7 @@ requires-python = "==3.14.*"
 dependencies = [
     "alembic==1.18.4",
     "fastapi==0.139.2",
+    "minio==7.2.20",
     "psycopg[binary]==3.3.2",
     "pydantic-settings==2.13.1",
     "redis==7.2.0",
@@ -21,7 +22,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit"]
 pythonpath = ["."]
 
 [tool.ruff]

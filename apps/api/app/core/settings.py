@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     minio_endpoint: AnyHttpUrl = "http://localhost:9000"
     minio_bucket: str = "offline-reels"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "change-me-local-minio-password"
 
     @field_validator("frontend_origin")
     @classmethod
