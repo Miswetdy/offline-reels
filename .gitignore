@@ -18,11 +18,13 @@ venv/
 dist/
 build/
 .next/
+*.tsbuildinfo
 
 # Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
 # Tests and tooling
 coverage/

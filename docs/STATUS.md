@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Project initialization.
+Production project bootstrap (TASK-002).
 
 ## Completed
 
@@ -13,14 +13,15 @@ Project initialization.
 - Connected GitHub repository.
 - Defined Codex workflow.
 - Completed TASK-001: iOS offline video storage spike.
+- Completed TASK-002: production bootstrap with Next.js web app, FastAPI API, PostgreSQL, Redis, MinIO, Docker Compose, health checks and an empty reversible Alembic migration.
 
 ## Current focus
 
-Следующий этап разработки пока не начат.
+TASK-002 is complete. The next product-development stage has not started.
 
 ## Next step
 
-Пока не определён. Перед production-реализацией нужно спланировать проверку квот, долгосрочной сохранности и большой офлайн-библиотеки.
+Implement the next agreed production capability. Before offline-client delivery, plan validation of iOS quotas, long-term persistence, and a large offline library.
 
 ## Recent decisions
 
@@ -34,6 +35,10 @@ Added:
 - В интерфейсе разделены точный размер готовых видео и приблизительное origin-wide использование browser storage.
 - TASK-001 пройден на iPhone 16 Pro с iOS 26.5.2 и 44,2 ГБ свободного места: видео размером 13 864 238 байт сохранилось после перезапуска PWA и воспроизвелось в авиарежиме.
 - Для MVP принят подход: Cache Storage для видео и IndexedDB для метаданных готовых видео.
+- Reproducible Docker Compose bootstrap added: Node.js 24.14.0/Next.js web app and Python 3.14.3/FastAPI API with PostgreSQL, Redis and MinIO.
+- API exposes `/health/live` (FastAPI process only), `/health/ready` (PostgreSQL and Redis only), and independent `/health/minio` diagnostics.
+- Alembic has an empty, reversible initial migration; Instagram collection, downloads, authentication, feed logic, Celery and production offline caching remain unimplemented.
+- Web dependency security triage updated Vitest to 4.1.10 and removed its critical development-only advisory. The moderate PostCSS advisory remains open through Next.js 16.2.10's nested PostCSS 8.4.31; no unsafe audit fix or Next.js downgrade was applied.
 
 ## Current open questions
 
