@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "offline-reels"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "change-me-local-minio-password"
+    video_cursor_secret: str = Field(min_length=32)
 
     @field_validator("frontend_origin")
     @classmethod

@@ -3,7 +3,7 @@ TEST_COMPOSE := docker compose --project-name offline-reels-task003-tests --prof
 WEB_DIR := apps/web
 API_DIR := apps/api
 
-.PHONY: up down logs ps config check web-check api-check api-unit-check api-integration-check web-install api-install migration-check minio-health seed-video
+.PHONY: up down logs ps config check web-check api-check api-unit-check api-integration-check web-install api-install migration-check minio-health seed-video seed-videos
 
 up:
 	$(COMPOSE) up --build --detach
@@ -52,3 +52,6 @@ minio-health:
 
 seed-video:
 	powershell -NoProfile -Command "$$file = '$(FILE)'; if ([string]::IsNullOrWhiteSpace($$file) -or -not (Test-Path -LiteralPath $$file -PathType Leaf)) { Write-Error 'FILE must be an existing local file.'; exit 2 }; $(COMPOSE) up --detach api minio; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }; $(COMPOSE) cp $$file api:/tmp/task-003-seed.mp4; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }; $(COMPOSE) exec --no-TTY api uv run python -m app.scripts.seed_video --file /tmp/task-003-seed.mp4; $$seedExit = $$LASTEXITCODE; $(COMPOSE) exec --no-TTY api rm -f /tmp/task-003-seed.mp4; exit $$seedExit"
+
+seed-videos:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seed-videos.ps1 -Directory "$(DIR)"

@@ -4,8 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
-from app.api.schemas.videos import VideoResponse
+from app.api.schemas.videos import VideoListResponse, VideoResponse
 from app.media.ranges import RangeNotSatisfiable, parse_single_range
+from app.services.video_cursor import (
+    InvalidVideoCursor,
+    VideoCursor,
+    decode_video_cursor,
+    encode_video_cursor,
+)
 from app.services.videos import CHUNK_SIZE, VideoNotFound, VideoObjectNotFound, VideoService
 
 router = APIRouter(tags=["videos"])
@@ -19,12 +25,28 @@ def error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
-@router.get("/videos", response_model=list[VideoResponse])
+@router.get("/videos", response_model=VideoListResponse)
 def list_videos(
     request: Request,
-    limit: int = Query(default=20, ge=1, le=100),
-) -> list[VideoResponse]:
-    return get_video_service(request).list(limit)
+    limit: int = Query(default=10, ge=1, le=30),
+    cursor: str | None = Query(default=None),
+) -> VideoListResponse:
+    settings = request.app.state.settings
+    try:
+        decoded_cursor = None
+        if cursor is not None:
+            decoded_cursor = decode_video_cursor(cursor, settings.video_cursor_secret)
+    except InvalidVideoCursor:
+        raise error(status.HTTP_400_BAD_REQUEST, "invalid_cursor", "Cursor is invalid.") from None
+
+    page = get_video_service(request).list(limit, decoded_cursor)
+    next_cursor = None
+    if page.has_next_page and page.items:
+        last = page.items[-1]
+        next_cursor = encode_video_cursor(
+            VideoCursor(created_at=last.created_at, id=last.id), settings.video_cursor_secret
+        )
+    return VideoListResponse(items=page.items, next_cursor=next_cursor)
 
 
 @router.get("/videos/{video_id}", response_model=VideoResponse)

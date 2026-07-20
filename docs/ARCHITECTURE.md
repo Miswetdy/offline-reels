@@ -170,6 +170,8 @@ Responsibilities:
 
 For the first video vertical slice, the Backend accesses MinIO through a replaceable storage adapter. The PWA receives video bytes only from `GET /videos/{id}/stream`; it never receives MinIO credentials or a direct object URL. The API streams a single HTTP byte range from storage in chunks.
 
+For TASK-004, `GET /videos` is a Backend-owned cursor-paginated feed API. It signs opaque cursors with an application secret and uses the stable PostgreSQL order `created_at DESC, id DESC`; the PWA treats cursors as opaque and continues to communicate only with the Backend API. The `/videos` UI uses native browser scrolling and `IntersectionObserver` to select one active player. This changes neither the storage boundary nor the rule that the client must not contact MinIO directly.
+
 ---
 
 # Security Principles

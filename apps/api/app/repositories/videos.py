@@ -1,17 +1,38 @@
+from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Select, desc, select
+from sqlalchemy import Select, and_, desc, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.models.video import Video
 
 
+@dataclass(frozen=True)
+class VideoUpsertResult:
+    video: Video
+    created: bool
+
+
 class VideoRepository:
-    def list(self, session: Session, limit: int) -> list[Video]:
-        statement: Select[tuple[Video]] = (
-            select(Video).order_by(desc(Video.created_at), desc(Video.id)).limit(limit)
-        )
+    def list(
+        self,
+        session: Session,
+        limit: int,
+        *,
+        before_created_at: datetime | None = None,
+        before_id: UUID | None = None,
+    ) -> list[Video]:
+        statement: Select[tuple[Video]] = select(Video)
+        if before_created_at is not None and before_id is not None:
+            statement = statement.where(
+                or_(
+                    Video.created_at < before_created_at,
+                    and_(Video.created_at == before_created_at, Video.id < before_id),
+                )
+            )
+        statement = statement.order_by(desc(Video.created_at), desc(Video.id)).limit(limit)
         return list(session.scalars(statement))
 
     def get(self, session: Session, video_id: UUID) -> Video | None:
@@ -25,7 +46,7 @@ class VideoRepository:
         object_key: str,
         content_type: str,
         byte_size: int,
-    ) -> Video:
+    ) -> VideoUpsertResult:
         statement = (
             insert(Video)
             .values(
@@ -39,9 +60,9 @@ class VideoRepository:
         )
         created = session.scalar(statement)
         if created is not None:
-            return created
+            return VideoUpsertResult(video=created, created=True)
 
         existing = session.scalar(select(Video).where(Video.object_key == object_key))
         if existing is None:
             raise RuntimeError("video upsert did not return a record")
-        return existing
+        return VideoUpsertResult(video=existing, created=False)

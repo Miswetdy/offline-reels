@@ -12,3 +12,8 @@ class VideoResponse(BaseModel):
     content_type: str
     byte_size: int
     created_at: datetime
+
+
+class VideoListResponse(BaseModel):
+    items: list[VideoResponse]
+    next_cursor: str | None

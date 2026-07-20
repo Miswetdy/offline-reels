@@ -150,3 +150,58 @@ If PostgreSQL fails after a successful upload, an orphan object can remain. Auto
 ## Status
 
 Accepted limitation for the first vertical slice.
+
+---
+
+# Risk 7: Long feed sessions can increase browser memory use
+
+## Problem
+
+TASK-004 keeps every loaded feed item and its `video` element mounted to validate scroll-snap and playback UX before introducing virtualization. Long sessions can therefore increase DOM, media metadata and browser memory usage.
+
+## Mitigation
+
+- The frontend requests only five metadata records per page.
+- Only the active player and its next neighbor receive a stream URL. The active player uses `preload="auto"`; the next player uses `preload="metadata"`; all other mounted cards have no media source and use `preload="none"`.
+- Only one player is allowed to play at a time.
+- The next page is fetched only when the sentinel approaches the viewport.
+
+## Remaining limitation
+
+Browser `preload` is advisory: Chromium can make open-ended Range requests even for metadata preload. The active-plus-next media window limits the number of stream URLs to two, but full DOM virtualization and removal of distant cards remain outside TASK-004. Their need must be measured on a real iPhone before introducing more complex scroll and ref management.
+
+## Status
+
+Open.
+
+---
+
+# Risk 8: Mobile autoplay can be refused by the browser
+
+## Problem
+
+Browser autoplay policies and device conditions can reject `HTMLMediaElement.play()` even for a muted video.
+
+## Mitigation
+
+The feed begins muted and catches every `play()` rejection. A playback error is local to that item; the rest of the feed remains usable through scrolling and native controls.
+
+## Status
+
+Accepted limitation for TASK-004; validate manually in a desktop browser and later on iPhone.
+
+---
+
+# Risk 9: Input media compatibility
+
+## Problem
+
+The `.mp4` container extension does not guarantee browser-compatible codecs, profiles or encoding parameters. The earlier playback issue was reproduced only with particular third-party test MP4 files, not with real Instagram Reels. Real Reels passed the manual feed smoke scenario in both Chrome and Yandex Browser; backend streaming, cursor pagination and HTTP Range responses remain confirmed correct.
+
+## Mitigation
+
+Future ingestion must validate incoming media. If validation identifies incompatible output, the downloader or ingestion pipeline may need normalization or transcoding. The safe target format for MVP must be defined in a separate task; transcoding is outside TASK-004.
+
+## Status
+
+Open, non-blocking for TASK-004. Safari on iPhone and long media sessions still need a separate compatibility validation stage.

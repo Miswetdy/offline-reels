@@ -63,6 +63,7 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-offline-reels}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me-local-minio-password}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:-change-me-use-a-unique-local-cursor-secret-32-chars}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -123,6 +124,7 @@ services:
       MINIO_BUCKET: ${TEST_MINIO_BUCKET:-offline-reels-test}
       MINIO_ACCESS_KEY: ${TEST_MINIO_ROOT_USER:-minio-test-admin}
       MINIO_SECRET_KEY: ${TEST_MINIO_ROOT_PASSWORD:-change-me-test-minio-password}
+      VIDEO_CURSOR_SECRET: ${TEST_VIDEO_CURSOR_SECRET:-test-only-video-cursor-secret-with-at-least-32-characters}
     depends_on:
       postgres-test:
         condition: service_healthy

@@ -1,6 +1,6 @@
 # Offline Reels
 
-Personal application for preparing an Instagram Reels feed for offline viewing. This repository currently contains the production bootstrap only: it has no Instagram integration, media downloading, authentication, feed business logic, Celery worker, service worker, or offline caching.
+Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed and development MP4 seed flow; it has no Instagram integration, media downloading, authentication, recommendations, watched state, Celery worker, service worker, or offline caching.
 
 ## Supported versions
 
@@ -22,8 +22,8 @@ Node is pinned in [`.node-version`](.node-version); Python is pinned in [`apps/a
 Docker Compose is the reproducible development entry point. Copy `.env.example` to `.env` if local values or ports need changing; never commit `.env`.
 
 ```powershell
-& 'C:\Users\Misha\AppData\Local\Microsoft\WinGet\Links\make.exe' up
-& 'C:\Users\Misha\AppData\Local\Microsoft\WinGet\Links\make.exe' ps
+make up
+make ps
 ```
 
 Open `http://localhost:3000`. The browser application calls `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`) and displays the live Backend API state. It never uses the internal Docker host name. Containers use internal URLs such as `postgres`, `redis`, and `minio`; `DATABASE_URL` and `REDIS_URL` in `.env.example` therefore target Docker service names. For a host-run API, override them to use `localhost`.
@@ -32,10 +32,10 @@ The API permits CORS only from `FRONTEND_ORIGIN` (default `http://localhost:3000
 
 ## Commands
 
-When `make` is absent from `PATH`, use the verified absolute executable shown below.
+When `make` is absent from `PATH`, set `$make` to the local GNU Make executable.
 
 ```powershell
-$make = 'C:\Users\Misha\AppData\Local\Microsoft\WinGet\Links\make.exe'
+$make = 'C:\path\to\make.exe'
 & $make check
 & $make config
 & $make up
@@ -53,17 +53,33 @@ $make = 'C:\Users\Misha\AppData\Local\Microsoft\WinGet\Links\make.exe'
 - `GET /health/ready` — confirms PostgreSQL and Redis; MinIO is deliberately excluded.
 - `GET /health/minio` — diagnostic MinIO check, independent from readiness.
 
-## First video vertical slice
+## Multi-video vertical feed
 
-`GET /videos` returns up to 20 videos by default (`limit` is 1–100), ordered by `created_at DESC, id DESC`. `GET /videos/{id}` returns metadata and `GET /videos/{id}/stream` streams MP4 through the Backend API with one HTTP byte range. The browser never accesses MinIO directly.
+`GET /videos` uses signed cursor pagination. It accepts `limit` (default `10`, range `1`–`30`) and an optional opaque `cursor`; the web client requests five entries at a time. The response is:
+
+```json
+{
+  "items": [],
+  "next_cursor": "v1.opaque-payload.opaque-signature-or-null"
+}
+```
+
+Videos are ordered by `created_at DESC, id DESC`. The cursor is an HMAC-SHA-256 signed transport value that carries the last item's timestamp and ID; clients must not parse it. An invalid cursor returns safe `400 invalid_cursor` without implementation details. `VIDEO_CURSOR_SECRET` is required, must have at least 32 characters, and must be a unique random secret outside local development. Never commit a production cursor secret.
+
+`GET /videos/{id}` returns metadata and `GET /videos/{id}/stream` streams MP4 through the Backend API with one HTTP byte range. The browser never accesses MinIO directly.
 
 Seed an existing local MP4 after starting Docker Compose:
 
 ```powershell
 & $make seed-video FILE="C:\path\to\video.mp4"
+& $make seed-videos DIR="C:\path\to\directory-with-mp4-files"
 ```
 
 The command accepts only a non-empty `.mp4` file, copies it temporarily into the API container, hashes it in chunks, and uses `videos/<sha256>.mp4` as the idempotent object key. The temporary container file is removed even if the seed fails. Do not add MP4 files to Git.
+
+`make seed-videos` processes regular `.mp4` files in deterministic name order. It continues after a failed file, always removes each temporary container file, groups results into created/restored, already existed and failed, and returns non-zero if any file failed. It is a development helper, not a user upload endpoint.
+
+The `/videos` page is a native vertical scroll-snap feed. `IntersectionObserver` keeps ratios for every mounted item and selects the active item with a deterministic feed-center tie-breaker; a requestAnimationFrame-throttled scroll fallback covers browsers that report only partial observer entries. Only the active player is asked to play, while all others are paused. Playback begins muted, and the accessible mute button controls the React session state for all mounted players. Only the active player and its next neighbor receive stream URLs (`preload="auto"` and `preload="metadata"` respectively); all other mounted players use `preload="none"` without a source. No video virtualization, offline caching, service worker or carousel library is included in this task.
 
 MinIO root credentials (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) configure the MinIO server. Application credentials (`MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are used only by the API. They may be identical in `.env.example` for local development; production must use a separate least-privileged application user.
 
