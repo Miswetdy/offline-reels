@@ -206,6 +206,29 @@ Future ingestion must validate incoming media. If validation identifies incompat
 
 Open, non-blocking for TASK-004. Safari on iPhone and long media sessions still need a separate compatibility validation stage.
 
+---
+
+# Risk 10: Local download queue and browser storage behavior
+
+## Problem
+
+TASK-005 Block 2 stores an MP4 through one `TransformStream` and one Cache Storage consumer to avoid the extra buffering risk of `ReadableStream.tee()`. Browser Cache Storage implementations can still use substantial internal memory or storage while handling a large response, especially on iOS. IndexedDB and Cache Storage remain non-transactional, and the queue guarantees one worker only within one browser tab.
+
+## Mitigation
+
+- The downloader validates type and size, writes no per-chunk progress to IndexedDB, and marks `completed` only after cache validation.
+- Cache cleanup and startup reconciliation compensate for failed or interrupted writes.
+- Queue concurrency is one. Abort and quota failures pause it; queued work requires explicit user continuation after reload or network recovery.
+- Storage pre-checks use a 1.2 multiplier and a desired 50 MiB reserve, but estimates remain approximate.
+
+## Remaining limitation
+
+Multiple tabs can still create competing queue controllers because `navigator.locks` is deliberately deferred. There is no background download, automatic recovery, Service Worker delivery, cached-media Range support or iPhone memory/quota acceptance result yet. Large-file memory behavior must be measured manually on Chrome and an iPhone before later offline-playback work.
+
+## Status
+
+Open, accepted for TASK-005 Block 2.
+
 Known dependency advisories:
 
 - Next.js 16.2.10 currently resolves optional sharp 0.34.5, affected by GHSA-f88m-g3jw-g9cj.

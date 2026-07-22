@@ -17,7 +17,15 @@ class MemoryCache {
   }
 
   async put(request: RequestInfo | URL, response: Response): Promise<void> {
-    this.entries.set(toUrl(request), response.clone());
+    const body = await response.arrayBuffer();
+    this.entries.set(
+      toUrl(request),
+      new Response(body, {
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      }),
+    );
   }
 
   async delete(request: RequestInfo | URL): Promise<boolean> {

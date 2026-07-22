@@ -87,11 +87,15 @@ def test_list_detail_stream_and_cors_range(tmp_path: Path, session_factory, stor
         headers={
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "GET",
-            "Access-Control-Request-Headers": "Range",
+            "Access-Control-Request-Headers": "Range, Cache-Control",
         },
     )
     assert preflight.status_code == 200
     assert "range" in preflight.headers["access-control-allow-headers"].lower()
+    assert "cache-control" in preflight.headers["access-control-allow-headers"].lower()
+    assert "GET" in preflight.headers["access-control-allow-methods"]
+    assert "HEAD" in preflight.headers["access-control-allow-methods"]
+    assert "Content-Type" in partial.headers["access-control-expose-headers"]
 
     rejected = client.options(
         f"/videos/{video.id}/stream",

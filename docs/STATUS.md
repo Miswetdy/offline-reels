@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline video library foundation (TASK-005 Block 1).
+Offline video library downloader and sequential queue (TASK-005 Block 2).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline video library foundation (TASK-005 Block 1).
 
 ## Current focus
 
-TASK-005 Block 1 is implemented: the web application has a typed IndexedDB repository, an isolated Cache Storage adapter, synthetic offline media keys, startup reconciliation and storage-estimate helpers. The existing `/videos` online feed remains unchanged.
+TASK-005 Block 2 is implemented: `/videos` can queue the current item or up to five eligible loaded items for sequential local download. The browser-only queue has one active download per tab, safe typed errors, throttled in-memory progress, explicit retry/cancel/continue controls and no automatic restart after reload or reconnect. The downloader transfers the Backend response through a single `TransformStream` to Cache Storage, validates it, and only then marks IndexedDB metadata `completed`. The existing online feed, Backend API and playback media window remain unchanged.
 
 ## Next step
 
-Continue TASK-005 with the sequential downloader and local download queue. Service Worker, application-shell caching, `/offline`, offline playback, Range delivery and iPhone acceptance testing have not started.
+Continue TASK-005 with Service Worker delivery, an `/offline` library and cached-media Range playback. Application-shell caching, offline playback and iPhone acceptance testing have not started. Before the next block, manually smoke-test a large MP4 download, cancel/retry and the browser/iPhone storage and memory behavior.
 
 ## Recent decisions
 
@@ -47,7 +47,9 @@ Added:
 - TASK-004 keeps loaded video elements mounted while validating native scroll-snap UX. To avoid Chromium open-ended Range downloads from every mounted element, only the active player and its next neighbor receive stream URLs; all remaining cards stay mounted without a source. Full DOM virtualization remains a future real-device performance task.
 - The active-player selection retains the latest `IntersectionObserver` ratio for every feed card, resolves ties by the feed center, and has a requestAnimationFrame-throttled scroll fallback for browsers that emit only partial observer callback batches.
 - Real Instagram Reels passed the manual TASK-004 feed smoke scenario in Chrome and Yandex Browser. The earlier issue was limited to some third-party test MP4 encodings, not pagination, active-player selection, the media window, Range streaming or the Backend API. A future ingestion task must define media validation and, if needed, normalization or transcoding for a safe MVP format; no transcoding was added to TASK-004.
-- TASK-005 Block 1 adds the versioned `offline-reels` IndexedDB schema and `offline-reels-media-v1` media cache behind typed browser-only adapters. Reconciliation marks stale or invalid local records failed and removes orphan cache entries; no downloader, queue, Service Worker, offline UI or production media caching has been added yet.
+- TASK-005 Block 1 adds the versioned `offline-reels` IndexedDB schema and `offline-reels-media-v1` media cache behind typed browser-only adapters. Reconciliation marks stale or invalid local records failed and removes orphan cache entries; Block 2 builds on this foundation.
+- TASK-005 Block 2 adds a one-at-a-time, explicitly user-started local download queue. It passes one Backend stream through `TransformStream` directly to an owned Cache Storage response, avoiding `ReadableStream.tee()` and downloader response cloning. Progress is in-memory only; IndexedDB receives `0` at start and the verified final byte count only on completion. Downloads do not auto-resume after reload or network restoration; abort and quota failures pause the queue. Service Worker, `/offline`, cached-media Range delivery and offline playback are still not implemented.
+- The Block 2 downloader uses `fetch(..., { cache: "no-store" })`. The API CORS policy therefore explicitly permits `Cache-Control` in addition to `Range`, as well as `GET` and `HEAD`, for the configured `FRONTEND_ORIGIN`; it exposes the media response headers needed by the downloader. This keeps the origin allowlist explicit and does not enable credentials or wildcards.
 
 ## Current open questions
 

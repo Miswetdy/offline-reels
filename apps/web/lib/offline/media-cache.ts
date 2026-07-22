@@ -43,6 +43,26 @@ export async function putCachedVideo(videoId: string, response: Response): Promi
   }
 }
 
+/**
+ * Transfers ownership of an unconsumed response body to Cache Storage.
+ * The caller must not read or clone the response after this function is called.
+ */
+export async function putCachedVideoOwnedResponse(videoId: string, response: Response): Promise<void> {
+  const cacheKey = getMediaCacheKey(videoId);
+  assertVideoResponse(response);
+  if (response.bodyUsed || response.body === null || [204, 205, 304].includes(response.status)) {
+    throw new OfflineStorageError("cache_write_failed", new Error("The owned response body has already been consumed."));
+  }
+  const cache = await openMediaCache();
+
+  try {
+    await cache.put(cacheKey, response);
+  } catch (error) {
+    await cache.delete(cacheKey).catch(() => undefined);
+    throw toOfflineStorageError(error, "cache_write_failed");
+  }
+}
+
 export async function getCachedVideo(videoId: string): Promise<Response | undefined> {
   const cache = await openMediaCache();
   try {

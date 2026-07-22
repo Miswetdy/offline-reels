@@ -205,11 +205,13 @@ Internet is only required for:
 
 ---
 
-# Local Offline Library Foundation
+# Local Offline Library
 
-TASK-005 Block 1 introduces an isolated client-side persistence boundary without changing the online feed. The `offline-reels` IndexedDB database stores local-video metadata and lifecycle state; the separate `offline-reels-media-v1` Cache Storage cache stores MP4 responses. Entries use validated same-origin synthetic paths in the form `/offline-media/{uuid}` and never store Backend URLs, cursors, credentials or blobs in IndexedDB.
+TASK-005 Blocks 1–2 introduce an isolated client-side persistence boundary without changing the online feed. The `offline-reels` IndexedDB database stores local-video metadata and lifecycle state; the separate `offline-reels-media-v1` Cache Storage cache stores MP4 responses. Entries use validated same-origin synthetic paths in the form `/offline-media/{uuid}` and never store Backend URLs, cursors, credentials or blobs in IndexedDB.
 
-IndexedDB and Cache Storage do not have a common transaction. A future downloader must write and validate media before marking its metadata `completed`; startup reconciliation compensates for stale downloads, missing or invalid cache entries, and orphan media entries. Service Worker delivery, an offline route and a download queue are not part of Block 1.
+IndexedDB and Cache Storage do not have a common transaction. The Block 2 downloader fetches the existing Backend stream without a Range header, passes its one response body through a `TransformStream` that counts unchanged chunks and emits throttled progress, then transfers that body exactly once to Cache Storage. Cache validation precedes the IndexedDB `completed` transition. On any error it removes a possible cache entry and records a safe failed state; startup reconciliation compensates for stale downloads, missing or invalid cache entries, and orphan media entries.
+
+The app-scoped queue is limited to one active download per browser tab. It persists queued/completed/failed states but keeps progress only in memory. It does not auto-resume on reload or network restoration; users explicitly continue queued work. Service Worker delivery, an offline route, cached-media Range responses and offline playback remain outside Blocks 1–2.
 
 ---
 

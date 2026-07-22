@@ -10,6 +10,7 @@ import {
   hasCachedVideo,
   listCachedVideoIds,
   putCachedVideo,
+  putCachedVideoOwnedResponse,
   validateCachedVideo,
 } from "../../lib/offline/media-cache";
 import { VIDEO_ID_ONE, VIDEO_ID_TWO, installFakeCacheStorage, videoResponse } from "./test-helpers";
@@ -75,5 +76,32 @@ describe("offline media cache", () => {
     await expect(hasCachedVideo(VIDEO_ID_ONE)).rejects.toMatchObject({
       code: "browser_storage_unavailable",
     });
+  });
+
+  it("keeps clone semantics for ordinary callers and transfers owned response bodies without cloning", async () => {
+    const ordinary = videoResponse(4);
+    const ordinaryClone = vi.spyOn(ordinary, "clone");
+    await putCachedVideo(VIDEO_ID_ONE, ordinary);
+    expect(ordinaryClone).toHaveBeenCalledOnce();
+
+    const put = vi.fn(async (_key: string, response: Response) => {
+      await response.arrayBuffer();
+    });
+    vi.stubGlobal("caches", {
+      open: vi.fn().mockResolvedValue({ put, delete: vi.fn().mockResolvedValue(true) }),
+    });
+    const owned = videoResponse(4);
+    const ownedClone = vi.spyOn(owned, "clone");
+    await putCachedVideoOwnedResponse(VIDEO_ID_TWO, owned);
+
+    expect(put).toHaveBeenCalledWith(getMediaCacheKey(VIDEO_ID_TWO), owned);
+    expect(ownedClone).not.toHaveBeenCalled();
+    expect(owned.bodyUsed).toBe(true);
+  });
+
+  it("rejects an owned response with no permitted media body", async () => {
+    await expect(
+      putCachedVideoOwnedResponse(VIDEO_ID_ONE, new Response(null, { status: 204, headers: { "content-type": "video/mp4" } })),
+    ).rejects.toMatchObject({ code: "cache_write_failed" });
   });
 });

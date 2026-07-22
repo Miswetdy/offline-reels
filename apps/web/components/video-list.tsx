@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { OfflineDownloadControls } from "./offline-download-controls";
 import { getVideoStreamUrl, getVideos, type Video } from "../lib/api/videos";
 
 const PAGE_SIZE = 5;
@@ -358,6 +359,7 @@ export function VideoList() {
       >
         {muted ? "Unmute" : "Mute"}
       </button>
+      <OfflineDownloadControls videos={videos} activeVideoId={effectiveActiveVideoId} />
       {videos.map((video) => (
         <section
           key={video.id}

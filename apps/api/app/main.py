@@ -24,9 +24,9 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[str(settings.frontend_origin).rstrip("/")],
         allow_credentials=False,
-        allow_methods=["GET", "OPTIONS"],
-        allow_headers=["Range"],
-        expose_headers=["Accept-Ranges", "Content-Range", "Content-Length"],
+        allow_methods=["GET", "HEAD", "OPTIONS"],
+        allow_headers=["Range", "Cache-Control"],
+        expose_headers=["Accept-Ranges", "Content-Range", "Content-Length", "Content-Type"],
     )
     app.include_router(health_router)
     app.include_router(videos_router)

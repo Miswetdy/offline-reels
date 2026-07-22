@@ -308,6 +308,7 @@ describe("VideoList", () => {
     await screen.findByText("First video");
     const feed = screen.getByLabelText("Video feed");
     const sentinel = screen.getByTestId("feed-sentinel");
+    await waitFor(() => expect(() => observerFor(sentinel)).not.toThrow());
     const sentinelObserver = observerFor(sentinel);
 
     expect(sentinel).toHaveClass("h-px", "shrink-0");
@@ -330,6 +331,7 @@ describe("VideoList", () => {
     render(<VideoList />);
     await screen.findByText("First video");
     const sentinel = screen.getByTestId("feed-sentinel");
+    await waitFor(() => expect(() => observerFor(sentinel)).not.toThrow());
     observerFor(sentinel).trigger([{ target: sentinel, ratio: 1 }]);
 
     expect(await screen.findByText("Unable to load more videos.")).toBeInTheDocument();
