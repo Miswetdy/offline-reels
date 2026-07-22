@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline video library downloader and sequential queue (TASK-005 Block 2).
+Offline video library shared feed extraction (TASK-005 Block 3.1).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline video library downloader and sequential queue (TASK-005 Block 2).
 
 ## Current focus
 
-TASK-005 Block 2 is implemented: `/videos` can queue the current item or up to five eligible loaded items for sequential local download. The browser-only queue has one active download per tab, safe typed errors, throttled in-memory progress, explicit retry/cancel/continue controls and no automatic restart after reload or reconnect. The downloader transfers the Backend response through a single `TransformStream` to Cache Storage, validates it, and only then marks IndexedDB metadata `completed`. The existing online feed, Backend API and playback media window remain unchanged.
+TASK-005 Block 3.1 is implemented: `VerticalVideoFeed` now owns the reusable vertical playback UI, while `VideoList` remains the online data wrapper for Backend pagination, sentinel loading, deduplication and download controls. The extraction preserves the existing scroll-snap, active-item selection, muted autoplay and active-plus-next media window. It does not add an offline route, Service Worker delivery, Cache Storage playback or a new data source.
 
 ## Next step
 
-Continue TASK-005 with Service Worker delivery, an `/offline` library and cached-media Range playback. Application-shell caching, offline playback and iPhone acceptance testing have not started. Before the next block, manually smoke-test a large MP4 download, cancel/retry and the browser/iPhone storage and memory behavior.
+Continue TASK-005 with the next offline-feed block: a local data source, Service Worker delivery, an `/offline` library and cached-media Range playback. Application-shell caching, offline playback and iPhone acceptance testing have not started. Before the next block, manually smoke-test a large MP4 download, cancel/retry and the browser/iPhone storage and memory behavior.
 
 ## Recent decisions
 
@@ -49,6 +49,7 @@ Added:
 - Real Instagram Reels passed the manual TASK-004 feed smoke scenario in Chrome and Yandex Browser. The earlier issue was limited to some third-party test MP4 encodings, not pagination, active-player selection, the media window, Range streaming or the Backend API. A future ingestion task must define media validation and, if needed, normalization or transcoding for a safe MVP format; no transcoding was added to TASK-004.
 - TASK-005 Block 1 adds the versioned `offline-reels` IndexedDB schema and `offline-reels-media-v1` media cache behind typed browser-only adapters. Reconciliation marks stale or invalid local records failed and removes orphan cache entries; Block 2 builds on this foundation.
 - TASK-005 Block 2 adds a one-at-a-time, explicitly user-started local download queue. It passes one Backend stream through `TransformStream` directly to an owned Cache Storage response, avoiding `ReadableStream.tee()` and downloader response cloning. Progress is in-memory only; IndexedDB receives `0` at start and the verified final byte count only on completion. Downloads do not auto-resume after reload or network restoration; abort and quota failures pause the queue. Service Worker, `/offline`, cached-media Range delivery and offline playback are still not implemented.
+- TASK-005 Block 3.1 separates reusable vertical playback UI from the online data layer. `VerticalVideoFeed` receives typed items and media URLs, exposes optional actions and active-item callbacks, and retains the observer/rAF selection and two-source media window. `VideoList` still owns online requests, cursor pagination and local-download controls; `/offline` is not implemented.
 - The Block 2 downloader uses `fetch(..., { cache: "no-store" })`. The API CORS policy therefore explicitly permits `Cache-Control` in addition to `Range`, as well as `GET` and `HEAD`, for the configured `FRONTEND_ORIGIN`; it exposes the media response headers needed by the downloader. This keeps the origin allowlist explicit and does not enable credentials or wildcards.
 
 ## Current open questions

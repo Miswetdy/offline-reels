@@ -213,6 +213,8 @@ IndexedDB and Cache Storage do not have a common transaction. The Block 2 downlo
 
 The app-scoped queue is limited to one active download per browser tab. It persists queued/completed/failed states but keeps progress only in memory. It does not auto-resume on reload or network restoration; users explicitly continue queued work. Service Worker delivery, an offline route, cached-media Range responses and offline playback remain outside Blocks 1–2.
 
+TASK-005 Block 3.1 extracts the shared `VerticalVideoFeed` UI boundary from the online `VideoList`. The reusable component owns only vertical scroll-snap playback: active-item selection with `IntersectionObserver` and rAF fallback, muted autoplay, pause behavior and the active-plus-next media window. `VideoList` remains the online data wrapper for Backend pagination, sentinel loading, deduplication and download controls. No offline route, Service Worker delivery or Cache Storage playback is implemented by this extraction.
+
 ---
 
 # Development Principles
