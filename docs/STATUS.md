@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Multi-video vertical feed (TASK-004).
+Offline video library foundation (TASK-005 Block 1).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Multi-video vertical feed (TASK-004).
 
 ## Current focus
 
-TASK-004 is implemented and manually smoke-tested with real Instagram Reels in Chrome and Yandex Browser. Measure long-session memory behavior on a real iPhone before considering virtualization.
+TASK-005 Block 1 is implemented: the web application has a typed IndexedDB repository, an isolated Cache Storage adapter, synthetic offline media keys, startup reconciliation and storage-estimate helpers. The existing `/videos` online feed remains unchanged.
 
 ## Next step
 
-Before offline-client delivery, plan validation of iOS quotas, long-term persistence, a large offline library, feed memory behavior and the safe browser-compatible media format for ingestion.
+Continue TASK-005 with the sequential downloader and local download queue. Service Worker, application-shell caching, `/offline`, offline playback, Range delivery and iPhone acceptance testing have not started.
 
 ## Recent decisions
 
@@ -47,6 +47,7 @@ Added:
 - TASK-004 keeps loaded video elements mounted while validating native scroll-snap UX. To avoid Chromium open-ended Range downloads from every mounted element, only the active player and its next neighbor receive stream URLs; all remaining cards stay mounted without a source. Full DOM virtualization remains a future real-device performance task.
 - The active-player selection retains the latest `IntersectionObserver` ratio for every feed card, resolves ties by the feed center, and has a requestAnimationFrame-throttled scroll fallback for browsers that emit only partial observer callback batches.
 - Real Instagram Reels passed the manual TASK-004 feed smoke scenario in Chrome and Yandex Browser. The earlier issue was limited to some third-party test MP4 encodings, not pagination, active-player selection, the media window, Range streaming or the Backend API. A future ingestion task must define media validation and, if needed, normalization or transcoding for a safe MVP format; no transcoding was added to TASK-004.
+- TASK-005 Block 1 adds the versioned `offline-reels` IndexedDB schema and `offline-reels-media-v1` media cache behind typed browser-only adapters. Reconciliation marks stale or invalid local records failed and removes orphan cache entries; no downloader, queue, Service Worker, offline UI or production media caching has been added yet.
 
 ## Current open questions
 

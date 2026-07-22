@@ -205,6 +205,14 @@ Internet is only required for:
 
 ---
 
+# Local Offline Library Foundation
+
+TASK-005 Block 1 introduces an isolated client-side persistence boundary without changing the online feed. The `offline-reels` IndexedDB database stores local-video metadata and lifecycle state; the separate `offline-reels-media-v1` Cache Storage cache stores MP4 responses. Entries use validated same-origin synthetic paths in the form `/offline-media/{uuid}` and never store Backend URLs, cursors, credentials or blobs in IndexedDB.
+
+IndexedDB and Cache Storage do not have a common transaction. A future downloader must write and validate media before marking its metadata `completed`; startup reconciliation compensates for stale downloads, missing or invalid cache entries, and orphan media entries. Service Worker delivery, an offline route and a download queue are not part of Block 1.
+
+---
+
 # Development Principles
 
 The architecture should prioritize:

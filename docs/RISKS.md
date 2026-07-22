@@ -205,3 +205,12 @@ Future ingestion must validate incoming media. If validation identifies incompat
 ## Status
 
 Open, non-blocking for TASK-004. Safari on iPhone and long media sessions still need a separate compatibility validation stage.
+
+Known dependency advisories:
+
+- Next.js 16.2.10 currently resolves optional sharp 0.34.5, affected by GHSA-f88m-g3jw-g9cj.
+- The application does not currently process untrusted images through sharp, so the known exploitation path is not used.
+- Next.js also resolves nested postcss 8.4.31, affected by GHSA-qx2v-qp2m-jg93.
+- The application does not accept or serialize untrusted user CSS.
+- npm audit fix --force is prohibited because it proposes an incompatible downgrade to Next.js 9.3.3.
+- Dependency remediation is tracked separately and must be completed before production deployment.

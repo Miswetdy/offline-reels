@@ -15,19 +15,21 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "idb": "8.0.3",
     "next": "16.2.10",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "4.1.18",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
-    "@tailwindcss/postcss": "4.1.18",
     "@types/node": "24.10.1",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "eslint": "9.39.1",
     "eslint-config-next": "16.2.10",
+    "fake-indexeddb": "6.2.5",
     "jsdom": "27.4.0",
     "tailwindcss": "4.1.18",
     "typescript": "6.0.3",
