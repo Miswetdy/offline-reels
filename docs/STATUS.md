@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline video library temporary playback adapter (TASK-005 Block 3.2).
+Offline video library management (TASK-005 Block 3.3).
 
 ## Completed
 
@@ -19,7 +19,7 @@ Offline video library temporary playback adapter (TASK-005 Block 3.2).
 
 ## Current focus
 
-TASK-005 Block 3.2 is implemented: `/offline` runs local reconciliation and reads only completed IndexedDB records, then renders them with `VerticalVideoFeed`. Until Service Worker delivery exists, cached MP4 responses are converted to temporary Blob URLs only for the active and next players and revoked when no longer needed. There is no Backend fallback, delete/clear UI, Service Worker or cached-media Range playback.
+TASK-005 Block 3.3 is implemented: `/offline` can delete one local video or clear the local library. Operations affect only the versioned media Cache Storage namespace and IndexedDB records, then refresh the local catalog and storage summary. No Backend, MinIO or PostgreSQL data is changed.
 
 ## Next step
 

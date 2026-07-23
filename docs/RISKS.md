@@ -257,3 +257,9 @@ Offline page reload, application-shell delivery, cached-media Range playback and
 ## Status
 
 Open, accepted temporarily for TASK-005 Block 3.2.
+
+---
+
+# Risk 12: Local cleanup is not cross-tab synchronized
+
+`/offline` deletes media cache data before IndexedDB metadata and refreshes its own catalog after each operation. Reconciliation compensates if the metadata step fails, but another open tab will not receive a live update. Browser storage estimates can also remain nonzero or update with delay after deletion. This is accepted for TASK-005 Block 3.3; cross-tab synchronization is deferred.
