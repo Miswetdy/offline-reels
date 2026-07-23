@@ -140,4 +140,13 @@ describe("OfflineVideoList management", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Офлайн-воспроизведение станет доступно после активации Service Worker.");
     expect(screen.queryByLabelText("Video feed")).not.toBeInTheDocument();
   });
+
+  it("shows a controlled storage error instead of a catalog when reconciliation cannot read Cache Storage", async () => {
+    mocks.reconcile.mockResolvedValueOnce({ errors: [{ code: "browser_storage_unavailable" }], storageUnavailable: true });
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Browser storage is unavailable");
+    expect(screen.queryByLabelText("Video feed")).not.toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });

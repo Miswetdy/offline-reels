@@ -162,7 +162,7 @@ async function markFailed(
   error: OfflineStorageError,
   dependencies: DownloaderDependencies,
 ): Promise<void> {
-  await dependencies.updateOfflineVideo(videoId, {
+  const updated = await dependencies.updateOfflineVideo(videoId, {
     status: "failed",
     downloadedBytes: 0,
     downloadedAt: null,
@@ -171,6 +171,9 @@ async function markFailed(
     lastErrorMessage: safeMessage(error.code),
     failedAt: dependencies.now(),
   });
+  if (!updated) {
+    throw new OfflineStorageError("unknown_error");
+  }
 }
 
 export async function downloadVideoForOffline(

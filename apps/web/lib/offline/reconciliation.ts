@@ -14,6 +14,7 @@ export type ReconciliationSummary = {
   invalidCacheMarkedFailed: number;
   orphanCacheEntriesDeleted: number;
   validCompletedCount: number;
+  storageUnavailable: boolean;
   errors: ReconciliationError[];
 };
 
@@ -24,6 +25,7 @@ function emptySummary(): ReconciliationSummary {
     invalidCacheMarkedFailed: 0,
     orphanCacheEntriesDeleted: 0,
     validCompletedCount: 0,
+    storageUnavailable: false,
     errors: [],
   };
 }
@@ -55,7 +57,10 @@ async function markFailed(
 export async function reconcileOfflineLibrary(): Promise<ReconciliationSummary> {
   const summary = emptySummary();
   const records = await listOfflineVideos();
-  const recordIds = new Set(records.map((record) => record.id));
+  // A cache entry belongs to the library only after its completed metadata and
+  // its cached bytes both validate. Failed and interrupted records must not
+  // retain media merely because their metadata still exists.
+  const validCompletedIds = new Set<string>();
 
   for (const record of records) {
     try {
@@ -74,6 +79,7 @@ export async function reconcileOfflineLibrary(): Promise<ReconciliationSummary> 
 
       const validation = await validateCachedVideo(record.id, record);
       if (validation.valid) {
+        validCompletedIds.add(record.id);
         summary.validCompletedCount += 1;
         continue;
       }
@@ -92,13 +98,15 @@ export async function reconcileOfflineLibrary(): Promise<ReconciliationSummary> 
         summary.invalidCacheMarkedFailed += 1;
       }
     } catch (error) {
-      summary.errors.push({ scope: "record", videoId: record.id, code: errorCode(error) });
+      const code = errorCode(error);
+      if (code === "browser_storage_unavailable") summary.storageUnavailable = true;
+      summary.errors.push({ scope: "record", videoId: record.id, code });
     }
   }
 
   try {
     for (const videoId of await listCachedVideoIds()) {
-      if (recordIds.has(videoId)) continue;
+      if (validCompletedIds.has(videoId)) continue;
       try {
         const deleted = await deleteCachedVideo(videoId);
         if (deleted) summary.orphanCacheEntriesDeleted += 1;
@@ -107,7 +115,9 @@ export async function reconcileOfflineLibrary(): Promise<ReconciliationSummary> 
       }
     }
   } catch (error) {
-    summary.errors.push({ scope: "cache", code: errorCode(error) });
+    const code = errorCode(error);
+    if (code === "browser_storage_unavailable") summary.storageUnavailable = true;
+    summary.errors.push({ scope: "cache", code });
   }
 
   return summary;

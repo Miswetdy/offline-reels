@@ -68,7 +68,9 @@ export async function getCachedVideo(videoId: string): Promise<Response | undefi
   try {
     return (await cache.match(getMediaCacheKey(videoId))) ?? undefined;
   } catch (error) {
-    throw toOfflineStorageError(error, "cache_write_failed");
+    // A failed read means the cache cannot be trusted for playback or
+    // reconciliation. Treat it as unavailable rather than as a write error.
+    throw toOfflineStorageError(error, "browser_storage_unavailable");
   }
 }
 
@@ -103,7 +105,7 @@ export async function listCachedVideoIds(): Promise<string[]> {
     });
     return ids.sort();
   } catch (error) {
-    throw toOfflineStorageError(error, "cache_write_failed");
+    throw toOfflineStorageError(error, "browser_storage_unavailable");
   }
 }
 

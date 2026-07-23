@@ -111,7 +111,7 @@ describe("VerticalVideoFeed", () => {
 
     observerFor(first).trigger([{ target: second, ratio: 0.9 }]);
     await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("preload", "auto"));
-    expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl);
+    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
     expect(playerFor("First video")).not.toHaveAttribute("src");
     expect(pause).toHaveBeenCalled();
   });

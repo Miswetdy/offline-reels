@@ -93,4 +93,61 @@ describe("offline-library reconciliation", () => {
     expect(await getOfflineVideo(VIDEO_ID_ONE)).toMatchObject({ status: "failed", lastErrorCode: "cache_validation_failed" });
     expect(await hasCachedVideo(VIDEO_ID_ONE)).toBe(false);
   });
+
+  it("removes zero-byte media and media retained by a failed record", async () => {
+    await putOfflineVideo(record(VIDEO_ID_ONE));
+    await putOfflineVideo(record(VIDEO_ID_TWO, {
+      status: "failed",
+      downloadedBytes: 0,
+      downloadedAt: null,
+      cacheKey: null,
+      lastErrorCode: "network_error",
+      lastErrorMessage: "Download failed.",
+      failedAt: "2026-07-22T12:01:00.000Z",
+    }));
+    const cache = await caches.open(OFFLINE_MEDIA_CACHE_NAME);
+    await cache.put(getMediaCacheKey(VIDEO_ID_ONE), new Response(new Uint8Array(), { headers: { "content-type": "video/mp4" } }));
+    await cache.put(getMediaCacheKey(VIDEO_ID_TWO), videoResponse(4));
+
+    const first = await reconcileOfflineLibrary();
+    const second = await reconcileOfflineLibrary();
+
+    expect(first).toMatchObject({ invalidCacheMarkedFailed: 1, orphanCacheEntriesDeleted: 1 });
+    expect(await getOfflineVideo(VIDEO_ID_ONE)).toMatchObject({ status: "failed", lastErrorCode: "cache_validation_failed" });
+    expect(await getCachedVideo(VIDEO_ID_ONE)).toBeUndefined();
+    expect(await getCachedVideo(VIDEO_ID_TWO)).toBeUndefined();
+    expect(second).toMatchObject({ invalidCacheMarkedFailed: 0, orphanCacheEntriesDeleted: 0, errors: [] });
+  });
+
+  it("reports unavailable Cache Storage without presenting it as a valid completed library", async () => {
+    await putOfflineVideo(record(VIDEO_ID_ONE));
+    vi.stubGlobal("caches", { open: vi.fn().mockRejectedValue(new DOMException("blocked", "SecurityError")) });
+
+    const summary = await reconcileOfflineLibrary();
+
+    expect(summary.storageUnavailable).toBe(true);
+    expect(summary.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ videoId: VIDEO_ID_ONE, code: "browser_storage_unavailable" }),
+    ]));
+    expect(summary.validCompletedCount).toBe(0);
+  });
+
+  it("contains Cache Storage match and keys failures in its structured summary", async () => {
+    await putOfflineVideo(record(VIDEO_ID_ONE));
+    const match = vi.fn().mockRejectedValue(new DOMException("blocked", "SecurityError"));
+    const keys = vi.fn().mockRejectedValue(new DOMException("blocked", "SecurityError"));
+    vi.stubGlobal("caches", {
+      open: vi.fn().mockResolvedValue({ match, keys, delete: vi.fn().mockResolvedValue(false) }),
+    });
+
+    const summary = await reconcileOfflineLibrary();
+
+    expect(match).toHaveBeenCalled();
+    expect(keys).toHaveBeenCalled();
+    expect(summary.storageUnavailable).toBe(true);
+    expect(summary.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ scope: "record", code: "browser_storage_unavailable" }),
+      expect.objectContaining({ scope: "cache", code: "browser_storage_unavailable" }),
+    ]));
+  });
 });

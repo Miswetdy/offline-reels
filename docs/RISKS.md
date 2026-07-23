@@ -217,13 +217,13 @@ TASK-005 Block 2 stores an MP4 through one `TransformStream` and one Cache Stora
 ## Mitigation
 
 - The downloader validates type and size, writes no per-chunk progress to IndexedDB, and marks `completed` only after cache validation.
-- Cache cleanup and startup reconciliation compensate for failed or interrupted writes.
+- Cache cleanup and idempotent startup reconciliation compensate for failed or interrupted writes. A cache entry is considered owned only by a validated completed metadata record; zero-byte, invalid, orphan and failed-record media is removed.
 - Queue concurrency is one. Abort and quota failures pause it; queued work requires explicit user continuation after reload or network recovery.
 - Storage pre-checks use a 1.2 multiplier and a desired 50 MiB reserve, but estimates remain approximate.
 
 ## Remaining limitation
 
-Multiple tabs can still create competing queue controllers because `navigator.locks` is deliberately deferred. There is no background download, automatic recovery, cached-media Range support or iPhone memory/quota acceptance result yet. Large-file memory behavior must be measured manually on Chrome and an iPhone before later offline-playback work.
+Multiple tabs can still create competing queue controllers because `navigator.locks` is deliberately deferred. There is no background download or automatic recovery, and iPhone memory/quota acceptance has not been completed. Large-file memory behavior, Cache Storage eviction, quota-exceeded recovery and long sessions must be measured manually on Chrome and an iPhone.
 
 ## Status
 
@@ -233,8 +233,9 @@ Known dependency advisories:
 
 - Next.js 16.2.11 currently resolves optional sharp 0.34.5, affected by GHSA-f88m-g3jw-g9cj.
 - The application does not currently process untrusted images through sharp, so the known exploitation path is not used.
-- Next.js also resolves nested postcss 8.4.31, affected by GHSA-qx2v-qp2m-jg93.
+- Next.js also resolves nested postcss 8.4.31, affected by GHSA-qx2v-qp2m-jg93 and GHSA-6g55-p6wh-862q.
 - The application does not accept or serialize untrusted user CSS.
+- `npm audit` and `npm audit --omit=dev` currently report three high findings (sharp plus the two PostCSS advisories) and no critical finding.
 - npm audit fix --force is prohibited because it proposes an incompatible downgrade to Next.js 9.3.3.
 - Dependency remediation is tracked separately and must be completed before production deployment.
 

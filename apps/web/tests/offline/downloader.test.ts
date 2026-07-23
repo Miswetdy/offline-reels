@@ -141,6 +141,33 @@ describe("single-stream offline downloader", () => {
     expect(harness.dependencies.fetchImplementation).not.toHaveBeenCalled();
   });
 
+  it("retries an existing failed record without creating a second metadata record", async () => {
+    const harness = createHarness();
+    harness.records.set(VIDEO_ID_ONE, {
+      id: VIDEO_ID_ONE,
+      title: video.title,
+      contentType: "video/mp4",
+      byteSize: 6,
+      createdAt: video.created_at,
+      status: "failed",
+      downloadedBytes: 0,
+      downloadedAt: null,
+      cacheKey: null,
+      lastErrorCode: "network_error",
+      lastErrorMessage: "Download failed.",
+      failedAt: video.created_at,
+      lastWatchedAt: null,
+      updatedAt: video.created_at,
+    });
+
+    await expect(downloadVideoForOffline({ video, signal: new AbortController().signal }, harness.dependencies)).resolves.toMatchObject({
+      status: "completed",
+      downloadedBytes: 6,
+    });
+    expect(harness.dependencies.putOfflineVideo).not.toHaveBeenCalled();
+    expect(harness.dependencies.fetchImplementation).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     [new Response("error", { status: 500 }), "http_error"],
     [new Response("missing", { status: 404 }), "http_error"],
@@ -194,6 +221,7 @@ describe("single-stream offline downloader", () => {
       code: "unknown_error",
     });
     expect(metadata.dependencies.deleteCachedVideo).toHaveBeenCalledWith(VIDEO_ID_ONE);
+    expect(metadata.records.get(VIDEO_ID_ONE)).toMatchObject({ status: "failed", cacheKey: null });
 
     const controller = new AbortController();
     controller.abort();

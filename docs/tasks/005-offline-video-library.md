@@ -1553,3 +1553,7 @@ npm audit --omit=dev
 - зафиксировать known limitations;
 - оставить контейнеры в понятном состоянии;
 - не выполнять commit и push без ручного подтверждения пользователя.
+
+## Implementation status
+
+TASK-005 Block 6.1 hardens the existing local-library persistence boundary without adding background download or changing playback lifecycle. Reconciliation is idempotent: only a validated `completed` metadata record owns a media cache entry; interrupted downloads, missing/invalid/zero-byte media and orphan responses are invalidated or removed locally. Downloader completion remains ordered as Cache Storage write, cache validation, then IndexedDB `completed`; cache-first delete/clear operations use reconciliation as compensation if metadata cleanup fails. Browser storage and quota errors remain typed, user-safe states. Real-device quota, eviction and long-session acceptance remain outside this block.

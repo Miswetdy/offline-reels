@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline media HTTP Range delivery through Service Worker (TASK-005 Block 5.2).
+Offline storage consistency and download hardening (TASK-005 Block 6.1).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline media HTTP Range delivery through Service Worker (TASK-005 Block 5.2).
 
 ## Current focus
 
-TASK-005 Block 5.2 implements single HTTP byte-range delivery for the same-origin Service Worker media route and awaits production manual smoke. Browser media elements request `Range` even on their first `/offline-media/{videoId}` request, so the previous full-response-only route was insufficient. The worker now returns full `200`, valid single-range `206`, and invalid/multipart/unsatisfiable `416` responses without Backend fallback. It reads a full cached response into worker memory before slicing; this is accepted temporarily and requires desktop and iPhone memory validation.
+TASK-005 Block 6.1 hardens the non-transactional local-library boundary. Reconciliation treats media as owned only by a validated `completed` record, removes zero-byte/invalid and orphan responses, and keeps interrupted records from being presented as playable. A Cache Storage read failure now produces a controlled storage state instead of a potentially unusable completed catalog. Downloader completion remains ordered as cache write → cache validation → IndexedDB `completed`; failed metadata completion is compensated by media cleanup and reconciliation.
 
 ## Next step
 
-After the Block 5.2 smoke, perform Block 6 acceptance validation: desktop Chrome and installed iPhone PWA playback, seeks, storage quotas and long media sessions.
+Complete the remaining TASK-005 storage and device acceptance work: desktop Chrome and installed iPhone PWA playback, seeks, storage quotas, eviction behavior and long media sessions.
 
 ## Recent decisions
 
@@ -40,7 +40,7 @@ Added:
 - Reproducible Docker Compose bootstrap added: Node.js 24.14.0/Next.js web app and Python 3.14.3/FastAPI API with PostgreSQL, Redis and MinIO.
 - API exposes `/health/live` (FastAPI process only), `/health/ready` (PostgreSQL and Redis only), and independent `/health/minio` diagnostics.
 - Alembic has an empty, reversible initial migration; Instagram collection, downloads, authentication, feed logic, Celery and production offline caching remain unimplemented.
-- Web dependency security triage updated Vitest to 4.1.10 and removed its critical development-only advisory. The moderate PostCSS advisory remains open through Next.js 16.2.10's nested PostCSS 8.4.31; no unsafe audit fix or Next.js downgrade was applied.
+- Web dependency security triage updated Vitest to 4.1.10 and removed its critical development-only advisory. The current dependency tree uses Next.js 16.2.11 and retains three high npm-audit findings: optional `sharp` 0.34.5 plus two advisories through Next.js's nested PostCSS 8.4.31. No unsafe force fix, override or Next.js downgrade was applied.
 - TASK-003 streams video through Backend API rather than presigned storage URLs. Integration tests use isolated PostgreSQL and MinIO infrastructure.
 - TASK-003 was validated end-to-end: idempotent seed uploaded the 13,864,238-byte spike MP4, `/videos` returned one record, HTTP streaming returned `200` and `206`, multipart Range returned `416`, and the video remained available after `make down`/`make up`.
 - TASK-004 uses `created_at DESC, id DESC` keyset pagination with an HMAC-SHA-256 signed opaque cursor. The cursor secret is required at runtime and never belongs in Git.
@@ -56,6 +56,7 @@ Added:
 - TASK-005 Block 4.2 adds an explicit revisioned `/videos` application shell so the page can render a controlled offline state without reusing old API data. `/videos` is not a navigation fallback and unknown routes are not answered with `/offline`. `navigator.onLine` plus browser events drive an informational, SSR-safe UI indicator only; catalog fetch failures are separately classified so a disconnected request renders the offline state even if a browser keeps `navigator.onLine` true. The worker has no runtime caching, does not force `skipWaiting`, and has no application-triggered update/reload action; a waiting worker applies after existing clients close.
 - TASK-005 Block 5.1 registers a same-origin `GET /offline-media/{uuid}` route in the existing Serwist worker. It validates the exact synthetic path, reads only `offline-reels-media-v1`, preserves cached MP4 headers, and returns controlled `404`/`400`/`503` responses without network fallback. `/offline` uses the synthetic URLs directly, while a page not yet controlled by the worker shows a controlled readiness message rather than silently recreating Blob URLs. Range requests are rejected as unsupported; correct `206`/`416` byte-range behavior is deferred.
 - TASK-005 Block 5.2 replaces the temporary Range rejection. The worker supports `bytes=start-end`, `bytes=start-`, and `bytes=-suffixLength`; it clamps a valid end to the cached file size and preserves safe media validators. It returns `Accept-Ranges: bytes`, correct `Content-Length` and `Content-Range` for `206`, and `Content-Range: bytes */total` for `416`. Multiple ranges are deliberately unsupported and return `416`; no multipart response is generated. HEAD returns equivalent metadata without a body.
+- TASK-005 Block 6.1 makes local reconciliation idempotent across interrupted downloads and partial cleanup. Only a metadata record whose cached MP4 validates remains `completed`; cache entries belonging to failed records, missing metadata, zero-byte bodies or invalid media are deleted. Cache Storage failures become controlled local-storage errors, while delete/clear retain their cache-first, reconciliation-backed compensation order. Quota, unavailable browser storage and interrupted download states remain typed safe errors; iPhone quota and long-session acceptance are still pending.
 
 ## Current open questions
 

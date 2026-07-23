@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { NetworkStatusIndicator } from "./network-status-indicator";
 import { VerticalVideoFeed, type VerticalVideoFeedItem } from "./vertical-video-feed";
-import { getOfflineErrorMessage, toOfflineStorageError } from "../lib/offline/errors";
+import { OfflineStorageError, toOfflineStorageError } from "../lib/offline/errors";
 import { getMediaCacheKey } from "../lib/offline/media-cache";
 import { clearOfflineLibrary, deleteOfflineLibraryVideo } from "../lib/offline/library-management";
 import { reconcileOfflineLibrary } from "../lib/offline/reconciliation";
@@ -62,7 +62,10 @@ export function OfflineVideoList() {
     let disposed = false;
     void (async () => {
       try {
-        await reconcileOfflineLibrary();
+        const reconciliation = await reconcileOfflineLibrary();
+        if (reconciliation.storageUnavailable) {
+          throw new OfflineStorageError("browser_storage_unavailable");
+        }
         const [records, estimate] = await Promise.all([listCompletedOfflineVideos(), getStorageEstimate()]);
         if (!disposed) setState({ status: "success", records: sortOfflineRecords(records), estimate });
       } catch (error) {

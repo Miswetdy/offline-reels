@@ -46,4 +46,19 @@ describe("offline library management", () => {
     expect(await storage.has(OFFLINE_MEDIA_CACHE_NAME)).toBe(false);
     expect(await storage.has("application-shell")).toBe(true);
   });
+
+  it("keeps delete and clear idempotent when their cache entries are already absent", async () => {
+    const storage = installFakeCacheStorage();
+    const shell = await storage.open("serwist-precache-v1");
+    await shell.put("/offline", new Response("shell"));
+    await putOfflineVideo(record(VIDEO_ID_ONE));
+
+    await deleteOfflineLibraryVideo(VIDEO_ID_ONE);
+    await deleteOfflineLibraryVideo(VIDEO_ID_ONE);
+    await clearOfflineLibrary();
+    await clearOfflineLibrary();
+
+    expect(await getOfflineVideo(VIDEO_ID_ONE)).toBeUndefined();
+    expect(await storage.has("serwist-precache-v1")).toBe(true);
+  });
 });

@@ -227,6 +227,8 @@ TASK-005 Block 5.1 adds an explicit Serwist route for same-origin `/offline-medi
 
 TASK-005 Block 5.2 adds strict single-byte-range parsing to that route. `GET` without Range returns the full cached bytes as `200` with `Content-Length` and `Accept-Ranges: bytes`; `bytes=start-end`, `bytes=start-`, and `bytes=-suffixLength` return a correctly sliced `206` with inclusive `Content-Range`. Invalid, unsatisfiable and multipart ranges return `416` with `Content-Range: bytes */total`; multipart responses are intentionally not generated. HEAD returns the equivalent metadata without a body. The worker reads the complete cached response into a `Uint8Array`, then constructs a new response from the required slice. The cache entry remains unchanged and no slice is written back, but this has an O(file size) worker-memory cost that must be measured on iPhone before acceptance.
 
+TASK-005 Block 6.1 hardens the Cache Storage/IndexedDB compensation boundary. Reconciliation considers a media response owned only after the corresponding `completed` record validates its synthetic key, MP4 content type and exact byte size. It changes interrupted, missing or invalid metadata to a safe failed state and removes zero-byte, orphan, and media retained by non-completed records. Cache Storage read/list failures do not result in a playable catalog; the page renders a controlled storage error instead. Downloader writes cache bytes first, validates them, and only then writes `completed` metadata. If a later metadata operation or local cleanup partially fails, a subsequent reconciliation removes or invalidates the inconsistent side without Backend access.
+
 ---
 
 # Development Principles
