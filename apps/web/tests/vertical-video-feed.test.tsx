@@ -103,6 +103,7 @@ describe("VerticalVideoFeed", () => {
     const third = screen.getByLabelText("Third video");
 
     await waitFor(() => expect(playerFor("First video")).toHaveAttribute("src", items[0].mediaUrl));
+    expect(playerFor("First video")).toHaveAttribute("playsinline");
     expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
     expect(playerFor("Third video")).not.toHaveAttribute("src");
     fireEvent.click(screen.getByRole("button", { name: "Turn sound on" }));

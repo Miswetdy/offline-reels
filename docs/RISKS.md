@@ -285,6 +285,29 @@ Open, accepted for TASK-005 Block 4.1.
 
 ---
 
+# Risk 15: iPhone PWA, storage eviction, and Range memory acceptance
+
+## Problem
+
+Desktop Chromium verification does not establish iPhone Safari/WebKit behavior. Service Worker control, Home Screen installation, Cache Storage/IndexedDB eviction, `StorageManager` diagnostics, video Range requests, app backgrounding, and the current full-file worker-memory slicing strategy can behave differently under iOS memory pressure. A LAN HTTP address is not a dependable secure context for the installed-PWA path.
+
+## Mitigation
+
+- Real-device acceptance uses explicit HTTPS frontend and API tunnel origins. `NEXT_PUBLIC_API_BASE_URL` is validated and required in the client, and `FRONTEND_ORIGIN` is configured for that frontend tunnel; neither value is a secret.
+- The standalone manifest starts at `/offline`, and the worker serves the same-origin offline shell and `/offline-media/{id}` without a Backend fallback.
+- The local summary presents exact library bytes, approximate origin usage/quota when available, and the non-invasive `navigator.storage.persisted()` result. It does not promise that iOS will retain data or request persistence automatically.
+- Safe-area-aware controls, `100dvh`, `playsInline`, muted autoplay, native scroll-snap, visibility handling, and active-plus-next source cleanup are in place. The acceptance worksheet records installation, full Airplane Mode restart, ten-video playback, seeks, lifecycle, delete/clear, worker updates, reconciliation, and long-session observations.
+
+## Remaining limitation
+
+The required real-iPhone acceptance has not run in this block. Browser quota and persistence APIs are hints, not retention guarantees; iOS may evict storage. Single-range delivery materializes a complete MP4 in worker memory per request, so 20-minute and 50-swipe tests remain important targets. Multipart Range, background download, media transcoding, and an iOS-specific update UX remain out of scope.
+
+## Status
+
+Open, accepted for TASK-005 Block 6.3 preparation; completion depends on the recorded iPhone acceptance thresholds.
+
+---
+
 # Risk 14: Offline navigation and Service Worker updates
 
 ## Problem

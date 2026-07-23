@@ -233,6 +233,12 @@ TASK-005 Block 6.2 keeps media lifecycle in `VerticalVideoFeed`. Only the active
 
 An online or offline media delivery failure is terminal for that card during its mounted feed session: the player pauses, removes `src`, calls `load()` to end native loading, and displays a safe per-video error. The failed item is excluded from later automatic source assignment, so active-item changes cannot create a request loop. Other cards remain scrollable and playable. This UI policy does not repair a server-side PostgreSQL/MinIO inconsistency and does not add a backend fallback.
 
+## iPhone PWA acceptance preparation
+
+The browser-facing Backend origin is a required build-time public value, `NEXT_PUBLIC_API_BASE_URL`. Client API helpers reject a missing, malformed, credential-bearing, query-bearing, or non-HTTP(S) value before a request is made; no production client fallback assumes that the browsing device can reach `localhost`. The local Compose template may deliberately provide `http://localhost:8000` for desktop development, while real iPhone acceptance uses separate HTTPS frontend and API tunnel origins and sets API CORS `FRONTEND_ORIGIN` to the frontend tunnel origin.
+
+`/offline-media/{id}` remains same-origin, so the Service Worker media route and media cache do not depend on the API tunnel after download. The manifest starts standalone installs at `/offline`, includes an application icon, and the one Serwist worker remains scoped to `/`. The offline summary reports exact library bytes from IndexedDB plus approximate origin usage/quota and, where exposed, the current `navigator.storage.persisted()` result. It never requests persistence automatically. `VerticalVideoFeed` uses `100dvh`, `playsInline`, muted-first autoplay, native touch scrolling, and safe-area-aware fixed controls; real WebKit behavior is verified only by the documented device acceptance run.
+
 ---
 
 # Development Principles

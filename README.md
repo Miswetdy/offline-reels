@@ -1,6 +1,6 @@
 # Offline Reels
 
-Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed and development MP4 seed flow; it has no Instagram integration, media downloading, authentication, recommendations, watched state, Celery worker, service worker, or offline caching.
+Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed, development MP4 seed flow, and a local PWA library backed by IndexedDB, Cache Storage and one Service Worker. It has no Instagram integration, authentication, recommendations, watched state, Celery worker, background downloading, or transcoding.
 
 ## Supported versions
 
@@ -8,7 +8,7 @@ Personal application for preparing an Instagram Reels feed for offline viewing. 
 | --- | --- |
 | Node.js | 24.14.0 |
 | npm | 11.9.0 |
-| Next.js | 16.2.10 |
+| Next.js | 16.2.11 |
 | Python | 3.14.3 |
 | uv | 0.11.29 |
 | PostgreSQL image | `postgres:17.10-alpine3.23` |
@@ -26,9 +26,35 @@ make up
 make ps
 ```
 
-Open `http://localhost:3000`. The browser application calls `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`) and displays the live Backend API state. It never uses the internal Docker host name. Containers use internal URLs such as `postgres`, `redis`, and `minio`; `DATABASE_URL` and `REDIS_URL` in `.env.example` therefore target Docker service names. For a host-run API, override them to use `localhost`.
+Open `http://localhost:3000`. The browser application calls the explicitly configured `NEXT_PUBLIC_API_BASE_URL` and displays the live Backend API state. The value is required and must be an absolute HTTP(S) URL without credentials, query, or fragment; the production client has no localhost fallback. Containers use internal URLs such as `postgres`, `redis`, and `minio`; `DATABASE_URL` and `REDIS_URL` in `.env.example` therefore target Docker service names. For local Docker development, the template uses `http://localhost:8000` deliberately as an environment value.
 
 The API permits CORS only from `FRONTEND_ORIGIN` (default `http://localhost:3000`), never a wildcard.
+
+## iPhone PWA acceptance access
+
+Use an HTTPS tunnel for the real-iPhone acceptance run. Plain LAN HTTP is not a reliable secure context for Service Worker, Cache Storage, `navigator.storage`, or installed-PWA behavior on iOS. This project does not add a deployment stack: expose the already-running frontend and API with two temporary HTTPS tunnel URLs, set `NEXT_PUBLIC_API_BASE_URL` to the API URL at frontend build time, and set `FRONTEND_ORIGIN` to the frontend URL for API CORS. Both values are public origins, never secrets.
+
+```powershell
+# Set the public API origin before the frontend build. Replace placeholders.
+$env:NEXT_PUBLIC_API_BASE_URL = 'https://api-tunnel.example'
+$env:FRONTEND_ORIGIN = 'https://web-tunnel.example'
+npm --prefix apps/web run build
+npm --prefix apps/web run start -- --hostname 0.0.0.0 --port 3000
+```
+
+Run the API as usual through Docker Compose, then expose `http://localhost:3000` and `http://localhost:8000` through the chosen HTTPS tunnel provider. Open the frontend tunnel URL in iPhone Safari, not a local `localhost` URL. See [the iPhone acceptance worksheet](docs/acceptance/iphone-offline-library.md) for the full procedure.
+
+## Netlify deployment
+
+The root [`netlify.toml`](netlify.toml) fixes Netlify’s build base at `apps/web`. Netlify therefore runs `npm ci && npm run build` beside the committed `package.json` and `package-lock.json`, then deploys the generated `.next` directory through its current automatic Next.js/OpenNext runtime. It does not deploy source files from `apps/web`, and it cannot select the unrelated TASK-001 spike under `spikes/ios-offline-storage`.
+
+In Netlify **Project configuration → Build & deploy → Build settings**, leave **Package directory** blank because it is the same as the configured base. The root config overrides stale UI Base, Build command, Publish directory, and Node version values. In **Environment variables**, set only the public, absolute browser-facing API URL:
+
+```text
+NEXT_PUBLIC_API_BASE_URL=https://api.example.com
+```
+
+Do not add credentials, tokens, or secrets under `NEXT_PUBLIC_*`: Next.js embeds these values in the client bundle. Netlify’s current adapter is automatic; do not install or configure the legacy `@netlify/plugin-nextjs` plugin.
 
 ## Commands
 
@@ -98,6 +124,10 @@ $env:REDIS_URL = 'redis://localhost:6379/0'
 $env:MINIO_ENDPOINT = 'http://localhost:9000'
 uv --directory apps/api run uvicorn app.main:app --reload
 ```
+
+## Offline PWA
+
+The production build registers one Serwist worker at `/serwist/sw.js` with scope `/`. The manifest opens installed applications at `/offline`; its app shell is precached separately from `offline-reels-media-v1`, which holds downloaded MP4 responses. `/offline-media/{id}` is same-origin and served only from the local media cache; it has no Backend fallback. The offline page shows exact library bytes from IndexedDB, approximate origin usage/quota when supported, and whether `navigator.storage.persisted()` reports persistent storage. This is a diagnostic only: the app never requests persistence automatically and iOS may still evict data.
 
 ## Security
 

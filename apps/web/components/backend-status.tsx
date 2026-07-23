@@ -25,9 +25,10 @@ export function BackendStatus() {
     checking: "Checking Backend API…",
     available: "Backend API is available.",
     unavailable: "Backend API is unavailable.",
+    misconfigured: "Backend API URL is not configured.",
   }[availability];
 
-  const color = availability === "available" ? "text-emerald-700" : availability === "unavailable" ? "text-red-700" : "text-amber-700";
+  const color = availability === "available" ? "text-emerald-700" : availability === "checking" ? "text-amber-700" : "text-red-700";
 
   return (
     <p aria-live="polite" className={`mt-6 font-medium ${color}`}>

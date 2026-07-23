@@ -1,3 +1,5 @@
+import { getApiBaseUrl, isApiConfigurationError } from "./config";
+
 export type Video = {
   id: string;
   title: string;
@@ -32,12 +34,11 @@ export function isVideoCatalogNetworkError(error: unknown): boolean {
   return error instanceof VideoCatalogError && error.kind === "network";
 }
 
-export const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 export async function getVideos(
   { limit = 5, cursor, signal }: GetVideosOptions = {},
   fetchImplementation: FetchImplementation = fetch,
 ): Promise<VideoPage> {
+  const apiBaseUrl = getApiBaseUrl();
   const parameters = new URLSearchParams({ limit: String(limit) });
   if (cursor) {
     parameters.set("cursor", cursor);
@@ -63,5 +64,7 @@ export async function getVideos(
 }
 
 export function getVideoStreamUrl(videoId: string): string {
-  return `${apiBaseUrl}/videos/${encodeURIComponent(videoId)}/stream`;
+  return `${getApiBaseUrl()}/videos/${encodeURIComponent(videoId)}/stream`;
 }
+
+export { isApiConfigurationError };

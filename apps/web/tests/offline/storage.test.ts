@@ -5,6 +5,7 @@ import {
   STORAGE_SAFETY_MULTIPLIER,
   calculateExpectedRequiredSpace,
   getStorageEstimate,
+  getPersistentStorageStatus,
   hasEstimatedSpaceForDownload,
   requestPersistentStorage,
 } from "../../lib/offline/storage";
@@ -33,6 +34,16 @@ describe("browser storage helpers", () => {
     await expect(requestPersistentStorage()).resolves.toBe("denied");
     vi.stubGlobal("navigator", {});
     await expect(requestPersistentStorage()).resolves.toBe("unavailable");
+  });
+
+  it("reports the persisted diagnostic without requesting persistent storage", async () => {
+    const persisted = vi.fn().mockResolvedValue(true);
+    vi.stubGlobal("navigator", { storage: { persisted } });
+    await expect(getPersistentStorageStatus()).resolves.toBe(true);
+    expect(persisted).toHaveBeenCalledOnce();
+
+    vi.stubGlobal("navigator", { storage: {} });
+    await expect(getPersistentStorageStatus()).resolves.toBeNull();
   });
 
   it("uses the safety multiplier and 50 MiB reserve when deciding on available space", () => {

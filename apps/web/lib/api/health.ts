@@ -1,17 +1,19 @@
-export type BackendAvailability = "checking" | "available" | "unavailable";
+import { getApiBaseUrl, isApiConfigurationError } from "./config";
+
+export type BackendAvailability = "checking" | "available" | "unavailable" | "misconfigured";
 
 type FetchImplementation = typeof fetch;
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 export async function checkBackendLive(fetchImplementation: FetchImplementation = fetch): Promise<BackendAvailability> {
   try {
+    const apiBaseUrl = getApiBaseUrl();
     const response = await fetchImplementation(`${apiBaseUrl}/health/live`, {
       cache: "no-store",
     });
 
     return response.ok ? "available" : "unavailable";
-  } catch {
+  } catch (error) {
+    if (isApiConfigurationError(error)) return "misconfigured";
     return "unavailable";
   }
 }

@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   title: "Offline Reels",
   description: "Personal offline Reels application",
   applicationName: "Offline Reels",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
   appleWebApp: {
     capable: true,
     title: "Offline Reels",

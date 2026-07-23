@@ -1,0 +1,16 @@
+# This file belongs at the repository root so its base directory overrides any
+# stale monorepo settings saved in the Netlify UI.
+[build]
+  base = "apps/web"
+  command = "npm ci && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "24.14.0"
+
+# Set NEXT_PUBLIC_API_BASE_URL in Netlify Project configuration > Environment
+# variables before each build. It is a public browser-facing Backend API URL;
+# do not put credentials, tokens, or any other secret in it.
+#
+# Modern Netlify Next.js support uses its OpenNext adapter automatically. Do
+# not add or pin the legacy @netlify/plugin-nextjs plugin here.

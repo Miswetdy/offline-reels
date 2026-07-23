@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline playback lifecycle and Service Worker runtime hardening (TASK-005 Block 6.2).
+iPhone PWA acceptance preparation (TASK-005 Block 6.3).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline playback lifecycle and Service Worker runtime hardening (TASK-005 Block 
 
 ## Current focus
 
-TASK-005 Block 6.2 hardens the client playback lifecycle without changing the storage model. The shared feed pauses every player and invalidates stale `play()` work when the document becomes hidden, the page is hidden or restored, and it never auto-restarts playback on return. Removing an active item immediately chooses a valid remaining item, retaining the active-plus-next source limit. `/offline` distinguishes unsupported Service Worker APIs from a worker that is merely not yet controlling the page; `controllerchange` updates readiness without a reload or a Backend/Blob fallback.
+TASK-005 Block 6.3 prepares, but does not execute, real-device acceptance. The client requires an explicit public `NEXT_PUBLIC_API_BASE_URL` instead of assuming browser localhost, validates that it is a safe absolute HTTP(S) URL, and reports a configuration error before making API requests. `/offline` continues to be same-origin and does not expose secrets. Its local summary now also reports the available `navigator.storage.persisted()` diagnostic without requesting persistence. Existing `100dvh`, native touch scroll-snap, `playsInline`, muted autoplay and page-lifecycle handling remain in place; fixed overlays now observe safe-area insets.
 
 ## Next step
 
-Perform TASK-005 Block 6.3 device acceptance: desktop Chrome and installed iPhone PWA playback, seeks, storage quotas, eviction behavior, Service Worker lifecycle and long media sessions.
+Run the documented installed-iPhone acceptance: HTTPS access, Airplane Mode restart, at least ten videos, Range seek, lifecycle, delete/clear, worker update, reconciliation and long-session observations. TASK-005 remains open until the mandatory iPhone thresholds pass.
 
 ## Recent decisions
 

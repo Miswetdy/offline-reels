@@ -10,6 +10,7 @@ import { useNetworkStatus } from "../hooks/use-network-status";
 import {
   getVideoStreamUrl,
   getVideos,
+  isApiConfigurationError,
   isVideoCatalogNetworkError,
   type Video,
 } from "../lib/api/videos";
@@ -18,7 +19,7 @@ const PAGE_SIZE = 5;
 
 type InitialState =
   | { status: "loading" }
-  | { status: "error"; isNetworkFailure: boolean }
+  | { status: "error"; isNetworkFailure: boolean; isConfigurationError: boolean }
   | { status: "success" };
 
 type NextPageState = "idle" | "loading" | "error";
@@ -68,7 +69,11 @@ export function VideoList() {
       },
       (error: unknown) => {
         if (!disposed && !controller.signal.aborted) {
-          setInitialState({ status: "error", isNetworkFailure: isVideoCatalogNetworkError(error) });
+          setInitialState({
+            status: "error",
+            isNetworkFailure: isVideoCatalogNetworkError(error),
+            isConfigurationError: isApiConfigurationError(error),
+          });
         }
       },
     );
@@ -129,6 +134,13 @@ export function VideoList() {
     return <main className="grid h-dvh place-items-center" aria-live="polite">Loading videos…</main>;
   }
   if (initialState.status === "error") {
+    if (initialState.isConfigurationError) {
+      return (
+        <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
+          <p role="alert">Backend API URL is not configured. Set NEXT_PUBLIC_API_BASE_URL and rebuild the web app.</p>
+        </main>
+      );
+    }
     if (!isOnline || initialState.isNetworkFailure) {
       return (
         <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
@@ -174,7 +186,7 @@ export function VideoList() {
 
   return (
     <>
-      <aside className="fixed left-4 top-4 z-20 rounded bg-black/75 px-3 py-2 text-sm text-white">
+      <aside className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-20 rounded bg-black/75 px-3 py-2 text-sm text-white">
         <NetworkStatusIndicator offlineMessage="Офлайн · онлайн-лента недоступна" />
       </aside>
       <VerticalVideoFeed
@@ -198,7 +210,7 @@ export function VideoList() {
         )}
       />
       <OfflineDownloadControls videos={videos} activeVideoId={effectiveActiveVideoId} />
-      <Link className="fixed bottom-4 right-4 z-20 rounded bg-black/75 px-3 py-2 text-sm text-white underline" href="/offline">
+      <Link className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-20 rounded bg-black/75 px-3 py-2 text-sm text-white underline" href="/offline">
         Офлайн-библиотека
       </Link>
     </>

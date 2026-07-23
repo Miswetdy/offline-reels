@@ -5,12 +5,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  reconcile: vi.fn(), listCompleted: vi.fn(), estimate: vi.fn(), deleteVideo: vi.fn(), clearLibrary: vi.fn(),
+  reconcile: vi.fn(), listCompleted: vi.fn(), estimate: vi.fn(), persisted: vi.fn(), deleteVideo: vi.fn(), clearLibrary: vi.fn(),
 }));
 
 vi.mock("../../lib/offline/reconciliation", () => ({ reconcileOfflineLibrary: mocks.reconcile }));
 vi.mock("../../lib/offline/repository", () => ({ listCompletedOfflineVideos: mocks.listCompleted }));
-vi.mock("../../lib/offline/storage", () => ({ getStorageEstimate: mocks.estimate }));
+vi.mock("../../lib/offline/storage", () => ({
+  getStorageEstimate: mocks.estimate,
+  getPersistentStorageStatus: mocks.persisted,
+}));
 vi.mock("../../lib/offline/library-management", () => ({
   deleteOfflineLibraryVideo: mocks.deleteVideo,
   clearOfflineLibrary: mocks.clearLibrary,
@@ -38,6 +41,7 @@ beforeEach(() => {
   mocks.reconcile.mockResolvedValue({ errors: [] });
   mocks.listCompleted.mockImplementation(async () => records);
   mocks.estimate.mockResolvedValue({ usage: 100, quota: 1000, available: 900, isAvailable: true });
+  mocks.persisted.mockResolvedValue(null);
   mocks.deleteVideo.mockImplementation(async (id: string) => { records = records.filter((record) => record.id !== id); });
   mocks.clearLibrary.mockImplementation(async () => { records = []; });
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
@@ -131,6 +135,13 @@ describe("OfflineVideoList management", () => {
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps storage diagnostics useful when persisted() is unavailable", async () => {
+    mocks.persisted.mockResolvedValueOnce(null);
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByLabelText("Offline library summary")).toHaveTextContent("Защита хранилища: недоступно");
   });
 
   it("shows a controlled state until a Service Worker controls the page", async () => {

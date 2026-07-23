@@ -318,7 +318,7 @@ export function VerticalVideoFeed({
   return (
     <main ref={feedRef} className="relative h-dvh snap-y snap-mandatory overflow-y-auto bg-slate-950 text-white" aria-label="Video feed">
       <button
-        className="fixed right-4 top-4 z-10 rounded-full bg-black/70 px-4 py-2 text-sm font-medium text-white focus:outline-2 focus:outline-offset-2 focus:outline-white"
+        className="fixed right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-10 rounded-full bg-black/70 px-4 py-2 text-sm font-medium text-white focus:outline-2 focus:outline-offset-2 focus:outline-white"
         type="button"
         aria-label={muted ? "Turn sound on" : "Mute videos"}
         aria-pressed={!muted}
@@ -355,7 +355,7 @@ export function VerticalVideoFeed({
           >
             Your browser does not support video playback.
           </video>
-          <div className="pointer-events-none absolute bottom-8 left-4 right-4 rounded bg-black/60 p-3">
+          <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+2rem)] left-4 right-4 rounded bg-black/60 p-3">
             <h2 className="font-semibold">{item.title}</h2>
             {item.subtitle ? <p className="text-sm text-slate-200">{item.subtitle}</p> : null}
             {playbackErrors[item.id] ? (

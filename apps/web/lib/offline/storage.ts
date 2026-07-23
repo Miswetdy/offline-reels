@@ -47,6 +47,22 @@ export async function requestPersistentStorage(): Promise<PersistentStorageResul
   }
 }
 
+/**
+ * Reports the browser's current persistent-storage decision without requesting
+ * it. `null` means that the browser does not expose the API or rejected the
+ * diagnostic call.
+ */
+export async function getPersistentStorageStatus(): Promise<boolean | null> {
+  const storage = getStorageManager();
+  if (!storage?.persisted) return null;
+
+  try {
+    return await storage.persisted();
+  } catch {
+    return null;
+  }
+}
+
 export function calculateExpectedRequiredSpace(downloadBytes: number): number {
   if (!Number.isSafeInteger(downloadBytes) || downloadBytes <= 0) {
     throw new TypeError("downloadBytes must be a positive integer.");

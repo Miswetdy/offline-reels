@@ -10,13 +10,13 @@ import { getMediaCacheKey } from "../lib/offline/media-cache";
 import { clearOfflineLibrary, deleteOfflineLibraryVideo } from "../lib/offline/library-management";
 import { reconcileOfflineLibrary } from "../lib/offline/reconciliation";
 import { listCompletedOfflineVideos } from "../lib/offline/repository";
-import { getStorageEstimate, type LocalStorageEstimate } from "../lib/offline/storage";
+import { getPersistentStorageStatus, getStorageEstimate, type LocalStorageEstimate } from "../lib/offline/storage";
 import type { OfflineVideoRecord } from "../lib/offline/types";
 
 type OfflineLibraryState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "success"; records: OfflineVideoRecord[]; estimate: LocalStorageEstimate };
+  | { status: "success"; records: OfflineVideoRecord[]; estimate: LocalStorageEstimate; persistentStorage: boolean | null };
 
 type ServiceWorkerReadiness = "controlled" | "waiting" | "unavailable";
 
@@ -65,8 +65,12 @@ export function OfflineVideoList() {
         if (reconciliation.storageUnavailable) {
           throw new OfflineStorageError("browser_storage_unavailable");
         }
-        const [records, estimate] = await Promise.all([listCompletedOfflineVideos(), getStorageEstimate()]);
-        if (!disposed) setState({ status: "success", records: sortOfflineRecords(records), estimate });
+        const [records, estimate, persistentStorage] = await Promise.all([
+          listCompletedOfflineVideos(),
+          getStorageEstimate(),
+          getPersistentStorageStatus(),
+        ]);
+        if (!disposed) setState({ status: "success", records: sortOfflineRecords(records), estimate, persistentStorage });
       } catch (error) {
         if (!disposed) setState({ status: "error", message: toOfflineStorageError(error).userMessage });
       }
@@ -181,12 +185,13 @@ export function OfflineVideoList() {
           </button>
         )}
       />
-      <aside className="fixed left-4 top-4 z-20 max-w-[calc(100%-8rem)] rounded bg-black/75 p-3 text-sm text-white" aria-label="Offline library summary">
+      <aside className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-20 max-w-[calc(100%-8rem)] rounded bg-black/75 p-3 text-sm text-white" aria-label="Offline library summary">
         <p>Офлайн: {state.records.length} видео · {formatBytes(librarySize)}</p>
         <NetworkStatusIndicator offlineMessage="Офлайн · локальная библиотека доступна" onlineMessage="Онлайн · локальная библиотека" />
         {state.estimate.isAvailable ? (
           <p className="mt-1">Хранилище браузера (примерно): {state.estimate.usage === null ? "недоступно" : formatBytes(state.estimate.usage)}{state.estimate.quota === null ? "" : ` / ${formatBytes(state.estimate.quota)}`}</p>
         ) : <p className="mt-1">Хранилище браузера (примерно): недоступно</p>}
+        <p className="mt-1">Защита хранилища: {state.persistentStorage === true ? "подтверждена браузером" : state.persistentStorage === false ? "не подтверждена" : "недоступно"}</p>
         {feedback ? <p className="mt-1 text-amber-200" role="alert">{feedback}</p> : null}
         <button className="mt-2 rounded bg-amber-200 px-2 py-1 text-slate-950 disabled:opacity-50" type="button" disabled={clearing || pendingVideoId !== null} onClick={() => void clearLibrary()}>
           {clearing ? "Очистка…" : "Очистить офлайн-библиотеку"}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>Offline Reels</title>
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <path d="M194 142c-29 17-47 48-47 82v64c0 34 18 65 47 82l89 52c29 17 65 17 94 0 29-17 47-48 47-82v-64c0-34-18-65-47-82l-89-52c-29-17-65-17-94 0Z" fill="#38bdf8"/>
+  <path d="M232 211a18 18 0 0 1 27-16l76 45a18 18 0 0 1 0 31l-76 45a18 18 0 0 1-27-16v-89Z" fill="#0f172a"/>
+</svg>
