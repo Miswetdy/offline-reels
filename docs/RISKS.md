@@ -263,3 +263,16 @@ Open, accepted temporarily for TASK-005 Block 3.2.
 # Risk 12: Local cleanup is not cross-tab synchronized
 
 `/offline` deletes media cache data before IndexedDB metadata and refreshes its own catalog after each operation. Reconciliation compensates if the metadata step fails, but another open tab will not receive a live update. Browser storage estimates can also remain nonzero or update with delay after deletion. This is accepted for TASK-005 Block 3.3; cross-tab synchronization is deferred.
+
+Next.js 16.2.11 transitively includes sharp 0.34.5 and postcss 8.4.31,
+which remain reported by npm audit.
+
+No force downgrade or unverified dependency override is applied.
+
+Current application does not process untrusted usergit add apps/web/package.json apps/web/package-lock.json images through Sharp,
+so practical exposure is limited for the local MVP.
+
+Before public production deployment:
+- upgrade to a compatible Next.js release containing patched transitive versions;
+- or apply an officially supported dependency resolution;
+- rerun npm audit and production smoke tests.
