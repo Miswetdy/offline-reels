@@ -240,23 +240,23 @@ Known dependency advisories:
 
 ---
 
-# Risk 11: Temporary offline Blob URL playback
+# Risk 11: Service Worker offline media Range slicing memory cost
 
 ## Problem
 
-TASK-005 Block 3.2 uses `Response.blob()` and temporary object URLs because no Service Worker yet serves `/offline-media/{videoId}`. A Blob URL retains the cached MP4 in browser-managed memory for its lifetime and cannot provide HTTP Range semantics or survive a page reload.
+Browser manual smoke after TASK-005 Block 5.1 confirmed that `<video>` sends a `Range` header on its first offline media request. A full-response-only handler therefore prevented playback. Block 5.2 now implements single-range responses by reading a cached MP4 fully into worker memory and slicing it.
 
 ## Mitigation
 
-`/offline` reconciles local data before listing it, never falls back to Backend media, and creates object URLs only for the active player and its next neighbor. The shared feed revokes each URL when it leaves that window and on unmount.
+`/offline` reconciles local data before listing it, never falls back to Backend media, and supplies only validated synthetic URLs to the active-plus-next media window. The worker accepts only same-origin GET/HEAD requests with exact UUID paths, reads only `offline-reels-media-v1`, and returns a controlled miss rather than contacting the network. It supports a strict single `bytes` range and returns `416` instead of fabricating multipart or invalid partial responses.
 
 ## Remaining limitation
 
-Application-shell delivery and offline page reload are implemented, but cached-media Range playback and iPhone memory behavior are not confirmed. A Service Worker media route remains a required next stage.
+The parser and response headers are covered by unit tests, but each Range request currently materializes the full MP4 in Service Worker memory before slicing. Browser seek behavior, repeated seek memory pressure, iPhone Safari behavior, quota eviction and long-session stability remain unconfirmed. Multipart ranges remain unsupported by design.
 
 ## Status
 
-Open, accepted temporarily for TASK-005 Block 3.2.
+Open, accepted for TASK-005 Block 5.2 pending manual desktop and iPhone validation.
 
 ---
 
@@ -276,7 +276,7 @@ TASK-005 Block 4.1 precaches the production application shell so a previously vi
 
 ## Remaining limitation
 
-Development disables Service Worker registration. Production shell reload must be manually verified on desktop and iPhone. Cached-media delivery, HTTP Range responses and replacing temporary Blob URLs are deferred to the next media-delivery block. Native `esbuild` must remain available for Windows production builds.
+Development disables Service Worker registration. Production shell reload and offline media playback must be manually verified on desktop and iPhone. The remaining media-delivery limitations are full-file worker-memory slicing, unsupported multipart ranges, and unconfirmed long-session behavior. Native `esbuild` must remain available for Windows production builds.
 
 ## Status
 

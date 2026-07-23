@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   reconcile: vi.fn(), listCompleted: vi.fn(), estimate: vi.fn(), deleteVideo: vi.fn(), clearLibrary: vi.fn(),
-  sources: new Map<string, { url: string; revoke: ReturnType<typeof vi.fn> }>(),
 }));
 
 vi.mock("../../lib/offline/reconciliation", () => ({ reconcileOfflineLibrary: mocks.reconcile }));
@@ -16,10 +15,6 @@ vi.mock("../../lib/offline/library-management", () => ({
   deleteOfflineLibraryVideo: mocks.deleteVideo,
   clearOfflineLibrary: mocks.clearLibrary,
 }));
-vi.mock("../../lib/offline/playback-source", () => ({
-  createOfflinePlaybackSource: vi.fn(async (id: string) => mocks.sources.get(id)!),
-}));
-
 import { OfflineVideoList } from "../../components/offline-video-list";
 import { VIDEO_ID_ONE, VIDEO_ID_TWO } from "./test-helpers";
 
@@ -40,8 +35,6 @@ let records = [base(VIDEO_ID_ONE, 4, "First"), base(VIDEO_ID_TWO, 6, "Second")];
 
 beforeEach(() => {
   records = [base(VIDEO_ID_ONE, 4, "First"), base(VIDEO_ID_TWO, 6, "Second")];
-  mocks.sources.clear();
-  for (const record of records) mocks.sources.set(record.id, { url: `blob:${record.id}`, revoke: vi.fn() });
   mocks.reconcile.mockResolvedValue({ errors: [] });
   mocks.listCompleted.mockImplementation(async () => records);
   mocks.estimate.mockResolvedValue({ usage: 100, quota: 1000, available: 900, isAvailable: true });
@@ -49,16 +42,33 @@ beforeEach(() => {
   mocks.clearLibrary.mockImplementation(async () => { records = []; });
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.stubGlobal("confirm", vi.fn(() => true));
+  const serviceWorker = new EventTarget();
+  Object.defineProperties(serviceWorker, {
+    controller: { configurable: true, value: {} },
+    ready: { configurable: true, value: Promise.resolve({}) },
+  });
+  Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: serviceWorker });
+  Object.defineProperties(URL, {
+    createObjectURL: { configurable: true, value: vi.fn() },
+    revokeObjectURL: { configurable: true, value: vi.fn() },
+  });
   vi.spyOn(globalThis, "fetch");
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
 });
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(navigator, "serviceWorker");
+  Reflect.deleteProperty(URL, "createObjectURL");
+  Reflect.deleteProperty(URL, "revokeObjectURL");
+});
 
 describe("OfflineVideoList management", () => {
-  it("deletes an item, blocks repeat action, updates summary and revokes its source", async () => {
+  it("deletes an item, blocks repeat action, updates summary, and keeps Blob APIs unused", async () => {
     let finish!: () => void;
     mocks.deleteVideo.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = () => { records = [records[1]]; resolve(); }; }));
     render(<OfflineVideoList />);
@@ -71,7 +81,8 @@ describe("OfflineVideoList management", () => {
     expect(screen.queryByText("Загрузка офлайн-библиотеки…")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("First")).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByLabelText("Offline library summary")).toHaveTextContent("Офлайн: 1 видео · 6 Б"));
-    expect(mocks.sources.get(VIDEO_ID_ONE)?.revoke).toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -96,7 +107,7 @@ describe("OfflineVideoList management", () => {
     expect(screen.getByText("First")).toBeInTheDocument();
   });
 
-  it("clears the library, blocks repeat action, revokes active sources and never fetches backend", async () => {
+  it("clears the library, blocks repeat action, and never fetches backend", async () => {
     let finish!: () => void;
     mocks.clearLibrary.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = () => { records = []; resolve(); }; }));
     render(<OfflineVideoList />);
@@ -105,8 +116,28 @@ describe("OfflineVideoList management", () => {
     expect(await screen.findByRole("button", { name: "Очистка…" })).toBeDisabled();
     finish();
     expect(await screen.findByText("Офлайн-библиотека пуста")).toBeInTheDocument();
-    expect(mocks.sources.get(VIDEO_ID_ONE)?.revoke).toHaveBeenCalled();
-    expect(mocks.sources.get(VIDEO_ID_TWO)?.revoke).toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("uses synthetic Service Worker media URLs without creating Blob URLs", async () => {
+    render(<OfflineVideoList />);
+
+    const first = await screen.findByLabelText("First");
+    const second = screen.getByLabelText("Second");
+    await waitFor(() => expect(first.querySelector("video")).toHaveAttribute("src", `/offline-media/${VIDEO_ID_ONE}`));
+    expect(second.querySelector("video")).toHaveAttribute("src", `/offline-media/${VIDEO_ID_TWO}`);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("shows a controlled state until a Service Worker controls the page", async () => {
+    Object.defineProperty(navigator.serviceWorker, "controller", { configurable: true, value: null });
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Офлайн-воспроизведение станет доступно после активации Service Worker.");
+    expect(screen.queryByLabelText("Video feed")).not.toBeInTheDocument();
   });
 });

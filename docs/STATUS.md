@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline navigation and Service Worker lifecycle hardening (TASK-005 Block 4.2).
+Offline media HTTP Range delivery through Service Worker (TASK-005 Block 5.2).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline navigation and Service Worker lifecycle hardening (TASK-005 Block 4.2).
 
 ## Current focus
 
-TASK-005 Block 4.2 has a production runtime correction and awaits a repeated manual smoke. `/offline` remains the only navigation fallback. `/videos` has its own revisioned application shell but never a cached Backend catalog: a fetch-level network failure or browser-offline hint displays a controlled state with a link to `/offline`; HTTP/API failures remain generic and it never redirects automatically. The precache also contains revisioned `/manifest.webmanifest` so the installed shell does not need to request that metadata while offline. The SSR-safe network indicator is informational only. A new worker waits for current tabs instead of being force-activated, and `reloadOnOnline=false` avoids reload loops.
+TASK-005 Block 5.2 implements single HTTP byte-range delivery for the same-origin Service Worker media route and awaits production manual smoke. Browser media elements request `Range` even on their first `/offline-media/{videoId}` request, so the previous full-response-only route was insufficient. The worker now returns full `200`, valid single-range `206`, and invalid/multipart/unsatisfiable `416` responses without Backend fallback. It reads a full cached response into worker memory before slicing; this is accepted temporarily and requires desktop and iPhone memory validation.
 
 ## Next step
 
-After the Block 4.2 smoke, continue TASK-005 with cached-media delivery at `/offline-media/{videoId}` and HTTP Range support, replacing the temporary Blob URL adapter. Then validate media playback, storage quotas and long sessions on a real iPhone.
+After the Block 5.2 smoke, perform Block 6 acceptance validation: desktop Chrome and installed iPhone PWA playback, seeks, storage quotas and long media sessions.
 
 ## Recent decisions
 
@@ -54,6 +54,8 @@ Added:
 - The Block 2 downloader uses `fetch(..., { cache: "no-store" })`. The API CORS policy therefore explicitly permits `Cache-Control` in addition to `Range`, as well as `GET` and `HEAD`, for the configured `FRONTEND_ORIGIN`; it exposes the media response headers needed by the downloader. This keeps the origin allowlist explicit and does not enable credentials or wildcards.
 - TASK-005 Block 4.1 adds a Turbopack-compatible Serwist application shell. `@serwist/turbopack`, `serwist` and native `esbuild` build exactly one dynamically served worker at `/serwist/sw.js`; `SerwistProvider` registers it at scope `/` only in production. The Turbopack glob manifest contains only static assets, not literal App Router routes, so the worker adds `/offline`, `/videos`, and `/manifest.webmanifest` explicitly with deterministic SHA-256 revisions derived from application-shell build inputs. The offline navigation fallback is intentionally restricted to `/offline`; API, streams and media are not runtime-cached. Serwist shell-cache cleanup only targets its precache names and leaves `offline-reels-media-v1` untouched.
 - TASK-005 Block 4.2 adds an explicit revisioned `/videos` application shell so the page can render a controlled offline state without reusing old API data. `/videos` is not a navigation fallback and unknown routes are not answered with `/offline`. `navigator.onLine` plus browser events drive an informational, SSR-safe UI indicator only; catalog fetch failures are separately classified so a disconnected request renders the offline state even if a browser keeps `navigator.onLine` true. The worker has no runtime caching, does not force `skipWaiting`, and has no application-triggered update/reload action; a waiting worker applies after existing clients close.
+- TASK-005 Block 5.1 registers a same-origin `GET /offline-media/{uuid}` route in the existing Serwist worker. It validates the exact synthetic path, reads only `offline-reels-media-v1`, preserves cached MP4 headers, and returns controlled `404`/`400`/`503` responses without network fallback. `/offline` uses the synthetic URLs directly, while a page not yet controlled by the worker shows a controlled readiness message rather than silently recreating Blob URLs. Range requests are rejected as unsupported; correct `206`/`416` byte-range behavior is deferred.
+- TASK-005 Block 5.2 replaces the temporary Range rejection. The worker supports `bytes=start-end`, `bytes=start-`, and `bytes=-suffixLength`; it clamps a valid end to the cached file size and preserves safe media validators. It returns `Accept-Ranges: bytes`, correct `Content-Length` and `Content-Range` for `206`, and `Content-Range: bytes */total` for `416`. Multiple ranges are deliberately unsupported and return `416`; no multipart response is generated. HEAD returns equivalent metadata without a body.
 
 ## Current open questions
 

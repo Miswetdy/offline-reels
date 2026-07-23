@@ -1,7 +1,8 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist } from "serwist";
+import { Route, Serwist } from "serwist";
 
 import { offlineNavigationAllowlist } from "../lib/pwa/shell-policy";
+import { handleOfflineMediaRequest, shouldHandleOfflineMediaRequest } from "../lib/pwa/offline-media-route";
 import { serviceWorkerCachingPolicy, serviceWorkerLifecyclePolicy } from "../lib/pwa/service-worker-policy";
 
 declare global {
@@ -29,4 +30,5 @@ const serwist = new Serwist({
   disableDevLogs: true,
 });
 
+serwist.registerRoute(new Route(shouldHandleOfflineMediaRequest, async ({ request }) => handleOfflineMediaRequest(request)));
 serwist.addEventListeners();

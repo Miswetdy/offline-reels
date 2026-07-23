@@ -7,7 +7,6 @@ import { NetworkStatusIndicator } from "./network-status-indicator";
 import { VerticalVideoFeed, type VerticalVideoFeedItem } from "./vertical-video-feed";
 import { getOfflineErrorMessage, toOfflineStorageError } from "../lib/offline/errors";
 import { getMediaCacheKey } from "../lib/offline/media-cache";
-import { createOfflinePlaybackSource } from "../lib/offline/playback-source";
 import { clearOfflineLibrary, deleteOfflineLibraryVideo } from "../lib/offline/library-management";
 import { reconcileOfflineLibrary } from "../lib/offline/reconciliation";
 import { listCompletedOfflineVideos } from "../lib/offline/repository";
@@ -37,6 +36,27 @@ export function OfflineVideoList() {
   const [pendingVideoId, setPendingVideoId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isServiceWorkerControlling, setIsServiceWorkerControlling] = useState(() =>
+    typeof navigator !== "undefined"
+    && "serviceWorker" in navigator
+    && navigator.serviceWorker.controller !== null,
+  );
+
+  const refreshServiceWorkerControl = useCallback(() => {
+    setIsServiceWorkerControlling(
+      typeof navigator !== "undefined"
+      && "serviceWorker" in navigator
+      && navigator.serviceWorker.controller !== null,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    const registration = navigator.serviceWorker;
+    registration.addEventListener("controllerchange", refreshServiceWorkerControl);
+    void registration.ready.then(refreshServiceWorkerControl, refreshServiceWorkerControl);
+    return () => registration.removeEventListener("controllerchange", refreshServiceWorkerControl);
+  }, [refreshServiceWorkerControl]);
 
   useEffect(() => {
     let disposed = false;
@@ -53,11 +73,6 @@ export function OfflineVideoList() {
       disposed = true;
     };
   }, [reloadAttempt]);
-
-  const resolveMediaSource = useCallback(
-    (item: VerticalVideoFeedItem) => createOfflinePlaybackSource(item.id),
-    [],
-  );
 
   const refresh = useCallback((background = false) => {
     if (!background) setState({ status: "loading" });
@@ -98,7 +113,7 @@ export function OfflineVideoList() {
     return state.records.map((record) => ({
       id: record.id,
       title: record.title,
-      mediaUrl: record.cacheKey ?? getMediaCacheKey(record.id),
+      mediaUrl: getMediaCacheKey(record.id),
       subtitle: formatBytes(record.byteSize),
     }));
   }, [state]);
@@ -128,11 +143,22 @@ export function OfflineVideoList() {
     );
   }
 
+  if (!isServiceWorkerControlling) {
+    return (
+      <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
+        <p role="alert">Офлайн-воспроизведение станет доступно после активации Service Worker.</p>
+        <button className="rounded bg-slate-900 px-4 py-2 text-white" type="button" onClick={refreshServiceWorkerControl}>
+          Проверить повторно
+        </button>
+        <Link className="text-slate-700 underline" href="/videos">К онлайн-ленте</Link>
+      </main>
+    );
+  }
+
   return (
     <>
       <VerticalVideoFeed
         items={feedItems}
-        resolveMediaSource={resolveMediaSource}
         renderActions={(item) => (
           <button
             className="rounded bg-amber-200 px-3 py-1 text-sm text-slate-950 disabled:opacity-50"
