@@ -18,6 +18,7 @@ type VerticalVideoFeedProps = {
 };
 
 type MediaMode = "active" | "next" | "inactive";
+type PlaybackErrorKind = "media" | "autoplay";
 
 export function VerticalVideoFeed({
   items,
@@ -27,8 +28,9 @@ export function VerticalVideoFeed({
   onActiveItemChange,
 }: VerticalVideoFeedProps) {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [lastActiveIndex, setLastActiveIndex] = useState(0);
   const [muted, setMuted] = useState(true);
-  const [playbackErrors, setPlaybackErrors] = useState<Record<string, boolean>>({});
+  const [playbackErrors, setPlaybackErrors] = useState<Record<string, PlaybackErrorKind>>({});
 
   const feedRef = useRef<HTMLElement>(null);
   const itemRefs = useRef(new Map<string, HTMLElement>());
@@ -38,7 +40,9 @@ export function VerticalVideoFeed({
   const activeItemIdRef = useRef<string | null>(null);
   const playbackGenerationRef = useRef(0);
 
-  const effectiveActiveItemId = activeItemId ?? items[0]?.id ?? null;
+  const activeItemStillExists = activeItemId !== null && items.some((item) => item.id === activeItemId);
+  const fallbackActiveItemId = items[Math.min(lastActiveIndex, items.length - 1)]?.id ?? null;
+  const effectiveActiveItemId = activeItemStillExists ? activeItemId : fallbackActiveItemId;
   const activeItemIndex = items.findIndex((item) => item.id === effectiveActiveItemId);
   const nextItemId = activeItemIndex >= 0 ? items[activeItemIndex + 1]?.id ?? null : null;
 
@@ -51,10 +55,21 @@ export function VerticalVideoFeed({
     [effectiveActiveItemId, nextItemId],
   );
 
+  const sourceMode = useCallback(
+    (itemId: string): MediaMode => playbackErrors[itemId] === "media" ? "inactive" : mediaMode(itemId),
+    [mediaMode, playbackErrors],
+  );
+
   const setCurrentActiveItemId = useCallback((itemId: string | null) => {
     activeItemIdRef.current = itemId;
     setActiveItemId((current) => (current === itemId ? current : itemId));
-  }, []);
+    const itemIndex = itemId === null ? -1 : items.findIndex((item) => item.id === itemId);
+    if (itemIndex >= 0) setLastActiveIndex(itemIndex);
+  }, [items]);
+
+  useEffect(() => {
+    activeItemIdRef.current = effectiveActiveItemId;
+  }, [effectiveActiveItemId]);
 
   const closestItemToFeedCenter = useCallback((): string | null => {
     const root = feedRef.current;
@@ -180,13 +195,48 @@ export function VerticalVideoFeed({
     }
   }, []);
 
+  const markMediaFailed = useCallback((itemId: string, video: HTMLVideoElement) => {
+    playbackGenerationRef.current += 1;
+    clearVideoSource(video);
+    setPlaybackErrors((errors) => errors[itemId] === "media" ? errors : { ...errors, [itemId]: "media" });
+  }, [clearVideoSource]);
+
+  const pauseAllVideos = useCallback(() => {
+    playbackGenerationRef.current += 1;
+    videoRefs.current.forEach((video) => video.pause());
+  }, []);
+
   useEffect(() => {
-    const desiredItems = items.filter((item) => mediaMode(item.id) !== "inactive");
+    const pauseForBackground = () => pauseAllVideos();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") pauseForBackground();
+    };
+    // A restored page keeps its catalog and position. It deliberately does not
+    // call play(): browsers may reject background/resume autoplay.
+    const handlePageShow = () => pauseForBackground();
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", pauseForBackground);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", pauseForBackground);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [pauseAllVideos]);
+
+  useEffect(() => () => {
+    pauseAllVideos();
+    videoRefs.current.forEach(clearVideoSource);
+  }, [clearVideoSource, pauseAllVideos]);
+
+  useEffect(() => {
+    const desiredItems = items.filter((item) => sourceMode(item.id) !== "inactive");
 
     videoRefs.current.forEach((video, itemId) => {
       const item = items.find((candidate) => candidate.id === itemId);
       if (!item) return;
-      const mode = mediaMode(itemId);
+      const mode = sourceMode(itemId);
       video.muted = muted;
       video.preload = mode === "active" ? "auto" : mode === "next" ? "metadata" : "none";
       if (mode === "inactive") clearVideoSource(video);
@@ -199,7 +249,7 @@ export function VerticalVideoFeed({
         video.load();
       }
     });
-  }, [clearVideoSource, items, mediaMode, muted]);
+  }, [clearVideoSource, items, muted, sourceMode]);
 
   useEffect(() => {
     const activeVideo = effectiveActiveItemId ? videoRefs.current.get(effectiveActiveItemId) : undefined;
@@ -218,7 +268,7 @@ export function VerticalVideoFeed({
         },
         () => {
           if (generation === playbackGenerationRef.current) {
-            setPlaybackErrors((errors) => ({ ...errors, [effectiveActiveItemId]: true }));
+            setPlaybackErrors((errors) => ({ ...errors, [effectiveActiveItemId]: "autoplay" }));
           }
         },
       );
@@ -290,12 +340,18 @@ export function VerticalVideoFeed({
             controls
             muted={muted}
             playsInline
-            preload={mediaMode(item.id) === "active" ? "auto" : mediaMode(item.id) === "next" ? "metadata" : "none"}
+            preload={sourceMode(item.id) === "active" ? "auto" : sourceMode(item.id) === "next" ? "metadata" : "none"}
+            aria-busy={sourceMode(item.id) !== "inactive" && playbackErrors[item.id] !== "media"}
             onPlay={() => {
-              setPlaybackErrors((errors) => ({ ...errors, [item.id]: false }));
+              setPlaybackErrors((errors) => {
+                if (errors[item.id] === undefined) return errors;
+                const nextErrors = { ...errors };
+                delete nextErrors[item.id];
+                return nextErrors;
+              });
               setCurrentActiveItemId(item.id);
             }}
-            onError={() => setPlaybackErrors((errors) => ({ ...errors, [item.id]: true }))}
+            onError={(event) => markMediaFailed(item.id, event.currentTarget)}
           >
             Your browser does not support video playback.
           </video>

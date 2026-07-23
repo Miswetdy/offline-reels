@@ -116,6 +116,95 @@ describe("VerticalVideoFeed", () => {
     expect(pause).toHaveBeenCalled();
   });
 
+  it("releases removed sources across rapid active changes and keeps a valid active item after removal", async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+    const view = render(<VerticalVideoFeed items={items} />);
+    const first = await screen.findByLabelText("First video");
+    const second = screen.getByLabelText("Second video");
+    const third = screen.getByLabelText("Third video");
+
+    observerFor(first).trigger([{ target: second, ratio: 0.9 }, { target: third, ratio: 0 }]);
+    observerFor(first).trigger([{ target: second, ratio: 0 }, { target: third, ratio: 1 }]);
+    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
+    expect(playerFor("First video")).not.toHaveAttribute("src");
+    expect(playerFor("Second video")).not.toHaveAttribute("src");
+    expect([...document.querySelectorAll("video[src]")]).toHaveLength(1);
+
+    view.rerender(<VerticalVideoFeed items={items.slice(1)} />);
+    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
+    expect(playerFor("Second video")).not.toHaveAttribute("src");
+
+    view.rerender(<VerticalVideoFeed items={items.slice(0, 2)} />);
+    await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl));
+    expect(playerFor("First video")).not.toHaveAttribute("src");
+    expect([...document.querySelectorAll("video[src]")]).toHaveLength(1);
+    expect(pause).toHaveBeenCalled();
+  });
+
+  it("pauses media for visibility and page lifecycle events without autoplaying on restore", async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} />);
+    await screen.findByLabelText("First video");
+    pause.mockClear();
+    const playCallsBeforeRestore = play.mock.calls.length;
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(pause).toHaveBeenCalled();
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pageshow"));
+    expect(play).toHaveBeenCalledTimes(playCallsBeforeRestore);
+
+    pause.mockClear();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(pause).toHaveBeenCalled();
+  });
+
+  it("turns a media transport error into a terminal local state without retrying the broken source", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load");
+    render(<VerticalVideoFeed items={items} />);
+    await screen.findByLabelText("First video");
+    const first = playerFor("First video");
+    const callsBeforeError = play.mock.calls.length;
+    const loadsBeforeError = load.mock.calls.length;
+    expect(first).toHaveAttribute("src", items[0].mediaUrl);
+    expect(first).toHaveAttribute("aria-busy", "true");
+
+    fireEvent.error(first);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This video could not be played.");
+    expect(first).not.toHaveAttribute("src");
+    expect(first).toHaveAttribute("aria-busy", "false");
+    expect(load).toHaveBeenCalledTimes(loadsBeforeError + 1);
+    expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
+    expect(play).toHaveBeenCalledTimes(callsBeforeError);
+    expect([...document.querySelectorAll("video[src]")]).toHaveLength(1);
+
+    fireEvent.scroll(screen.getByLabelText("Video feed"));
+    await waitFor(() => expect(playerFor("First video")).not.toHaveAttribute("src"));
+    expect(load).toHaveBeenCalledTimes(loadsBeforeError + 1);
+  });
+
+  it("keeps neighboring media usable after an errored active item is replaced", async () => {
+    const view = render(<VerticalVideoFeed items={items} />);
+    const first = await screen.findByLabelText("First video");
+    const second = screen.getByLabelText("Second video");
+    fireEvent.error(playerFor("First video"));
+    await screen.findByRole("alert");
+
+    observerFor(first).trigger([{ target: second, ratio: 1 }]);
+    await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl));
+    expect(playerFor("First video")).not.toHaveAttribute("src");
+
+    view.rerender(<VerticalVideoFeed items={items} />);
+    await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl));
+    expect(playerFor("First video")).not.toHaveAttribute("src");
+  });
+
   it("uses the center fallback and cleans observer and scheduled animation frames on unmount", async () => {
     let frame: FrameRequestCallback | undefined;
     const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {

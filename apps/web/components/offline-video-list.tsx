@@ -18,6 +18,13 @@ type OfflineLibraryState =
   | { status: "error"; message: string }
   | { status: "success"; records: OfflineVideoRecord[]; estimate: LocalStorageEstimate };
 
+type ServiceWorkerReadiness = "controlled" | "waiting" | "unavailable";
+
+function getServiceWorkerReadiness(): ServiceWorkerReadiness {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return "unavailable";
+  return navigator.serviceWorker.controller === null ? "waiting" : "controlled";
+}
+
 function sortOfflineRecords(records: OfflineVideoRecord[]): OfflineVideoRecord[] {
   return [...records].sort((left, right) =>
     (right.downloadedAt ?? "").localeCompare(left.downloadedAt ?? "")
@@ -36,18 +43,10 @@ export function OfflineVideoList() {
   const [pendingVideoId, setPendingVideoId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [isServiceWorkerControlling, setIsServiceWorkerControlling] = useState(() =>
-    typeof navigator !== "undefined"
-    && "serviceWorker" in navigator
-    && navigator.serviceWorker.controller !== null,
-  );
+  const [serviceWorkerReadiness, setServiceWorkerReadiness] = useState<ServiceWorkerReadiness>(getServiceWorkerReadiness);
 
   const refreshServiceWorkerControl = useCallback(() => {
-    setIsServiceWorkerControlling(
-      typeof navigator !== "undefined"
-      && "serviceWorker" in navigator
-      && navigator.serviceWorker.controller !== null,
-    );
+    setServiceWorkerReadiness(getServiceWorkerReadiness());
   }, []);
 
   useEffect(() => {
@@ -146,7 +145,16 @@ export function OfflineVideoList() {
     );
   }
 
-  if (!isServiceWorkerControlling) {
+  if (serviceWorkerReadiness === "unavailable") {
+    return (
+      <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
+        <p role="alert">Этот браузер не поддерживает Service Worker для офлайн-воспроизведения.</p>
+        <Link className="text-slate-700 underline" href="/videos">К онлайн-ленте</Link>
+      </main>
+    );
+  }
+
+  if (serviceWorkerReadiness !== "controlled") {
     return (
       <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
         <p role="alert">Офлайн-воспроизведение станет доступно после активации Service Worker.</p>

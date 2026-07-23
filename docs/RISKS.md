@@ -145,7 +145,7 @@ TASK-003 creates or verifies the object first and then upserts metadata by the d
 
 ## Remaining limitation
 
-If PostgreSQL fails after a successful upload, an orphan object can remain. Automatic orphan cleanup is outside TASK-003. If an object is deleted after metadata exists, the streaming endpoint returns the safe `video_object_not_found` error without exposing storage internals.
+If PostgreSQL fails after a successful upload, an orphan object can remain. Automatic orphan cleanup is outside TASK-003. PostgreSQL can also retain ready video metadata after its MinIO object is deleted; the catalog can therefore list a video whose stream is unavailable. The streaming endpoint returns the safe `video_object_not_found` error without exposing storage internals. The frontend turns that media failure into a terminal per-card state, clears its source and does not retry or fall back to Backend storage, but it does not automatically reconcile PostgreSQL and MinIO.
 
 ## Status
 
@@ -253,7 +253,7 @@ Browser manual smoke after TASK-005 Block 5.1 confirmed that `<video>` sends a `
 
 ## Remaining limitation
 
-The parser and response headers are covered by unit tests, but each Range request currently materializes the full MP4 in Service Worker memory before slicing. Browser seek behavior, repeated seek memory pressure, iPhone Safari behavior, quota eviction and long-session stability remain unconfirmed. Multipart ranges remain unsupported by design.
+The parser and response headers are covered by unit tests, and the handler reads a cached body only once per request without cloning, rewriting or retaining slices. It still materializes the full MP4 in Service Worker memory before slicing. Browser seek behavior, repeated seek memory pressure, iPhone Safari behavior, quota eviction and long-session stability remain unconfirmed and are explicit Block 6.3 acceptance checks. Multipart ranges remain unsupported by design.
 
 ## Status
 

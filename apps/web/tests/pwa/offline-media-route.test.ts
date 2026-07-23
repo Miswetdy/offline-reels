@@ -77,6 +77,24 @@ describe("offline media Service Worker route", () => {
     expect([...new Uint8Array(await fullAgain.arrayBuffer())]).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
+  it("reads a cached response body once per request and does not retain or rewrite the slice", async () => {
+    const cached = new Response(new Uint8Array([0, 1, 2, 3]), { headers: { "content-type": "video/mp4" } });
+    const arrayBuffer = vi.spyOn(cached, "arrayBuffer");
+    const cache = { match: vi.fn().mockResolvedValue(cached) };
+    const storage = { open: vi.fn().mockResolvedValue(cache) };
+
+    const response = await handleOfflineMediaRequest(
+      request(`/offline-media/${VIDEO_ID_ONE}`, { headers: { range: "bytes=1-2" } }),
+      storage,
+    );
+
+    expect(response.status).toBe(206);
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([1, 2]);
+    expect(arrayBuffer).toHaveBeenCalledOnce();
+    expect(cache.match).toHaveBeenCalledOnce();
+    expect(storage.open).toHaveBeenCalledWith(OFFLINE_MEDIA_CACHE_NAME);
+  });
+
   it("returns 416 with total size for cache hits with malformed, multipart, or unsatisfiable ranges", async () => {
     await putCachedVideo(VIDEO_ID_ONE, new Response(new Uint8Array([0, 1, 2, 3]), { headers: { "content-type": "video/mp4" } }));
     for (const range of ["bytes=4-", "bytes=99-100", "bytes=-0", "bytes=3-2", "bytes=0-1,2-3", "items=0-1", "bytes="]) {

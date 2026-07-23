@@ -23,3 +23,5 @@ Block 5.2 adds a strict single `bytes` range parser. The handler supports `bytes
 Offline MP4 playback no longer requires `Response.blob()`, `URL.createObjectURL`, or `URL.revokeObjectURL`. Media cache and Serwist shell-cache lifecycle remain isolated: library delete/clear affects only `offline-reels-media-v1`, and worker activation does not remove it.
 
 The worker uses `Response.arrayBuffer()` and `Uint8Array.slice()` to form each response. This preserves the Cache Storage entry and avoids React Blob URLs, but temporarily requires O(full MP4 size) worker memory for a Range request. Browser-specific initial and seek behavior, repeated seeking, and iPhone memory validation remain required before TASK-005 is complete.
+
+Block 6.2 verifies that the handler performs one body read per request and holds no global byte buffer, cached slice or retry state. This does not change the O(full MP4 size) transient-memory trade-off. The shared player pauses on visibility and page lifecycle transitions and does not revive playback automatically after a restored page; iPhone memory and lifecycle acceptance remain deferred to Block 6.3.

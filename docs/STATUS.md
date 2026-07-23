@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline storage consistency and download hardening (TASK-005 Block 6.1).
+Offline playback lifecycle and Service Worker runtime hardening (TASK-005 Block 6.2).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline storage consistency and download hardening (TASK-005 Block 6.1).
 
 ## Current focus
 
-TASK-005 Block 6.1 hardens the non-transactional local-library boundary. Reconciliation treats media as owned only by a validated `completed` record, removes zero-byte/invalid and orphan responses, and keeps interrupted records from being presented as playable. A Cache Storage read failure now produces a controlled storage state instead of a potentially unusable completed catalog. Downloader completion remains ordered as cache write → cache validation → IndexedDB `completed`; failed metadata completion is compensated by media cleanup and reconciliation.
+TASK-005 Block 6.2 hardens the client playback lifecycle without changing the storage model. The shared feed pauses every player and invalidates stale `play()` work when the document becomes hidden, the page is hidden or restored, and it never auto-restarts playback on return. Removing an active item immediately chooses a valid remaining item, retaining the active-plus-next source limit. `/offline` distinguishes unsupported Service Worker APIs from a worker that is merely not yet controlling the page; `controllerchange` updates readiness without a reload or a Backend/Blob fallback.
 
 ## Next step
 
-Complete the remaining TASK-005 storage and device acceptance work: desktop Chrome and installed iPhone PWA playback, seeks, storage quotas, eviction behavior and long media sessions.
+Perform TASK-005 Block 6.3 device acceptance: desktop Chrome and installed iPhone PWA playback, seeks, storage quotas, eviction behavior, Service Worker lifecycle and long media sessions.
 
 ## Recent decisions
 
@@ -57,6 +57,8 @@ Added:
 - TASK-005 Block 5.1 registers a same-origin `GET /offline-media/{uuid}` route in the existing Serwist worker. It validates the exact synthetic path, reads only `offline-reels-media-v1`, preserves cached MP4 headers, and returns controlled `404`/`400`/`503` responses without network fallback. `/offline` uses the synthetic URLs directly, while a page not yet controlled by the worker shows a controlled readiness message rather than silently recreating Blob URLs. Range requests are rejected as unsupported; correct `206`/`416` byte-range behavior is deferred.
 - TASK-005 Block 5.2 replaces the temporary Range rejection. The worker supports `bytes=start-end`, `bytes=start-`, and `bytes=-suffixLength`; it clamps a valid end to the cached file size and preserves safe media validators. It returns `Accept-Ranges: bytes`, correct `Content-Length` and `Content-Range` for `206`, and `Content-Range: bytes */total` for `416`. Multiple ranges are deliberately unsupported and return `416`; no multipart response is generated. HEAD returns equivalent metadata without a body.
 - TASK-005 Block 6.1 makes local reconciliation idempotent across interrupted downloads and partial cleanup. Only a metadata record whose cached MP4 validates remains `completed`; cache entries belonging to failed records, missing metadata, zero-byte bodies or invalid media are deleted. Cache Storage failures become controlled local-storage errors, while delete/clear retain their cache-first, reconciliation-backed compensation order. Quota, unavailable browser storage and interrupted download states remain typed safe errors; iPhone quota and long-session acceptance are still pending.
+- TASK-005 Block 6.2 pauses local playback on visibility/page lifecycle transitions and prevents stale asynchronous `play()` work from reviving an old item. Source assignment stays bounded to active plus next items during rapid navigation and list mutations; active-item removal selects a valid successor without a backend request. Worker readiness is controlled through `navigator.serviceWorker.controller` and `controllerchange`, with no automatic reload. The Range handler still reads a cached MP4 once into worker memory per request; real iPhone memory and lifecycle acceptance remain pending.
+- A manual smoke exposed the accepted PostgreSQL/MinIO inconsistency where metadata can outlive a deleted MinIO object. `VerticalVideoFeed` now treats a media `error` as terminal for that card: it clears the source and native loading state, shows a safe local message, and suppresses automatic source retries. Neighboring cards remain usable; no automatic PostgreSQL/MinIO reconciliation or backend fallback was added.
 
 ## Current open questions
 

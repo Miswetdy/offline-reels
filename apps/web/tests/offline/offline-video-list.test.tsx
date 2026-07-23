@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -139,6 +139,29 @@ describe("OfflineVideoList management", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Офлайн-воспроизведение станет доступно после активации Service Worker.");
     expect(screen.queryByLabelText("Video feed")).not.toBeInTheDocument();
+  });
+
+  it("updates from waiting to controlled after controllerchange without reloading", async () => {
+    Object.defineProperty(navigator.serviceWorker, "controller", { configurable: true, value: null });
+    render(<OfflineVideoList />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("после активации Service Worker");
+
+    Object.defineProperty(navigator.serviceWorker, "controller", { configurable: true, value: {} });
+    await act(async () => {
+      navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+    });
+
+    expect(await screen.findByLabelText("Video feed")).toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("shows a controlled state when Service Worker APIs are unavailable", async () => {
+    Reflect.deleteProperty(navigator, "serviceWorker");
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("не поддерживает Service Worker");
+    expect(screen.queryByLabelText("Video feed")).not.toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("shows a controlled storage error instead of a catalog when reconciliation cannot read Cache Storage", async () => {
