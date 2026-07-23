@@ -237,3 +237,23 @@ Known dependency advisories:
 - The application does not accept or serialize untrusted user CSS.
 - npm audit fix --force is prohibited because it proposes an incompatible downgrade to Next.js 9.3.3.
 - Dependency remediation is tracked separately and must be completed before production deployment.
+
+---
+
+# Risk 11: Temporary offline Blob URL playback
+
+## Problem
+
+TASK-005 Block 3.2 uses `Response.blob()` and temporary object URLs because no Service Worker yet serves `/offline-media/{videoId}`. A Blob URL retains the cached MP4 in browser-managed memory for its lifetime and cannot provide HTTP Range semantics or survive a page reload.
+
+## Mitigation
+
+`/offline` reconciles local data before listing it, never falls back to Backend media, and creates object URLs only for the active player and its next neighbor. The shared feed revokes each URL when it leaves that window and on unmount.
+
+## Remaining limitation
+
+Offline page reload, application-shell delivery, cached-media Range playback and iPhone memory behavior are not confirmed. Service Worker delivery remains a required next stage.
+
+## Status
+
+Open, accepted temporarily for TASK-005 Block 3.2.

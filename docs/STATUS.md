@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline video library shared feed extraction (TASK-005 Block 3.1).
+Offline video library temporary playback adapter (TASK-005 Block 3.2).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline video library shared feed extraction (TASK-005 Block 3.1).
 
 ## Current focus
 
-TASK-005 Block 3.1 is implemented: `VerticalVideoFeed` now owns the reusable vertical playback UI, while `VideoList` remains the online data wrapper for Backend pagination, sentinel loading, deduplication and download controls. The extraction preserves the existing scroll-snap, active-item selection, muted autoplay and active-plus-next media window. It does not add an offline route, Service Worker delivery, Cache Storage playback or a new data source.
+TASK-005 Block 3.2 is implemented: `/offline` runs local reconciliation and reads only completed IndexedDB records, then renders them with `VerticalVideoFeed`. Until Service Worker delivery exists, cached MP4 responses are converted to temporary Blob URLs only for the active and next players and revoked when no longer needed. There is no Backend fallback, delete/clear UI, Service Worker or cached-media Range playback.
 
 ## Next step
 
-Continue TASK-005 with the next offline-feed block: a local data source, Service Worker delivery, an `/offline` library and cached-media Range playback. Application-shell caching, offline playback and iPhone acceptance testing have not started. Before the next block, manually smoke-test a large MP4 download, cancel/retry and the browser/iPhone storage and memory behavior.
+Continue TASK-005 with Service Worker delivery and cached-media Range playback. Application-shell caching, reliable offline reload and iPhone acceptance testing have not started. Before the next block, manually smoke-test a large MP4 download, the temporary offline playback adapter and browser/iPhone memory behavior.
 
 ## Recent decisions
 
@@ -50,6 +50,7 @@ Added:
 - TASK-005 Block 1 adds the versioned `offline-reels` IndexedDB schema and `offline-reels-media-v1` media cache behind typed browser-only adapters. Reconciliation marks stale or invalid local records failed and removes orphan cache entries; Block 2 builds on this foundation.
 - TASK-005 Block 2 adds a one-at-a-time, explicitly user-started local download queue. It passes one Backend stream through `TransformStream` directly to an owned Cache Storage response, avoiding `ReadableStream.tee()` and downloader response cloning. Progress is in-memory only; IndexedDB receives `0` at start and the verified final byte count only on completion. Downloads do not auto-resume after reload or network restoration; abort and quota failures pause the queue. Service Worker, `/offline`, cached-media Range delivery and offline playback are still not implemented.
 - TASK-005 Block 3.1 separates reusable vertical playback UI from the online data layer. `VerticalVideoFeed` receives typed items and media URLs, exposes optional actions and active-item callbacks, and retains the observer/rAF selection and two-source media window. `VideoList` still owns online requests, cursor pagination and local-download controls; `/offline` is not implemented.
+- TASK-005 Block 3.2 adds `/offline` as a local-only completed-video catalog with an exact library-size summary and approximate origin usage/quota. The temporary Cache Storage-to-Blob URL adapter is constrained to the active-plus-next playback window and always revokes its URLs. It is not a Service Worker replacement: offline reload and cached HTTP Range responses remain unimplemented.
 - The Block 2 downloader uses `fetch(..., { cache: "no-store" })`. The API CORS policy therefore explicitly permits `Cache-Control` in addition to `Range`, as well as `GET` and `HEAD`, for the configured `FRONTEND_ORIGIN`; it exposes the media response headers needed by the downloader. This keeps the origin allowlist explicit and does not enable credentials or wildcards.
 
 ## Current open questions

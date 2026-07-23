@@ -215,6 +215,8 @@ The app-scoped queue is limited to one active download per browser tab. It persi
 
 TASK-005 Block 3.1 extracts the shared `VerticalVideoFeed` UI boundary from the online `VideoList`. The reusable component owns only vertical scroll-snap playback: active-item selection with `IntersectionObserver` and rAF fallback, muted autoplay, pause behavior and the active-plus-next media window. `VideoList` remains the online data wrapper for Backend pagination, sentinel loading, deduplication and download controls. No offline route, Service Worker delivery or Cache Storage playback is implemented by this extraction.
 
+TASK-005 Block 3.2 adds the browser-only `/offline` catalog. It runs reconciliation, reads only completed IndexedDB records and never requests a Backend catalog or starts the download queue. Until a Service Worker can serve synthetic cache paths, its playback resolver reads a cached MP4 into a temporary Blob URL only for the active and next feed items. Each URL is revoked when it leaves that media window and when the feed unmounts; there is no Backend fallback.
+
 ---
 
 # Development Principles

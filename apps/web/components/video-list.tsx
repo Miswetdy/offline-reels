@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import { OfflineDownloadControls } from "./offline-download-controls";
 import { VerticalVideoFeed, type VerticalVideoFeedItem } from "./vertical-video-feed";
@@ -160,6 +161,9 @@ export function VideoList() {
         )}
       />
       <OfflineDownloadControls videos={videos} activeVideoId={effectiveActiveVideoId} />
+      <Link className="fixed bottom-4 right-4 z-20 rounded bg-black/75 px-3 py-2 text-sm text-white underline" href="/offline">
+        Офлайн-библиотека
+      </Link>
     </>
   );
 }

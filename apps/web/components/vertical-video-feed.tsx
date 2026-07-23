@@ -9,12 +9,18 @@ export type VerticalVideoFeedItem = {
   subtitle?: ReactNode;
 };
 
+export type ResolvedMediaSource = {
+  url: string;
+  revoke: () => void;
+};
+
 type VerticalVideoFeedProps = {
   items: VerticalVideoFeedItem[];
   emptyState?: ReactNode;
   footer?: ReactNode;
   renderActions?: (item: VerticalVideoFeedItem) => ReactNode;
   onActiveItemChange?: (item: VerticalVideoFeedItem | null) => void;
+  resolveMediaSource?: (item: VerticalVideoFeedItem) => Promise<ResolvedMediaSource>;
 };
 
 type MediaMode = "active" | "next" | "inactive";
@@ -25,6 +31,7 @@ export function VerticalVideoFeed({
   footer,
   renderActions,
   onActiveItemChange,
+  resolveMediaSource,
 }: VerticalVideoFeedProps) {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [muted, setMuted] = useState(true);
@@ -37,6 +44,9 @@ export function VerticalVideoFeed({
   const intersectionRatios = useRef(new Map<string, number>());
   const activeItemIdRef = useRef<string | null>(null);
   const playbackGenerationRef = useRef(0);
+  const resolvedSourcesRef = useRef(new Map<string, ResolvedMediaSource>());
+  const pendingSourceIdsRef = useRef(new Set<string>());
+  const desiredSourceIdsRef = useRef(new Set<string>());
 
   const effectiveActiveItemId = activeItemId ?? items[0]?.id ?? null;
   const activeItemIndex = items.findIndex((item) => item.id === effectiveActiveItemId);
@@ -172,30 +182,85 @@ export function VerticalVideoFeed({
     };
   }, [closestItemToFeedCenter, items.length, setCurrentActiveItemId]);
 
+  const clearVideoSource = useCallback((video: HTMLVideoElement) => {
+    if (video.hasAttribute("src")) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+  }, []);
+
   useEffect(() => {
+    const desiredItems = items.filter((item) => mediaMode(item.id) !== "inactive");
+    const desiredIds = new Set(desiredItems.map((item) => item.id));
+    desiredSourceIdsRef.current = desiredIds;
+
+    for (const [itemId, source] of resolvedSourcesRef.current) {
+      if (!desiredIds.has(itemId)) {
+        source.revoke();
+        resolvedSourcesRef.current.delete(itemId);
+      }
+    }
+
     videoRefs.current.forEach((video, itemId) => {
       const item = items.find((candidate) => candidate.id === itemId);
       if (!item) return;
       const mode = mediaMode(itemId);
-      const desiredSource = mode === "inactive" ? null : item.mediaUrl;
       video.muted = muted;
       video.preload = mode === "active" ? "auto" : mode === "next" ? "metadata" : "none";
+      if (mode === "inactive") clearVideoSource(video);
+    });
 
-      if (desiredSource === null) {
-        if (video.hasAttribute("src")) {
-          video.pause();
-          video.removeAttribute("src");
+    if (!resolveMediaSource) {
+      desiredItems.forEach((item) => {
+        const video = videoRefs.current.get(item.id);
+        if (video && video.getAttribute("src") !== item.mediaUrl) {
+          video.src = item.mediaUrl;
           video.load();
         }
+      });
+      return;
+    }
+
+    desiredItems.forEach((item) => {
+      const video = videoRefs.current.get(item.id);
+      const existing = resolvedSourcesRef.current.get(item.id);
+      if (existing && video && video.getAttribute("src") !== existing.url) {
+        video.src = existing.url;
+        video.load();
         return;
       }
-
-      if (video.getAttribute("src") !== desiredSource) {
-        video.src = desiredSource;
-        video.load();
-      }
+      if (existing || pendingSourceIdsRef.current.has(item.id)) return;
+      pendingSourceIdsRef.current.add(item.id);
+      void resolveMediaSource(item).then(
+        (source) => {
+          pendingSourceIdsRef.current.delete(item.id);
+          if (!desiredSourceIdsRef.current.has(item.id)) {
+            source.revoke();
+            return;
+          }
+          resolvedSourcesRef.current.set(item.id, source);
+          const currentVideo = videoRefs.current.get(item.id);
+          if (currentVideo && currentVideo.getAttribute("src") !== source.url) {
+            currentVideo.src = source.url;
+            currentVideo.load();
+          }
+        },
+        () => {
+          pendingSourceIdsRef.current.delete(item.id);
+          if (desiredSourceIdsRef.current.has(item.id)) {
+            setPlaybackErrors((errors) => ({ ...errors, [item.id]: true }));
+          }
+        },
+      );
     });
-  }, [items, mediaMode, muted]);
+  }, [clearVideoSource, items, mediaMode, muted, resolveMediaSource]);
+
+  useEffect(() => () => {
+    desiredSourceIdsRef.current.clear();
+    resolvedSourcesRef.current.forEach((source) => source.revoke());
+    resolvedSourcesRef.current.clear();
+  }, []);
 
   useEffect(() => {
     const activeVideo = effectiveActiveItemId ? videoRefs.current.get(effectiveActiveItemId) : undefined;

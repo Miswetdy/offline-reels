@@ -158,4 +158,28 @@ describe("VerticalVideoFeed", () => {
     await waitFor(() => expect(onActiveItemChange).toHaveBeenLastCalledWith(null));
     expect(screen.queryByLabelText("Video feed")).not.toBeInTheDocument();
   });
+
+  it("resolves temporary media only for active plus next and revokes it when the window changes or unmounts", async () => {
+    const revoke = new Map(items.map((item) => [item.id, vi.fn()]));
+    const resolveMediaSource = vi.fn(async (item: VerticalVideoFeedItem) => ({
+      url: `blob:${item.id}`,
+      revoke: revoke.get(item.id)!,
+    }));
+    const view = render(<VerticalVideoFeed items={items} resolveMediaSource={resolveMediaSource} />);
+    const first = await screen.findByLabelText("First video");
+    const third = screen.getByLabelText("Third video");
+
+    await waitFor(() => expect(resolveMediaSource).toHaveBeenCalledTimes(2));
+    expect(playerFor("First video")).toHaveAttribute("src", "blob:one");
+    expect(playerFor("Second video")).toHaveAttribute("src", "blob:two");
+    expect(playerFor("Third video")).not.toHaveAttribute("src");
+
+    observerFor(first).trigger([{ target: third, ratio: 0.9 }]);
+    await waitFor(() => expect(resolveMediaSource).toHaveBeenCalledTimes(3));
+    expect(revoke.get("one")).toHaveBeenCalledTimes(1);
+    expect(playerFor("Third video")).toHaveAttribute("src", "blob:three");
+    view.unmount();
+    expect(revoke.get("two")).toHaveBeenCalledTimes(1);
+    expect(revoke.get("three")).toHaveBeenCalledTimes(1);
+  });
 });
