@@ -231,7 +231,7 @@ Open, accepted for TASK-005 Block 2.
 
 Known dependency advisories:
 
-- Next.js 16.2.10 currently resolves optional sharp 0.34.5, affected by GHSA-f88m-g3jw-g9cj.
+- Next.js 16.2.11 currently resolves optional sharp 0.34.5, affected by GHSA-f88m-g3jw-g9cj.
 - The application does not currently process untrusted images through sharp, so the known exploitation path is not used.
 - Next.js also resolves nested postcss 8.4.31, affected by GHSA-qx2v-qp2m-jg93.
 - The application does not accept or serialize untrusted user CSS.
@@ -260,6 +260,30 @@ Open, accepted temporarily for TASK-005 Block 3.2.
 
 ---
 
+# Risk 13: Service Worker application-shell lifecycle
+
+## Problem
+
+TASK-005 Block 4.1 precaches the production application shell so a previously visited `/offline` route can reload without a network connection. Service Worker updates are asynchronous, browser storage can still be evicted, and the shell does not yet serve cached MP4 requests.
+
+## Mitigation
+
+- One Turbopack-built Serwist worker is served at `/serwist/sw.js` with scope `/` and automatic registration by `SerwistProvider`.
+- The Turbopack glob manifest contains static assets but not a literal App Router page URL. `/offline` is therefore explicitly precached with a deterministic SHA-256 revision derived from offline-shell build inputs; the fallback cannot bind until that entry exists.
+- Navigation fallback is restricted to same-origin `GET /offline`; the Backend API, video streams and media are not runtime-cached.
+- Serwist's precache cleanup is isolated from `offline-reels-media-v1`; local-library delete/clear also targets only that media cache.
+- `reloadOnOnline=false` prevents a connection change from forcing an application reload.
+
+## Remaining limitation
+
+Development disables Service Worker registration. Production shell reload must be manually verified on desktop and iPhone. Cached-media delivery, HTTP Range responses and replacing temporary Blob URLs are deferred to Block 4.2. Native `esbuild` must remain available for Windows production builds.
+
+## Status
+
+Open, accepted for TASK-005 Block 4.1.
+
+---
+
 # Risk 12: Local cleanup is not cross-tab synchronized
 
 `/offline` deletes media cache data before IndexedDB metadata and refreshes its own catalog after each operation. Reconciliation compensates if the metadata step fails, but another open tab will not receive a live update. Browser storage estimates can also remain nonzero or update with delay after deletion. This is accepted for TASK-005 Block 3.3; cross-tab synchronization is deferred.
@@ -269,7 +293,7 @@ which remain reported by npm audit.
 
 No force downgrade or unverified dependency override is applied.
 
-Current application does not process untrusted usergit add apps/web/package.json apps/web/package-lock.json images through Sharp,
+Current application does not process untrusted user images through Sharp,
 so practical exposure is limited for the local MVP.
 
 Before public production deployment:

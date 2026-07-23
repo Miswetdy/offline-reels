@@ -15,10 +15,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@serwist/turbopack": "^9.5.12",
+    "esbuild": "^0.28.1",
     "idb": "8.0.3",
     "next": "16.2.11",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "serwist": "^9.5.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.18",

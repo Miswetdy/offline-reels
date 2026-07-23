@@ -219,6 +219,8 @@ TASK-005 Block 3.2 adds the browser-only `/offline` catalog. It runs reconciliat
 
 TASK-005 Block 3.3 adds local-library management. A small coordinator deletes the Cache Storage entry before its IndexedDB record, or clears only the versioned media cache before `offlineVideos`. If metadata cleanup fails after cache cleanup, reconciliation prevents the stale record from being presented as completed. Neither operation affects Backend, MinIO, PostgreSQL or other cache namespaces.
 
+TASK-005 Block 4.1 adds one production-only Service Worker using the Turbopack integration of Serwist. The worker is dynamically served at `/serwist/sw.js`, has scope `/`, and is registered automatically by `SerwistProvider`; the application does not register a second worker. Native `esbuild` is required to bundle `app/sw.ts` on Windows. The worker precaches static Next build assets and adds the literal `/offline` route explicitly with a deterministic SHA-256 revision derived from the offline shell's source inputs. This establishes the required fallback invariant: `/offline` is present in the precache before Serwist binds it as the navigation fallback for same-origin `GET /offline` requests. It does not define runtime caching, so Backend API requests, video streams, cross-origin resources and local Blob URLs are never cached by the Service Worker. Serwist's precache namespace is separate from `offline-reels-media-v1`; worker activation cleanup targets only outdated precache caches, while library delete/clear targets only the media cache.
+
 ---
 
 # Development Principles

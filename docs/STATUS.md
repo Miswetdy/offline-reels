@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Offline video library management (TASK-005 Block 3.3).
+Offline application shell (TASK-005 Block 4.1).
 
 ## Completed
 
@@ -19,11 +19,11 @@ Offline video library management (TASK-005 Block 3.3).
 
 ## Current focus
 
-TASK-005 Block 3.3 is implemented: `/offline` can delete one local video or clear the local library. Operations affect only the versioned media Cache Storage namespace and IndexedDB records, then refresh the local catalog and storage summary. No Backend, MinIO or PostgreSQL data is changed.
+TASK-005 Block 4.1 implementation is awaiting repeated production manual smoke: the production Next.js application uses one Serwist Service Worker at `/serwist/sw.js` with scope `/`. Its application shell precaches build assets and adds the literal `/offline` fallback target with a deterministic revision. Registration is supplied once by `SerwistProvider`, and `reloadOnOnline=false` avoids online-triggered reloads. Backend API responses, video streams and the local `offline-reels-media-v1` cache remain outside Service Worker caching.
 
 ## Next step
 
-Continue TASK-005 with Service Worker delivery and cached-media Range playback. Application-shell caching, reliable offline reload and iPhone acceptance testing have not started. Before the next block, manually smoke-test a large MP4 download, the temporary offline playback adapter and browser/iPhone memory behavior.
+Continue TASK-005 with Block 4.2: serve cached MP4 through `/offline-media/{videoId}` with HTTP Range support, replacing the temporary Blob URL adapter. Then validate application-shell reload, media playback, storage quotas and long sessions on a real iPhone.
 
 ## Recent decisions
 
@@ -52,6 +52,7 @@ Added:
 - TASK-005 Block 3.1 separates reusable vertical playback UI from the online data layer. `VerticalVideoFeed` receives typed items and media URLs, exposes optional actions and active-item callbacks, and retains the observer/rAF selection and two-source media window. `VideoList` still owns online requests, cursor pagination and local-download controls; `/offline` is not implemented.
 - TASK-005 Block 3.2 adds `/offline` as a local-only completed-video catalog with an exact library-size summary and approximate origin usage/quota. The temporary Cache Storage-to-Blob URL adapter is constrained to the active-plus-next playback window and always revokes its URLs. It is not a Service Worker replacement: offline reload and cached HTTP Range responses remain unimplemented.
 - The Block 2 downloader uses `fetch(..., { cache: "no-store" })`. The API CORS policy therefore explicitly permits `Cache-Control` in addition to `Range`, as well as `GET` and `HEAD`, for the configured `FRONTEND_ORIGIN`; it exposes the media response headers needed by the downloader. This keeps the origin allowlist explicit and does not enable credentials or wildcards.
+- TASK-005 Block 4.1 adds a Turbopack-compatible Serwist application shell. `@serwist/turbopack`, `serwist` and native `esbuild` build exactly one dynamically served worker at `/serwist/sw.js`; `SerwistProvider` registers it at scope `/` only in production. The Turbopack glob manifest contains only static assets, not the literal Next route `/offline`, so the worker adds `/offline` explicitly with a deterministic SHA-256 revision derived from offline-shell build inputs. The offline navigation fallback is intentionally restricted to `/offline`; API, streams and media are not runtime-cached. Serwist shell-cache cleanup only targets its precache names and leaves `offline-reels-media-v1` untouched.
 
 ## Current open questions
 
