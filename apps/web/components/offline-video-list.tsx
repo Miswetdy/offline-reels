@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { NetworkStatusIndicator } from "./network-status-indicator";
 import { VerticalVideoFeed, type VerticalVideoFeedItem } from "./vertical-video-feed";
 import { getOfflineErrorMessage, toOfflineStorageError } from "../lib/offline/errors";
 import { getMediaCacheKey } from "../lib/offline/media-cache";
@@ -145,6 +146,7 @@ export function OfflineVideoList() {
       />
       <aside className="fixed left-4 top-4 z-20 max-w-[calc(100%-8rem)] rounded bg-black/75 p-3 text-sm text-white" aria-label="Offline library summary">
         <p>Офлайн: {state.records.length} видео · {formatBytes(librarySize)}</p>
+        <NetworkStatusIndicator offlineMessage="Офлайн · локальная библиотека доступна" onlineMessage="Онлайн · локальная библиотека" />
         {state.estimate.isAvailable ? (
           <p className="mt-1">Хранилище браузера (примерно): {state.estimate.usage === null ? "недоступно" : formatBytes(state.estimate.usage)}{state.estimate.quota === null ? "" : ` / ${formatBytes(state.estimate.quota)}`}</p>
         ) : <p className="mt-1">Хранилище браузера (примерно): недоступно</p>}

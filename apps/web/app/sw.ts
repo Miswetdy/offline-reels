@@ -2,6 +2,7 @@ import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { Serwist } from "serwist";
 
 import { offlineNavigationAllowlist } from "../lib/pwa/shell-policy";
+import { serviceWorkerCachingPolicy, serviceWorkerLifecyclePolicy } from "../lib/pwa/service-worker-policy";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -16,14 +17,15 @@ if (injectedManifest === undefined) {
 }
 
 const serwist = new Serwist({
-  cacheId: "offline-reels-shell",
+  cacheId: serviceWorkerLifecyclePolicy.cacheId,
   precacheEntries: injectedManifest,
   precacheOptions: {
     navigateFallback: "/offline",
     navigateFallbackAllowlist: offlineNavigationAllowlist,
   },
-  skipWaiting: true,
-  clientsClaim: true,
+  skipWaiting: serviceWorkerLifecyclePolicy.skipWaiting,
+  clientsClaim: serviceWorkerLifecyclePolicy.clientsClaim,
+  runtimeCaching: serviceWorkerCachingPolicy.runtimeCaching,
   disableDevLogs: true,
 });
 

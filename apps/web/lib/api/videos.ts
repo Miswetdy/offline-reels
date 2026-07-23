@@ -19,6 +19,19 @@ export type GetVideosOptions = {
 
 type FetchImplementation = typeof fetch;
 
+export type VideoCatalogErrorKind = "network" | "http" | "response";
+
+export class VideoCatalogError extends Error {
+  constructor(readonly kind: VideoCatalogErrorKind) {
+    super("Unable to load videos.");
+    this.name = "VideoCatalogError";
+  }
+}
+
+export function isVideoCatalogNetworkError(error: unknown): boolean {
+  return error instanceof VideoCatalogError && error.kind === "network";
+}
+
 export const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export async function getVideos(
@@ -29,14 +42,24 @@ export async function getVideos(
   if (cursor) {
     parameters.set("cursor", cursor);
   }
-  const response = await fetchImplementation(`${apiBaseUrl}/videos?${parameters.toString()}`, {
-    cache: "no-store",
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error("Unable to load videos.");
+  let response: Response;
+  try {
+    response = await fetchImplementation(`${apiBaseUrl}/videos?${parameters.toString()}`, {
+      cache: "no-store",
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new VideoCatalogError("network");
   }
-  return (await response.json()) as VideoPage;
+  if (!response.ok) {
+    throw new VideoCatalogError("http");
+  }
+  try {
+    return (await response.json()) as VideoPage;
+  } catch {
+    throw new VideoCatalogError("response");
+  }
 }
 
 export function getVideoStreamUrl(videoId: string): string {

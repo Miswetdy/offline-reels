@@ -223,7 +223,7 @@ TASK-005 Block 2 stores an MP4 through one `TransformStream` and one Cache Stora
 
 ## Remaining limitation
 
-Multiple tabs can still create competing queue controllers because `navigator.locks` is deliberately deferred. There is no background download, automatic recovery, Service Worker delivery, cached-media Range support or iPhone memory/quota acceptance result yet. Large-file memory behavior must be measured manually on Chrome and an iPhone before later offline-playback work.
+Multiple tabs can still create competing queue controllers because `navigator.locks` is deliberately deferred. There is no background download, automatic recovery, cached-media Range support or iPhone memory/quota acceptance result yet. Large-file memory behavior must be measured manually on Chrome and an iPhone before later offline-playback work.
 
 ## Status
 
@@ -252,7 +252,7 @@ TASK-005 Block 3.2 uses `Response.blob()` and temporary object URLs because no S
 
 ## Remaining limitation
 
-Offline page reload, application-shell delivery, cached-media Range playback and iPhone memory behavior are not confirmed. Service Worker delivery remains a required next stage.
+Application-shell delivery and offline page reload are implemented, but cached-media Range playback and iPhone memory behavior are not confirmed. A Service Worker media route remains a required next stage.
 
 ## Status
 
@@ -269,18 +269,43 @@ TASK-005 Block 4.1 precaches the production application shell so a previously vi
 ## Mitigation
 
 - One Turbopack-built Serwist worker is served at `/serwist/sw.js` with scope `/` and automatic registration by `SerwistProvider`.
-- The Turbopack glob manifest contains static assets but not a literal App Router page URL. `/offline` is therefore explicitly precached with a deterministic SHA-256 revision derived from offline-shell build inputs; the fallback cannot bind until that entry exists.
+- The Turbopack glob manifest contains static assets but not literal App Router page URLs. `/offline`, `/videos`, and `/manifest.webmanifest` are therefore explicitly precached with deterministic SHA-256 revisions derived from application-shell build inputs; the fallback cannot bind until the `/offline` entry exists.
 - Navigation fallback is restricted to same-origin `GET /offline`; the Backend API, video streams and media are not runtime-cached.
 - Serwist's precache cleanup is isolated from `offline-reels-media-v1`; local-library delete/clear also targets only that media cache.
 - `reloadOnOnline=false` prevents a connection change from forcing an application reload.
 
 ## Remaining limitation
 
-Development disables Service Worker registration. Production shell reload must be manually verified on desktop and iPhone. Cached-media delivery, HTTP Range responses and replacing temporary Blob URLs are deferred to Block 4.2. Native `esbuild` must remain available for Windows production builds.
+Development disables Service Worker registration. Production shell reload must be manually verified on desktop and iPhone. Cached-media delivery, HTTP Range responses and replacing temporary Blob URLs are deferred to the next media-delivery block. Native `esbuild` must remain available for Windows production builds.
 
 ## Status
 
 Open, accepted for TASK-005 Block 4.1.
+
+---
+
+# Risk 14: Offline navigation and Service Worker updates
+
+## Problem
+
+The network hint from `navigator.onLine` is not a guarantee that the Backend is reachable. Service Worker updates can wait while several tabs remain open, and `/videos` must not present an old server feed as current content when offline.
+
+## Mitigation
+
+- `/videos` precaches only its application shell and keeps the Backend catalog request `cache: "no-store"`.
+- A failed catalog request that is classified as a fetch-level network failure, or a request while the browser reports offline, renders a controlled state with an explicit link to `/offline`; there is no redirect. This avoids relying on `navigator.onLine` as an authoritative reachability signal.
+- `/offline` is the sole navigation fallback. Unknown routes do not receive the offline-library document.
+- The network indicator is informational and does not infer downloaded-video availability.
+- `skipWaiting` is disabled and `reloadOnOnline=false`; the application does not force worker updates or page reloads.
+- Shell cache lifecycle remains isolated from `offline-reels-media-v1`.
+
+## Remaining limitation
+
+Two open tabs can stay on different shell versions until the older clients close. There is deliberately no update banner, cross-tab coordination, forced activation or background synchronization. Manual desktop and iPhone lifecycle testing remains required.
+
+## Status
+
+Open, accepted for TASK-005 Block 4.2.
 
 ---
 

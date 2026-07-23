@@ -4,14 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { OfflineDownloadControls } from "./offline-download-controls";
+import { NetworkStatusIndicator } from "./network-status-indicator";
 import { VerticalVideoFeed, type VerticalVideoFeedItem } from "./vertical-video-feed";
-import { getVideoStreamUrl, getVideos, type Video } from "../lib/api/videos";
+import { useNetworkStatus } from "../hooks/use-network-status";
+import {
+  getVideoStreamUrl,
+  getVideos,
+  isVideoCatalogNetworkError,
+  type Video,
+} from "../lib/api/videos";
 
 const PAGE_SIZE = 5;
 
 type InitialState =
   | { status: "loading" }
-  | { status: "error" }
+  | { status: "error"; isNetworkFailure: boolean }
   | { status: "success" };
 
 type NextPageState = "idle" | "loading" | "error";
@@ -22,6 +29,7 @@ function deduplicateVideos(existing: Video[], incoming: Video[]): Video[] {
 }
 
 export function VideoList() {
+  const isOnline = useNetworkStatus();
   const [initialState, setInitialState] = useState<InitialState>({ status: "loading" });
   const [videos, setVideos] = useState<Video[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -58,8 +66,10 @@ export function VideoList() {
         nextCursorRef.current = page.next_cursor;
         setInitialState({ status: "success" });
       },
-      () => {
-        if (!disposed && !controller.signal.aborted) setInitialState({ status: "error" });
+      (error: unknown) => {
+        if (!disposed && !controller.signal.aborted) {
+          setInitialState({ status: "error", isNetworkFailure: isVideoCatalogNetworkError(error) });
+        }
       },
     );
     return () => {
@@ -119,6 +129,30 @@ export function VideoList() {
     return <main className="grid h-dvh place-items-center" aria-live="polite">Loading videos…</main>;
   }
   if (initialState.status === "error") {
+    if (!isOnline || initialState.isNetworkFailure) {
+      return (
+        <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
+          <p role="alert">Нет подключения к сети. Онлайн-лента недоступна.</p>
+          <Link className="rounded bg-slate-900 px-4 py-2 text-white" href="/offline">
+            Открыть офлайн-библиотеку
+          </Link>
+          <button
+            className="rounded border border-slate-900 px-4 py-2 disabled:opacity-50"
+            type="button"
+            disabled={!isOnline}
+            onClick={() => {
+              setInitialState({ status: "loading" });
+              setVideos([]);
+              setNextCursor(null);
+              nextCursorRef.current = null;
+              setReloadAttempt((value) => value + 1);
+            }}
+          >
+            Повторить загрузку
+          </button>
+        </main>
+      );
+    }
     return (
       <main className="grid h-dvh place-items-center gap-4 p-6 text-center">
         <p role="alert">Unable to load videos.</p>
@@ -140,6 +174,9 @@ export function VideoList() {
 
   return (
     <>
+      <aside className="fixed left-4 top-4 z-20 rounded bg-black/75 px-3 py-2 text-sm text-white">
+        <NetworkStatusIndicator offlineMessage="Офлайн · онлайн-лента недоступна" />
+      </aside>
       <VerticalVideoFeed
         items={feedItems}
         emptyState={<main className="grid h-dvh place-items-center p-6">No videos are available yet.</main>}

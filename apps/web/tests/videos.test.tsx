@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VideoList } from "../components/video-list";
 import * as videosApi from "../lib/api/videos";
+import { VideoCatalogError } from "../lib/api/videos";
 
 const videoOne = {
   id: "video-one",
@@ -70,7 +71,12 @@ function setRect(element: Element, top: number, height = 100) {
   });
 }
 
+function setOnline(value: boolean) {
+  Object.defineProperty(window.navigator, "onLine", { configurable: true, value });
+}
+
 beforeEach(() => {
+  setOnline(true);
   MockIntersectionObserver.instances = [];
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
@@ -85,6 +91,44 @@ afterEach(() => {
 });
 
 describe("VideoList", () => {
+  it("shows a controlled offline state and retries after the online event", async () => {
+    setOnline(false);
+    const getVideos = vi.spyOn(videosApi, "getVideos")
+      .mockRejectedValueOnce(new VideoCatalogError("network"))
+      .mockResolvedValueOnce({ items: [videoOne], next_cursor: null });
+
+    render(<VideoList />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Нет подключения к сети. Онлайн-лента недоступна.");
+    expect(screen.getByRole("link", { name: "Открыть офлайн-библиотеку" })).toHaveAttribute("href", "/offline");
+    expect(screen.queryByText("First video")).not.toBeInTheDocument();
+
+    setOnline(true);
+    fireEvent(window, new Event("online"));
+    fireEvent.click(await screen.findByRole("button", { name: "Повторить загрузку" }));
+
+    expect(await screen.findByText("First video")).toBeInTheDocument();
+    expect(getVideos).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an online API failure separate from the offline state", async () => {
+    vi.spyOn(videosApi, "getVideos").mockRejectedValueOnce(new VideoCatalogError("http"));
+
+    render(<VideoList />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load videos.");
+    expect(screen.queryByRole("link", { name: "Открыть офлайн-библиотеку" })).not.toBeInTheDocument();
+  });
+
+  it("shows the offline state when a catalog fetch fails even when navigator.onLine remains true", async () => {
+    setOnline(true);
+    vi.spyOn(videosApi, "getVideos").mockRejectedValueOnce(new VideoCatalogError("network"));
+
+    render(<VideoList />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Нет подключения к сети. Онлайн-лента недоступна.");
+    expect(screen.getByRole("link", { name: "Открыть офлайн-библиотеку" })).toHaveAttribute("href", "/offline");
+  });
+
   it("shows initial loading, error, and empty states", async () => {
     vi.spyOn(videosApi, "getVideos").mockReturnValue(new Promise(() => {}));
     const view = render(<VideoList />);

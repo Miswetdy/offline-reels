@@ -3,13 +3,15 @@
 import { SerwistProvider } from "@serwist/turbopack/react";
 import type { ReactNode } from "react";
 
+import { serviceWorkerRegistrationOptions } from "../lib/pwa/service-worker-policy";
+
 export function OfflineShellProvider({ children }: { children: ReactNode }) {
   return (
     <SerwistProvider
-      swUrl="/serwist/sw.js"
+      swUrl={serviceWorkerRegistrationOptions.swUrl}
       disable={process.env.NODE_ENV !== "production"}
-      reloadOnOnline={false}
-      options={{ scope: "/" }}
+      reloadOnOnline={serviceWorkerRegistrationOptions.reloadOnOnline}
+      options={{ scope: serviceWorkerRegistrationOptions.scope }}
     >
       {children}
     </SerwistProvider>
