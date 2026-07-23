@@ -46,7 +46,7 @@ Run the API as usual through Docker Compose, then expose `http://localhost:3000`
 
 ## Netlify deployment
 
-The root [`netlify.toml`](netlify.toml) fixes Netlify’s build base at `apps/web`. Netlify therefore runs `npm ci && npm run build` beside the committed `package.json` and `package-lock.json`, then deploys the generated `.next` directory through its current automatic Next.js/OpenNext runtime. It does not deploy source files from `apps/web`, and it cannot select the unrelated TASK-001 spike under `spikes/ios-offline-storage`.
+The root [`netlify.toml`](netlify.toml) fixes Netlify’s build base at `apps/web`. Netlify therefore runs `npm ci && npm run build` beside the committed `package.json` and `package-lock.json`. It intentionally leaves the publish directory unset so Netlify's current automatic Next.js/OpenNext runtime owns output discovery and dynamic-route function generation instead of deploying a raw `.next` directory as static files. It does not deploy source files from `apps/web`, and it cannot select the unrelated TASK-001 spike under `spikes/ios-offline-storage`.
 
 In Netlify **Project configuration → Build & deploy → Build settings**, leave **Package directory** blank because it is the same as the configured base. The root config overrides stale UI Base, Build command, Publish directory, and Node version values. In **Environment variables**, set only the public, absolute browser-facing API URL:
 

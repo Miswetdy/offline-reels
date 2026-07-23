@@ -3,7 +3,6 @@
 [build]
   base = "apps/web"
   command = "npm ci && npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "24.14.0"
@@ -14,3 +13,6 @@
 #
 # Modern Netlify Next.js support uses its OpenNext adapter automatically. Do
 # not add or pin the legacy @netlify/plugin-nextjs plugin here.
+# Keep publish unset so framework detection owns the Next.js output and route
+# function generation instead of treating a raw .next directory as a static
+# deploy target.
