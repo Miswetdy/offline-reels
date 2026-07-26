@@ -2,7 +2,7 @@
 
 ## Current stage
 
-iPhone PWA acceptance preparation (TASK-005 Block 6.3).
+Repository cleanup before media normalization.
 
 ## Completed
 
@@ -16,10 +16,18 @@ iPhone PWA acceptance preparation (TASK-005 Block 6.3).
 - Completed TASK-002: production bootstrap with Next.js web app, FastAPI API, PostgreSQL, Redis, MinIO, Docker Compose, health checks and an empty reversible Alembic migration.
 - Implemented TASK-003: videos table, MinIO adapter, idempotent MP4 seed, video list and Backend API streaming with single HTTP Range support.
 - Implemented TASK-004: HMAC-signed keyset pagination for `GET /videos`, deterministic batch MP4 seed, and a native scroll-snap multi-video feed with muted autoplay, shared sound state and incremental loading.
+- Completed the current iPhone PWA acceptance run through Tailscale Funnel staging.
 
 ## Current focus
 
-TASK-005 Block 6.3 prepares, but does not execute, real-device acceptance. The client requires an explicit public `NEXT_PUBLIC_API_BASE_URL` instead of assuming browser localhost, validates that it is a safe absolute HTTP(S) URL, and reports a configuration error before making API requests. `/offline` continues to be same-origin and does not expose secrets. Its local summary now also reports the available `navigator.storage.persisted()` diagnostic without requesting persistence. Existing `100dvh`, native touch scroll-snap, `playsInline`, muted autoplay and page-lifecycle handling remain in place; fixed overlays now observe safe-area insets.
+Media normalization is next. The iPhone acceptance established that Safari and
+the installed Home Screen PWA have separate offline-storage contexts: users
+must install first and download within the installed PWA. It also confirmed a
+codec constraint: a VP9 MP4 failed, while H.264 with `yuv420p` and `faststart`
+played correctly. The current active-plus-next media window makes a previous
+card slower to resume; the following playback stage will evaluate a
+previous/current/next preload window and replace native iOS controls with a
+Reels-like player.
 
 ## Production-like VPS foundation
 
@@ -36,20 +44,21 @@ Implemented the first deployment foundation without changing local development:
 
 ## Public Tailscale Funnel staging
 
-Prepared a separate staging override for iPhone PWA testing: Funnel provides
+Verified a separate staging override for iPhone PWA testing: Funnel provides
 one public HTTPS `*.ts.net` origin to a loopback-only local Caddy instance,
 which routes `/api/*` to FastAPI after removing the prefix and all other paths
 to Next.js. The browser API URL builder now explicitly supports an optional
 path prefix, so the same code supports both the existing two-origin deployment
-and the Funnel single-origin layout. Public runtime verification remains gated
-on signing the Windows host into Tailscale and approving Funnel for the
-tailnet; it is intentionally not a persistent production environment.
+and the Funnel single-origin layout. It is intentionally not a persistent
+production environment.
 
-Not implemented in this block: backup/restore scripts, automated deployment, monitoring, a concrete VPS configuration, or removal of the existing Netlify configuration. Production deployment and iPhone acceptance still require an operator-run domain, TLS, Range, CORS, and PWA smoke test.
+Not implemented in this block: backup/restore scripts, automated deployment,
+monitoring, or a concrete VPS configuration.
 
 ## Next step
 
-Run the documented installed-iPhone acceptance: HTTPS access, Airplane Mode restart, at least ten videos, Range seek, lifecycle, delete/clear, worker update, reconciliation and long-session observations. TASK-005 remains open until the mandatory iPhone thresholds pass.
+Design and implement media normalization, then repeat the installed-PWA iPhone
+acceptance with normalized input.
 
 ## Recent decisions
 

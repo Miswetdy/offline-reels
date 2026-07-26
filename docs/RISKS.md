@@ -200,11 +200,16 @@ The `.mp4` container extension does not guarantee browser-compatible codecs, pro
 
 ## Mitigation
 
-Future ingestion must validate incoming media. If validation identifies incompatible output, the downloader or ingestion pipeline may need normalization or transcoding. The safe target format for MVP must be defined in a separate task; transcoding is outside TASK-004.
+The iPhone acceptance confirmed the risk: a VP9 MP4 did not play, while an
+H.264 MP4 encoded as `yuv420p` with `faststart` did. The next active stage is
+media normalization. It must validate and normalize incoming media before it
+is presented to the offline player; no normalization is implemented by this
+cleanup.
 
 ## Status
 
-Open, non-blocking for TASK-004. Safari on iPhone and long media sessions still need a separate compatibility validation stage.
+Open. Codec normalization, long sessions, and storage-pressure behavior still
+need validation after the normalization stage.
 
 ---
 
@@ -293,18 +298,24 @@ Desktop Chromium verification does not establish iPhone Safari/WebKit behavior. 
 
 ## Mitigation
 
-- Real-device acceptance uses explicit HTTPS frontend and API tunnel origins. `NEXT_PUBLIC_API_BASE_URL` is validated and required in the client, and `FRONTEND_ORIGIN` is configured for that frontend tunnel; neither value is a secret.
+- Real-device acceptance uses one HTTPS Tailscale Funnel origin. `NEXT_PUBLIC_API_BASE_URL` is validated and required in the client, and `FRONTEND_ORIGIN` is configured for that same origin; neither value is a secret.
 - The standalone manifest starts at `/offline`, and the worker serves the same-origin offline shell and `/offline-media/{id}` without a Backend fallback.
 - The local summary presents exact library bytes, approximate origin usage/quota when available, and the non-invasive `navigator.storage.persisted()` result. It does not promise that iOS will retain data or request persistence automatically.
-- Safe-area-aware controls, `100dvh`, `playsInline`, muted autoplay, native scroll-snap, visibility handling, and active-plus-next source cleanup are in place. The acceptance worksheet records installation, full Airplane Mode restart, ten-video playback, seeks, lifecycle, delete/clear, worker updates, reconciliation, and long-session observations.
+- Safari and the installed Home Screen PWA use distinct offline-storage contexts; users must install first and download media inside the installed PWA.
+- Safe-area-aware controls, `100dvh`, `playsInline`, muted autoplay, native scroll-snap, visibility handling, and active-plus-next source cleanup are in place. The current window trades faster previous-item return for bounded resource use; previous/current/next preload and a Reels-like player are follow-up work.
 
 ## Remaining limitation
 
-The required real-iPhone acceptance has not run in this block. Browser quota and persistence APIs are hints, not retention guarantees; iOS may evict storage. Single-range delivery materializes a complete MP4 in worker memory per request, so 20-minute and 50-swipe tests remain important targets. Multipart Range, background download, media transcoding, and an iOS-specific update UX remain out of scope.
+The required iPhone acceptance has run, but Browser quota and persistence APIs
+remain hints, not retention guarantees; iOS may evict storage. Single-range
+delivery materializes a complete MP4 in worker memory per request, so
+20-minute and 50-swipe tests remain important targets. Multipart Range,
+background download, codec normalization, and an iOS-specific update UX
+remain follow-up work.
 
 ## Status
 
-Open, accepted for TASK-005 Block 6.3 preparation; completion depends on the recorded iPhone acceptance thresholds.
+Open for long-session and post-normalization re-acceptance.
 
 ---
 

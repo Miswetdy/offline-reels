@@ -30,31 +30,19 @@ Open `http://localhost:3000`. The browser application calls the explicitly confi
 
 The API permits CORS only from `FRONTEND_ORIGIN` (default `http://localhost:3000`), never a wildcard.
 
-## iPhone PWA acceptance access
+## iPhone PWA staging and acceptance
 
-Use an HTTPS tunnel for the real-iPhone acceptance run. Plain LAN HTTP is not a reliable secure context for Service Worker, Cache Storage, `navigator.storage`, or installed-PWA behavior on iOS. This project does not add a deployment stack: expose the already-running frontend and API with two temporary HTTPS tunnel URLs, set `NEXT_PUBLIC_API_BASE_URL` to the API URL at frontend build time, and set `FRONTEND_ORIGIN` to the frontend URL for API CORS. Both values are public origins, never secrets.
+Use the one-origin Tailscale Funnel staging workflow in
+[`deploy/README.md`](deploy/README.md) for real-iPhone testing. Plain LAN HTTP
+is not a reliable secure context for Service Worker, Cache Storage,
+`navigator.storage`, or installed-PWA behavior on iOS.
 
-```powershell
-# Set the public API origin before the frontend build. Replace placeholders.
-$env:NEXT_PUBLIC_API_BASE_URL = 'https://api-tunnel.example'
-$env:FRONTEND_ORIGIN = 'https://web-tunnel.example'
-npm --prefix apps/web run build
-npm --prefix apps/web run start -- --hostname 0.0.0.0 --port 3000
-```
-
-Run the API as usual through Docker Compose, then expose `http://localhost:3000` and `http://localhost:8000` through the chosen HTTPS tunnel provider. Open the frontend tunnel URL in iPhone Safari, not a local `localhost` URL. See [the iPhone acceptance worksheet](docs/acceptance/iphone-offline-library.md) for the full procedure.
-
-## Netlify deployment
-
-The root [`netlify.toml`](netlify.toml) fixes Netlify’s build base at `apps/web`. Netlify therefore runs `npm ci && npm run build` beside the committed `package.json` and `package-lock.json`. It intentionally leaves the publish directory unset so Netlify's current automatic Next.js/OpenNext runtime owns output discovery and dynamic-route function generation instead of deploying a raw `.next` directory as static files. It does not deploy source files from `apps/web`, and it cannot select the unrelated TASK-001 spike under `spikes/ios-offline-storage`.
-
-In Netlify **Project configuration → Build & deploy → Build settings**, leave **Package directory** blank because it is the same as the configured base. The root config overrides stale UI Base, Build command, Publish directory, and Node version values. In **Environment variables**, set only the public, absolute browser-facing API URL:
-
-```text
-NEXT_PUBLIC_API_BASE_URL=https://api.example.com
-```
-
-Do not add credentials, tokens, or secrets under `NEXT_PUBLIC_*`: Next.js embeds these values in the client bundle. Netlify’s current adapter is automatic; do not install or configure the legacy `@netlify/plugin-nextjs` plugin.
+Safari and the installed Home Screen PWA use separate offline-storage contexts.
+Install the PWA first, then download videos from inside that installed PWA;
+downloads made in a Safari tab do not populate the installed app library. The
+completed acceptance also confirmed that MP4 codec parameters matter: VP9 in an
+MP4 container failed on iPhone, while H.264 with `yuv420p` and `faststart`
+played correctly. Media normalization is the next functional stage.
 
 ## Commands
 

@@ -5,6 +5,8 @@
 # Production deployment secrets live only on the VPS.
 deploy/.env.production
 deploy/.env.funnel
+!deploy/.env.production.example
+!deploy/.env.funnel.example
 
 # Instagram sessions and cookies
 cookies/
@@ -22,6 +24,8 @@ dist/
 build/
 .next/
 *.tsbuildinfo
+.turbo/
+.serwist/
 
 # Python
 __pycache__/
@@ -33,10 +37,16 @@ __pycache__/
 coverage/
 .playwright/
 test-results/
+*.log
+*.tmp
+*ffprobe*.json
 
 # Local media and databases
-media/
-downloads/
+/media/
+/downloads/
+*.mp4
+*.mov
+*.webm
 *.db
 *.sqlite
 *.sqlite3

@@ -142,3 +142,23 @@ This experiment does not confirm long-term persistence, behavior near the storag
 ## Status
 
 Accepted.
+
+---
+
+# Decision 6: iPhone media compatibility and installed-PWA storage
+
+## Decision
+
+Treat media codec compatibility as an ingestion concern and test offline
+downloads only from the installed Home Screen PWA.
+
+## Reason
+
+The iPhone acceptance run showed that Safari and the installed PWA have
+separate offline-storage contexts. A VP9 MP4 failed on iPhone, while H.264
+with `yuv420p` and `faststart` played correctly. The next stage will add media
+normalization before stored media reaches playback.
+
+## Status
+
+Accepted; implementation is pending.

@@ -2,7 +2,20 @@
 
 ## Preconditions and test record
 
-Use an HTTPS tunnel for both the frontend and API. Safari treats `localhost` specially only on the device itself; it is not the development computer. Set the API tunnel URL in `NEXT_PUBLIC_API_BASE_URL` while building the frontend and set the frontend tunnel origin in `FRONTEND_ORIGIN` for API CORS. Do not put secrets in either variable.
+Use the one-origin HTTPS Tailscale Funnel staging workflow. Safari treats
+`localhost` specially only on the device itself; it is not the development
+computer. Build with `NEXT_PUBLIC_API_BASE_URL=https://HOST.ts.net/api` and
+set `FRONTEND_ORIGIN=https://HOST.ts.net`. Do not put secrets in either value.
+
+## Confirmed acceptance findings
+
+- Safari and the installed Home Screen PWA do not share an offline-storage
+  context. Install first, then download media inside the installed PWA.
+- A VP9 MP4 failed on iPhone. H.264 with `yuv420p` and `faststart` played;
+  media normalization is required before the next acceptance run.
+- The current active-plus-next source window bounds resource use, but a
+  previous item returns more slowly. The next player stage will evaluate a
+  previous/current/next preload window and Reels-like controls.
 
 | Field | Value |
 | --- | --- |
@@ -10,8 +23,8 @@ Use an HTTPS tunnel for both the frontend and API. Safari treats `localhost` spe
 | iOS version | |
 | Safari version | |
 | Test mode (installed PWA / Safari tab) | |
-| Frontend HTTPS URL | |
-| API HTTPS URL | |
+| Public HTTPS origin | |
+| API base URL | |
 | Git commit / build identifier | |
 | Date and time | |
 | Number of downloaded videos | |

@@ -139,6 +139,13 @@ stay on the same `*.ts.net` origin. The final stream check must still produce
 `206` and `416` for valid and invalid ranges. Do not expose administrative
 endpoints, MinIO, or database ports through Funnel.
 
+The completed iPhone acceptance established two operational rules: Safari and
+the installed Home Screen PWA have separate local-storage contexts, so install
+the PWA before downloading videos; and incoming MP4 codec parameters matter.
+The observed compatible form was H.264 with `yuv420p` and `faststart`; media
+normalization is the next application stage. Funnel remains temporary public
+staging, not a permanent deployment target.
+
 ## First launch
 
 Start stateful services and wait for their healthchecks:
