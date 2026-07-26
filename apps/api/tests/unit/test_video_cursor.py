@@ -53,7 +53,10 @@ def test_cursor_rejects_malformed_values(value: str) -> None:
 def test_cursor_rejects_invalid_signature_and_tampered_payload() -> None:
     valid = encode_video_cursor(VideoCursor(datetime.now(UTC), uuid4()), SECRET)
     prefix, payload, signature = valid.split(".")
-    tampered_signature = signature[:-1] + ("A" if signature[-1] != "A" else "B")
+    # The final character of an unpadded base64url HMAC can contain unused
+    # bits. Change the first significant character so decoded bytes always
+    # differ and this integrity assertion remains deterministic.
+    tampered_signature = ("A" if signature[0] != "A" else "B") + signature[1:]
 
     with pytest.raises(InvalidVideoCursor):
         decode_video_cursor(f"{prefix}.{payload}.{tampered_signature}", SECRET)

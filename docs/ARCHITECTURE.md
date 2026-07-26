@@ -252,3 +252,21 @@ The architecture should prioritize:
 - maintainability.
 
 New features should not bypass existing boundaries between components.
+
+## Production-like VPS foundation
+
+The local [`compose.yaml`](../compose.yaml) remains a desktop-development stack and deliberately publishes convenience ports. Production-like deployment is isolated in [`deploy/docker-compose.prod.yml`](../deploy/docker-compose.prod.yml): Caddy is the only public service and terminates HTTPS for separate application and API domains. The web service keeps the existing Next.js standalone runtime (`node server.js`), while FastAPI runs Uvicorn only; a one-shot `migrate` service runs Alembic deliberately before API rollout. Both production commands use `uv run --no-sync`, so they cannot install missing development dependencies at runtime.
+
+PostgreSQL, Redis and MinIO live only on an `internal: true` Docker network. MinIO root credentials are limited to MinIO and the idempotent bootstrap job; the API receives a separate bucket-scoped application user. Caddy preserves the API's HTTP Range response headers and does not cache video streams. See [`deploy/README.md`](../deploy/README.md) for the operator sequence.
+
+## Public Funnel staging
+
+For real-iPhone staging without a VPS, `deploy/docker-compose.funnel-smoke.yml`
+overlays the production Compose topology. It publishes Caddy only on Windows
+loopback and mounts `Caddyfile.funnel`; Tailscale Funnel terminates public TLS
+on one `https://<machine>.<tailnet>.ts.net` origin and proxies to that loopback
+port. Caddy strips only the `/api` prefix before forwarding to FastAPI and
+routes every other request to the Next.js standalone server. The browser API
+base URL can therefore be either a normal origin or an origin with a path
+prefix; endpoint construction preserves the configured prefix. The Service
+Worker's offline media route remains same-origin and does not contact the API.

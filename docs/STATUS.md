@@ -21,6 +21,32 @@ iPhone PWA acceptance preparation (TASK-005 Block 6.3).
 
 TASK-005 Block 6.3 prepares, but does not execute, real-device acceptance. The client requires an explicit public `NEXT_PUBLIC_API_BASE_URL` instead of assuming browser localhost, validates that it is a safe absolute HTTP(S) URL, and reports a configuration error before making API requests. `/offline` continues to be same-origin and does not expose secrets. Its local summary now also reports the available `navigator.storage.persisted()` diagnostic without requesting persistence. Existing `100dvh`, native touch scroll-snap, `playsInline`, muted autoplay and page-lifecycle handling remain in place; fixed overlays now observe safe-area insets.
 
+## Production-like VPS foundation
+
+Implemented the first deployment foundation without changing local development:
+
+- added an isolated production Compose file with Caddy as the only public service;
+- kept Next.js standalone runtime (`node server.js`);
+- separated Alembic migration into a one-shot `migrate` service;
+- added private PostgreSQL, authenticated persistent Redis, and private MinIO volumes;
+- added an idempotent MinIO bucket/application-user bootstrap job;
+- added a safe production environment template and VPS launch/verification guide.
+- hardened production API and migration commands with `uv run --no-sync` after local smoke showed that plain `uv run` attempted an unavailable development-dependency sync at runtime.
+- verified the production Compose foundation locally through Docker Desktop: health endpoints, Caddy routes, CORS, MinIO bootstrap, migration idempotency, Range delivery, Redis AOF, and persistence across a restart.
+
+## Public Tailscale Funnel staging
+
+Prepared a separate staging override for iPhone PWA testing: Funnel provides
+one public HTTPS `*.ts.net` origin to a loopback-only local Caddy instance,
+which routes `/api/*` to FastAPI after removing the prefix and all other paths
+to Next.js. The browser API URL builder now explicitly supports an optional
+path prefix, so the same code supports both the existing two-origin deployment
+and the Funnel single-origin layout. Public runtime verification remains gated
+on signing the Windows host into Tailscale and approving Funnel for the
+tailnet; it is intentionally not a persistent production environment.
+
+Not implemented in this block: backup/restore scripts, automated deployment, monitoring, a concrete VPS configuration, or removal of the existing Netlify configuration. Production deployment and iPhone acceptance still require an operator-run domain, TLS, Range, CORS, and PWA smoke test.
+
 ## Next step
 
 Run the documented installed-iPhone acceptance: HTTPS access, Airplane Mode restart, at least ten videos, Range seek, lifecycle, delete/clear, worker update, reconciliation and long-session observations. TASK-005 remains open until the mandatory iPhone thresholds pass.

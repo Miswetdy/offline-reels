@@ -1,0 +1,9 @@
+# Compose override for local Docker Desktop runtime smoke.
+# It replaces only Caddy's mounted configuration; the production Caddyfile,
+# networks, volumes, images, and public-port policy remain unchanged.
+services:
+  caddy:
+    ports: !override
+      - "80:80"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro

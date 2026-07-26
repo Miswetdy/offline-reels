@@ -1,0 +1,20 @@
+# Tailscale Funnel terminates public HTTPS. Caddy receives only loopback HTTP
+# traffic from the Windows host and uses one public origin for both services.
+:80 {
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # handle_path removes exactly the matched /api prefix before proxying and
+    # keeps the remaining path and query string. reverse_proxy preserves Range
+    # request and response headers without caching or media compression rules.
+    handle_path /api/* {
+        reverse_proxy api:8000
+    }
+
+    handle {
+        reverse_proxy web:3000
+    }
+}

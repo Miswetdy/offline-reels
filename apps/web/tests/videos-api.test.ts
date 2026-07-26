@@ -50,4 +50,19 @@ describe("videos API client", () => {
   it("uses an explicitly configured non-local origin for stream URLs", () => {
     expect(getVideoStreamUrl("video-one")).toBe("https://api.example.test/videos/video-one/stream");
   });
+
+  it("keeps an API path prefix for catalog and stream endpoints", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "https://staging.example.ts.net/api";
+    const fetchImplementation = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }),
+    );
+
+    await getVideos({}, fetchImplementation);
+
+    expect(fetchImplementation).toHaveBeenCalledWith(
+      "https://staging.example.ts.net/api/videos?limit=5",
+      expect.anything(),
+    );
+    expect(getVideoStreamUrl("video-one")).toBe("https://staging.example.ts.net/api/videos/video-one/stream");
+  });
 });

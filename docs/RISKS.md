@@ -349,3 +349,24 @@ Before public production deployment:
 - upgrade to a compatible Next.js release containing patched transitive versions;
 - or apply an officially supported dependency resolution;
 - rerun npm audit and production smoke tests.
+
+## Production-like VPS foundation
+
+- The production Compose foundation keeps PostgreSQL, Redis and MinIO private, but it does not yet include automated backup, restore, monitoring, or a deployment script. A failed database migration therefore requires a deliberate operational rollback or restore procedure.
+- PostgreSQL metadata and MinIO objects still do not share a transaction. The MinIO bootstrap job guarantees bucket/user setup, not cross-store consistency after an interrupted seed or infrastructure failure.
+- Caddy is expected to preserve HTTP Range headers unchanged. Public deployment must still verify `206`, `Content-Range`, and playback through the real domain before iPhone acceptance.
+- The web client compiles `NEXT_PUBLIC_API_BASE_URL` at image-build time. An incorrect public API origin requires a new web image; it cannot be corrected by changing only a running container environment variable.
+- Production secrets initially remain in a VPS-local Compose env file. It is ignored by Git and must be permission-restricted; Docker secrets and off-VPS backups are follow-up hardening work.
+
+## Public Tailscale Funnel staging
+
+- Funnel is a public internet endpoint, not an authenticated private preview.
+  The current MVP has no application authentication, so it must use fresh
+  staging-only secrets, publish only Caddy, and be switched off after testing.
+- The Windows host must stay online and connected to Tailscale. It is not a
+  reliable long-running deployment target.
+- `NEXT_PUBLIC_API_BASE_URL` is baked into the web image. Changing a Funnel
+  hostname requires rebuilding the web image and matching `FRONTEND_ORIGIN`.
+- Funnel terminates TLS before local Caddy. Public iPhone testing must still
+  verify service-worker scope, CORS, and Range streaming over the final
+  `*.ts.net` hostname.

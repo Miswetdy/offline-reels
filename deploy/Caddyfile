@@ -1,0 +1,25 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    reverse_proxy web:3000
+}
+
+{$API_DOMAIN} {
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Preserve the API's Range and streaming headers. No media cache, Range
+    # rewrite, or compression rule is configured here.
+    reverse_proxy api:8000
+}

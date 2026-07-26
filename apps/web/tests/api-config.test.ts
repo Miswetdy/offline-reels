@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { getApiBaseUrl } from "../lib/api/config";
+import { getApiBaseUrl, getApiUrl } from "../lib/api/config";
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -16,6 +16,13 @@ afterEach(() => {
 describe("public API URL configuration", () => {
   it("resolves an explicit HTTPS API origin", () => {
     expect(getApiBaseUrl()).toBe("https://api.example.test");
+  });
+
+  it("preserves an explicit API path prefix when joining an endpoint", () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "https://staging.example.ts.net/api/";
+
+    expect(getApiBaseUrl()).toBe("https://staging.example.ts.net/api");
+    expect(getApiUrl("/videos")).toBe("https://staging.example.ts.net/api/videos");
   });
 
   it("does not silently fall back to localhost when configuration is absent", () => {

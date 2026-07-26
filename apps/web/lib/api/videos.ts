@@ -1,4 +1,4 @@
-import { getApiBaseUrl, isApiConfigurationError } from "./config";
+import { getApiUrl, isApiConfigurationError } from "./config";
 
 export type Video = {
   id: string;
@@ -38,14 +38,13 @@ export async function getVideos(
   { limit = 5, cursor, signal }: GetVideosOptions = {},
   fetchImplementation: FetchImplementation = fetch,
 ): Promise<VideoPage> {
-  const apiBaseUrl = getApiBaseUrl();
   const parameters = new URLSearchParams({ limit: String(limit) });
   if (cursor) {
     parameters.set("cursor", cursor);
   }
   let response: Response;
   try {
-    response = await fetchImplementation(`${apiBaseUrl}/videos?${parameters.toString()}`, {
+    response = await fetchImplementation(`${getApiUrl("/videos")}?${parameters.toString()}`, {
       cache: "no-store",
       signal,
     });
@@ -64,7 +63,7 @@ export async function getVideos(
 }
 
 export function getVideoStreamUrl(videoId: string): string {
-  return `${getApiBaseUrl()}/videos/${encodeURIComponent(videoId)}/stream`;
+  return `${getApiUrl("/videos")}/${encodeURIComponent(videoId)}/stream`;
 }
 
 export { isApiConfigurationError };

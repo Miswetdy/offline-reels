@@ -1,0 +1,9 @@
+# Tailscale Funnel staging override. It retains the production services,
+# volumes, and private networks, but binds only Caddy HTTP to Windows loopback.
+# Run it together with docker-compose.prod.yml and deploy/.env.funnel.
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./Caddyfile.funnel:/etc/caddy/Caddyfile:ro

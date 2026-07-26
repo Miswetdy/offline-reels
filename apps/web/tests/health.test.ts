@@ -18,6 +18,21 @@ describe("checkBackendLive", () => {
     const fetchImplementation = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
 
     await expect(checkBackendLive(fetchImplementation)).resolves.toBe("available");
+    expect(fetchImplementation).toHaveBeenCalledWith(
+      "https://api.example.test/health/live",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("preserves an API path prefix for the live endpoint", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "https://staging.example.ts.net/api";
+    const fetchImplementation = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+
+    await expect(checkBackendLive(fetchImplementation)).resolves.toBe("available");
+    expect(fetchImplementation).toHaveBeenCalledWith(
+      "https://staging.example.ts.net/api/health/live",
+      expect.anything(),
+    );
   });
 
   it("returns unavailable when the endpoint cannot be reached", async () => {

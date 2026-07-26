@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+# Production deployment secrets live only on the VPS.
+deploy/.env.production
+deploy/.env.funnel
 
 # Instagram sessions and cookies
 cookies/
