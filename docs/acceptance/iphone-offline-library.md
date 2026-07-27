@@ -13,9 +13,9 @@ set `FRONTEND_ORIGIN=https://HOST.ts.net`. Do not put secrets in either value.
   context. Install first, then download media inside the installed PWA.
 - A VP9 MP4 failed on iPhone. H.264 with `yuv420p` and `faststart` played;
   media normalization is required before the next acceptance run.
-- The current active-plus-next source window bounds resource use, but a
-  previous item returns more slowly. The next player stage will evaluate a
-  previous/current/next preload window and Reels-like controls.
+- Post-iPhone hardening block 2 now keeps a previous/current/next preload
+  window to improve return to the prior item while bounding resource use.
+  Block 3 will add Reels-like controls.
 
 | Field | Value |
 | --- | --- |
@@ -84,7 +84,7 @@ Expected: the Serwist application shell, IndexedDB catalog, and local media rout
 5. Lock the screen for 30 seconds, unlock, and verify the resulting controlled playback state.
 6. Confirm only one video plays audibly/visibly at a time.
 
-Expected: the active-plus-next media window holds at most two `src` values, videos use `playsInline`, return from background does not force forbidden autoplay, and a failed card remains terminal without blocking neighbouring cards.
+Expected: the previous/current/next media window holds at most three `src` values, videos use `playsInline`, return from background does not force forbidden autoplay, and a failed card remains terminal without blocking neighbouring cards.
 
 ## E. Long offline session
 

@@ -145,7 +145,7 @@ describe("VideoList", () => {
     expect(await screen.findByText("No videos are available yet.")).toBeInTheDocument();
   });
 
-  it("uses a two-player media window without removing feed cards", async () => {
+  it("uses active plus next sources at the first item without removing feed cards", async () => {
     vi.spyOn(videosApi, "getVideos").mockResolvedValue({
       items: [videoOne, videoTwo, videoThree, videoFour],
       next_cursor: null,
@@ -182,13 +182,14 @@ describe("VideoList", () => {
     observerFor(first).trigger([{ target: third, ratio: 0.9 }]);
 
     await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src"));
-    expect(sourcedPlayers()).toHaveLength(2);
+    expect(sourcedPlayers()).toHaveLength(3);
     expect(playerFor("First video")).not.toHaveAttribute("src");
-    expect(playerFor("Second video")).not.toHaveAttribute("src");
+    expect(playerFor("Second video")).toHaveAttribute("src");
+    expect(playerFor("Second video")).toHaveAttribute("preload", "metadata");
     expect(playerFor("Third video")).toHaveAttribute("preload", "auto");
     expect(playerFor("Fourth video")).toHaveAttribute("preload", "metadata");
     expect(pause).toHaveBeenCalled();
-    expect(load).toHaveBeenCalledTimes(4);
+    expect(load).toHaveBeenCalledTimes(3);
 
     load.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Turn sound on" }));
@@ -221,10 +222,10 @@ describe("VideoList", () => {
     observerFor(first).trigger([{ target: third, ratio: 1 }]);
 
     await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src"));
+    expect(playerFor("Second video")).toHaveAttribute("src");
     expect(playerFor("Fourth video")).toHaveAttribute("src");
     expect(playerFor("First video")).not.toHaveAttribute("src");
-    expect(playerFor("Second video")).not.toHaveAttribute("src");
-    expect(sourcedPlayers()).toHaveLength(2);
+    expect(sourcedPlayers()).toHaveLength(3);
   });
 
   it("breaks equal ratios by feed center, then preserves the current active video", async () => {
@@ -279,8 +280,9 @@ describe("VideoList", () => {
     runFrame?.(0);
 
     await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src"));
+    expect(playerFor("Second video")).toHaveAttribute("src");
     expect(playerFor("Fourth video")).toHaveAttribute("src");
-    expect(sourcedPlayers()).toHaveLength(2);
+    expect(sourcedPlayers()).toHaveLength(3);
   });
 
   it("starts only the active video after it is ready and handles rejection locally", async () => {

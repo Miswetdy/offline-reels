@@ -162,13 +162,13 @@ TASK-004 keeps every loaded feed item and its `video` element mounted to validat
 ## Mitigation
 
 - The frontend requests only five metadata records per page.
-- Only the active player and its next neighbor receive a stream URL. The active player uses `preload="auto"`; the next player uses `preload="metadata"`; all other mounted cards have no media source and use `preload="none"`.
+- The active player and its immediate previous/next neighbours receive stream URLs. The active player uses `preload="auto"`; both neighbours use `preload="metadata"`; all other mounted cards have no media source and use `preload="none"`.
 - Only one player is allowed to play at a time.
 - The next page is fetched only when the sentinel approaches the viewport.
 
 ## Remaining limitation
 
-Browser `preload` is advisory: Chromium can make open-ended Range requests even for metadata preload. The active-plus-next media window limits the number of stream URLs to two, but full DOM virtualization and removal of distant cards remain outside TASK-004. Their need must be measured on a real iPhone before introducing more complex scroll and ref management.
+Browser `preload` is advisory: Chromium can make open-ended Range requests even for metadata preload. Post-iPhone hardening block 2 keeps at most three stream URLs—previous/current/next—with metadata preload on both neighbours. Full DOM virtualization and removal of distant cards remain outside TASK-004. Their need must be measured on a real iPhone before introducing more complex scroll and ref management.
 
 ## Status
 
@@ -256,7 +256,7 @@ Browser manual smoke after TASK-005 Block 5.1 confirmed that `<video>` sends a `
 
 ## Mitigation
 
-`/offline` reconciles local data before listing it, never falls back to Backend media, and supplies only validated synthetic URLs to the active-plus-next media window. The worker accepts only same-origin GET/HEAD requests with exact UUID paths, reads only `offline-reels-media-v1`, and returns a controlled miss rather than contacting the network. It supports a strict single `bytes` range and returns `416` instead of fabricating multipart or invalid partial responses.
+`/offline` reconciles local data before listing it, never falls back to Backend media, and supplies only validated synthetic URLs to the previous/current/next media window. The worker accepts only same-origin GET/HEAD requests with exact UUID paths, reads only `offline-reels-media-v1`, and returns a controlled miss rather than contacting the network. It supports a strict single `bytes` range and returns `416` instead of fabricating multipart or invalid partial responses.
 
 ## Remaining limitation
 
@@ -304,7 +304,7 @@ Desktop Chromium verification does not establish iPhone Safari/WebKit behavior. 
 - The standalone manifest starts at `/offline`, and the worker serves the same-origin offline shell and `/offline-media/{id}` without a Backend fallback.
 - The local summary presents exact library bytes, approximate origin usage/quota when available, and the non-invasive `navigator.storage.persisted()` result. It does not promise that iOS will retain data or request persistence automatically.
 - Safari and the installed Home Screen PWA use distinct offline-storage contexts; users must install first and download media inside the installed PWA.
-- Safe-area-aware controls, `100dvh`, `playsInline`, muted autoplay, native scroll-snap, visibility handling, and active-plus-next source cleanup are in place. The current window trades faster previous-item return for bounded resource use; previous/current/next preload and a Reels-like player are follow-up work.
+- Safe-area-aware controls, `100dvh`, `playsInline`, muted autoplay, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. The current window improves return to the previous item while bounding sources to three; a Reels-like player remains follow-up work.
 
 ## Remaining limitation
 

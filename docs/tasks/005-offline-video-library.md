@@ -551,8 +551,8 @@ Media URL:
 - Не обращаться к backend за MP4.
 - Показывать только валидные completed-записи.
 - Использовать существующую vertical scroll-snap логику.
-- Сохранить active + next media window.
-- Одновременно держать `src` максимум у активного и следующего ролика.
+- Historical Block 3 requirement superseded by post-iPhone hardening block 2: use the shared previous/current/next media window.
+- Post-iPhone hardening block 2 permits `src` only on the immediate previous, active and next roles.
 - Сохранить autoplay активного ролика.
 - Ставить предыдущий ролик на паузу.
 - Сохранить единое muted state.
@@ -1118,7 +1118,7 @@ apps/web/
 - clear all confirmation;
 - API failure не ломает offline feed;
 - download failure не ломает online feed;
-- active + next media window остаётся максимум два `src`;
+- Post-iPhone hardening block 2 supersedes this check with a previous/current/next window of at most three `src`;
 - offline URLs корректно подставляются в feed.
 
 ---
@@ -1409,7 +1409,7 @@ TASK-005 считается завершённой, если:
 - [ ] seeking работает офлайн;
 - [ ] Range обслуживается локально при необходимости;
 - [ ] autoplay, pause и mute работают;
-- [ ] media window остаётся максимум два `src`;
+- [ ] Post-iPhone hardening block 2 media window remains at most three `src` values: previous/current/next;
 - [ ] один ролик можно удалить;
 - [ ] всю библиотеку можно очистить;
 - [ ] показывается количество скачанных роликов;

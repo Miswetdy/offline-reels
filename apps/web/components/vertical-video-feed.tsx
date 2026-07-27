@@ -17,7 +17,7 @@ type VerticalVideoFeedProps = {
   onActiveItemChange?: (item: VerticalVideoFeedItem | null) => void;
 };
 
-type MediaMode = "active" | "next" | "inactive";
+type MediaMode = "previous" | "active" | "next" | "inactive";
 type PlaybackErrorKind = "media" | "autoplay";
 
 export function VerticalVideoFeed({
@@ -44,15 +44,17 @@ export function VerticalVideoFeed({
   const fallbackActiveItemId = items[Math.min(lastActiveIndex, items.length - 1)]?.id ?? null;
   const effectiveActiveItemId = activeItemStillExists ? activeItemId : fallbackActiveItemId;
   const activeItemIndex = items.findIndex((item) => item.id === effectiveActiveItemId);
+  const previousItemId = activeItemIndex > 0 ? items[activeItemIndex - 1]?.id ?? null : null;
   const nextItemId = activeItemIndex >= 0 ? items[activeItemIndex + 1]?.id ?? null : null;
 
   const mediaMode = useCallback(
     (itemId: string): MediaMode => {
       if (itemId === effectiveActiveItemId) return "active";
+      if (itemId === previousItemId) return "previous";
       if (itemId === nextItemId) return "next";
       return "inactive";
     },
-    [effectiveActiveItemId, nextItemId],
+    [effectiveActiveItemId, nextItemId, previousItemId],
   );
 
   const sourceMode = useCallback(
@@ -238,7 +240,7 @@ export function VerticalVideoFeed({
       if (!item) return;
       const mode = sourceMode(itemId);
       video.muted = muted;
-      video.preload = mode === "active" ? "auto" : mode === "next" ? "metadata" : "none";
+      video.preload = mode === "active" ? "auto" : mode === "inactive" ? "none" : "metadata";
       if (mode === "inactive") clearVideoSource(video);
     });
 
@@ -340,7 +342,7 @@ export function VerticalVideoFeed({
             controls
             muted={muted}
             playsInline
-            preload={sourceMode(item.id) === "active" ? "auto" : sourceMode(item.id) === "next" ? "metadata" : "none"}
+            preload={sourceMode(item.id) === "active" ? "auto" : sourceMode(item.id) === "inactive" ? "none" : "metadata"}
             aria-busy={sourceMode(item.id) !== "inactive" && playbackErrors[item.id] !== "media"}
             onPlay={() => {
               setPlaybackErrors((errors) => {

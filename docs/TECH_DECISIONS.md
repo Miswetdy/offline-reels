@@ -190,3 +190,32 @@ compensation.
 Accepted. Stages 1A and 1B are implemented for new synchronous seeds. Collector
 ingestion, background processing and migration of historical objects remain
 separate work.
+
+---
+
+# Decision 8: Previous/current/next playback preload
+
+## Decision
+
+Keep at most three mounted media sources in the shared vertical feed: the
+previous, current and next item. The current item uses `preload="auto"` and is
+the only autoplay target; adjacent items use `preload="metadata"` and remain
+paused.
+
+## Reason
+
+The previous active-plus-next window released the previous item's source as
+soon as the user advanced, which made an immediate backward swipe noticeably
+slower. Retaining its source improves the Reels-like navigation path without
+duplicating online/offline playback code or changing API pagination.
+
+## Constraints
+
+`preload` is a browser hint, not a byte-budget guarantee. The offline Service
+Worker can materialize a cached MP4 for each Range request, so real iPhone
+memory, seek and rapid-swipe validation is mandatory before treating the
+change as accepted on iOS.
+
+## Status
+
+Accepted as post-iPhone hardening block 2; awaiting post-change iPhone smoke.

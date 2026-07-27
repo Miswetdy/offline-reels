@@ -12,6 +12,12 @@ const items: VerticalVideoFeedItem[] = [
   { id: "three", title: "Third video", mediaUrl: "https://media.test/three.mp4" },
 ];
 
+const fiveItems: VerticalVideoFeedItem[] = [
+  ...items,
+  { id: "four", title: "Fourth video", mediaUrl: "https://media.test/four.mp4" },
+  { id: "five", title: "Fifth video", mediaUrl: "https://media.test/five.mp4" },
+];
+
 type TriggerEntry = { target: Element; ratio: number };
 
 class MockIntersectionObserver {
@@ -48,6 +54,10 @@ function observerFor(target: Element): MockIntersectionObserver {
 
 function playerFor(label: string): HTMLVideoElement {
   return screen.getByLabelText(label).querySelector("video") as HTMLVideoElement;
+}
+
+function sourcedPlayerCount(): number {
+  return document.querySelectorAll("video[src]").length;
 }
 
 function setRect(element: Element, top: number, height = 100) {
@@ -92,10 +102,10 @@ describe("VerticalVideoFeed", () => {
     await waitFor(() => expect(onActiveItemChange).toHaveBeenLastCalledWith(items[2]));
     expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl);
     expect(playerFor("First video")).not.toHaveAttribute("src");
-    expect(playerFor("Second video")).not.toHaveAttribute("src");
+    expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
   });
 
-  it("keeps active plus next sources, shared mute state, and pauses inactive players", async () => {
+  it("keeps active plus next sources at the first item and uses the shared mute state", async () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
     render(<VerticalVideoFeed items={items} />);
     const first = await screen.findByLabelText("First video");
@@ -106,6 +116,7 @@ describe("VerticalVideoFeed", () => {
     expect(playerFor("First video")).toHaveAttribute("playsinline");
     expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
     expect(playerFor("Third video")).not.toHaveAttribute("src");
+    expect(sourcedPlayerCount()).toBe(2);
     fireEvent.click(screen.getByRole("button", { name: "Turn sound on" }));
     expect(playerFor("First video")).toHaveProperty("muted", false);
     expect(playerFor("Third video")).toHaveProperty("muted", false);
@@ -113,32 +124,53 @@ describe("VerticalVideoFeed", () => {
     observerFor(first).trigger([{ target: second, ratio: 0.9 }]);
     await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("preload", "auto"));
     await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
-    expect(playerFor("First video")).not.toHaveAttribute("src");
-    expect(pause).toHaveBeenCalled();
+    expect(playerFor("First video")).toHaveAttribute("src", items[0].mediaUrl);
+    expect(playerFor("First video")).toHaveAttribute("preload", "metadata");
+    expect(playerFor("Third video")).toHaveAttribute("preload", "metadata");
+    expect(sourcedPlayerCount()).toBe(3);
+    expect(pause.mock.contexts).toEqual(expect.arrayContaining([playerFor("First video"), playerFor("Third video")]));
   });
 
-  it("releases removed sources across rapid active changes and keeps a valid active item after removal", async () => {
+  it("keeps previous plus active sources at the last item", async () => {
+    render(<VerticalVideoFeed items={items} />);
+    const first = await screen.findByLabelText("First video");
+    const third = screen.getByLabelText("Third video");
+
+    observerFor(first).trigger([{ target: third, ratio: 1 }]);
+
+    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
+    expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
+    expect(playerFor("First video")).not.toHaveAttribute("src");
+    expect(sourcedPlayerCount()).toBe(2);
+  });
+
+  it("releases distant sources across rapid active changes and keeps a valid active item after removal", async () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
-    const view = render(<VerticalVideoFeed items={items} />);
+    const view = render(<VerticalVideoFeed items={fiveItems} />);
     const first = await screen.findByLabelText("First video");
     const second = screen.getByLabelText("Second video");
     const third = screen.getByLabelText("Third video");
+    const fourth = screen.getByLabelText("Fourth video");
+    const fifth = screen.getByLabelText("Fifth video");
 
     observerFor(first).trigger([{ target: second, ratio: 0.9 }, { target: third, ratio: 0 }]);
     observerFor(first).trigger([{ target: second, ratio: 0 }, { target: third, ratio: 1 }]);
-    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
+    observerFor(first).trigger([{ target: third, ratio: 0 }, { target: fourth, ratio: 1 }]);
+    await waitFor(() => expect(playerFor("Fourth video")).toHaveAttribute("src", fiveItems[3].mediaUrl));
     expect(playerFor("First video")).not.toHaveAttribute("src");
     expect(playerFor("Second video")).not.toHaveAttribute("src");
-    expect([...document.querySelectorAll("video[src]")]).toHaveLength(1);
+    expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl);
+    expect(playerFor("Fifth video")).toHaveAttribute("src", fiveItems[4].mediaUrl);
+    expect(sourcedPlayerCount()).toBe(3);
 
-    view.rerender(<VerticalVideoFeed items={items.slice(1)} />);
-    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
-    expect(playerFor("Second video")).not.toHaveAttribute("src");
+    view.rerender(<VerticalVideoFeed items={fiveItems.slice(3)} />);
+    await waitFor(() => expect(playerFor("Fourth video")).toHaveAttribute("src", fiveItems[3].mediaUrl));
+    expect(playerFor("Fifth video")).toHaveAttribute("src", fiveItems[4].mediaUrl);
+    expect(sourcedPlayerCount()).toBe(2);
 
-    view.rerender(<VerticalVideoFeed items={items.slice(0, 2)} />);
-    await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl));
-    expect(playerFor("First video")).not.toHaveAttribute("src");
-    expect([...document.querySelectorAll("video[src]")]).toHaveLength(1);
+    view.rerender(<VerticalVideoFeed items={[]} emptyState={<main>Offline library is empty.</main>} />);
+    await screen.findByText("Offline library is empty.");
+    expect(document.querySelectorAll("video[src]")).toHaveLength(0);
     expect(pause).toHaveBeenCalled();
   });
 
@@ -183,7 +215,7 @@ describe("VerticalVideoFeed", () => {
     expect(load).toHaveBeenCalledTimes(loadsBeforeError + 1);
     expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
     expect(play).toHaveBeenCalledTimes(callsBeforeError);
-    expect([...document.querySelectorAll("video[src]")]).toHaveLength(1);
+    expect(sourcedPlayerCount()).toBe(1);
 
     fireEvent.scroll(screen.getByLabelText("Video feed"));
     await waitFor(() => expect(playerFor("First video")).not.toHaveAttribute("src"));
@@ -199,7 +231,9 @@ describe("VerticalVideoFeed", () => {
 
     observerFor(first).trigger([{ target: second, ratio: 1 }]);
     await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl));
+    await waitFor(() => expect(playerFor("Third video")).toHaveAttribute("src", items[2].mediaUrl));
     expect(playerFor("First video")).not.toHaveAttribute("src");
+    expect(sourcedPlayerCount()).toBe(2);
 
     view.rerender(<VerticalVideoFeed items={items} />);
     await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl));
