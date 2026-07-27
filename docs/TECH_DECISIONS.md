@@ -161,4 +161,30 @@ normalization before stored media reaches playback.
 
 ## Status
 
-Accepted; implementation is pending.
+Accepted. Stage 1A implements the normalization boundary; ingestion integration
+remains pending in Stage 1B.
+
+---
+
+# Decision 7: Canonical media normalization boundary
+
+## Decision
+
+Use an API-local normalization boundary before future ingestion: MP4,
+H.264, `yuv420p`, AAC when present, and `faststart`. Remux an already
+compatible input; transcode all other supported input with `libx264`.
+
+## Reason
+
+This preserves compatible input where possible while addressing the confirmed
+iPhone VP9 failure. `ffprobe` metadata alone is insufficient, so both source
+and result must pass complete `ffmpeg` decode validation. The public API yields
+the result inside a deterministic context-managed temporary scope, which lets a
+future uploader consume it before cleanup. The first stage is deliberately
+independent of MinIO and database state to make the safety boundary testable
+before ingestion integration.
+
+## Status
+
+Accepted. Stage 1A is implemented; seed/ingestion integration is deferred to
+Stage 1B.

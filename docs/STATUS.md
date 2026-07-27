@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Repository cleanup before media normalization.
+Media normalization ingestion integration planning (Stage 1B).
 
 ## Completed
 
@@ -20,14 +20,13 @@ Repository cleanup before media normalization.
 
 ## Current focus
 
-Media normalization is next. The iPhone acceptance established that Safari and
-the installed Home Screen PWA have separate offline-storage contexts: users
-must install first and download within the installed PWA. It also confirmed a
-codec constraint: a VP9 MP4 failed, while H.264 with `yuv420p` and `faststart`
-played correctly. The current active-plus-next media window makes a previous
-card slower to resume; the following playback stage will evaluate a
-previous/current/next preload window and replace native iOS controls with a
-Reels-like player.
+Stage 1A is complete: it provides an isolated typed media-normalization layer in the API image.
+It probes through `ffprobe`, validates complete decode through `ffmpeg`, then
+remuxes already-compatible H.264/`yuv420p`/AAC-or-no-audio MP4 or transcodes
+incompatible input to H.264 Main 4.1, `yuv420p`, optional AAC and `faststart`.
+The output is reprobed and decoded before publication. Stage 1B will connect
+this foundation to seed/ingestion; no MinIO, PostgreSQL, CLI or API behavior
+has changed yet.
 
 ## Production-like VPS foundation
 

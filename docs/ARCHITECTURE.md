@@ -250,6 +250,28 @@ network and memory use, but makes the previous card slower to resume; the next
 player stage will evaluate previous/current/next preload and Reels-like
 controls instead of native iOS controls.
 
+## Media normalization foundation
+
+Stage 1A adds an isolated server-side `app.media` boundary without changing
+the seed CLI, MinIO, PostgreSQL, or API contracts. `probe_media` invokes
+`ffprobe` without a shell and returns typed stream metadata; every source and
+normalized output must also pass a full `ffmpeg -map 0 -f null -` decode
+validation. The MVP canonical output is MP4 with H.264 video, `yuv420p`, AAC
+audio when audio exists, and `faststart` metadata.
+
+Compatibility chooses the least destructive path: valid H.264/`yuv420p` media
+with AAC-or-no-audio is remuxed with copied streams and `+faststart`. VP9, AV1,
+Opus, unsupported pixel formats, and other incompatible inputs are transcoded
+with `libx264` Main level 4.1, CRF 23, `yuv420p`, and optional AAC 128k audio.
+`normalize_video(source)` creates a private temporary directory and yields the
+verified result only inside a controlled context; Stage 1B must upload
+`result.output_path` before leaving that context. The output is removed on both
+normal and exceptional exit, rather than being left to garbage collection.
+Internally, normalization writes to a sibling temporary file, then reprobes and
+decodes it before atomically publishing into that private directory. Stage 1B
+will integrate this verified boundary into ingestion; Stage 1A does not upload,
+seed, or persist normalized files.
+
 ---
 
 # Development Principles

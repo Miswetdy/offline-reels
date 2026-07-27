@@ -201,15 +201,16 @@ The `.mp4` container extension does not guarantee browser-compatible codecs, pro
 ## Mitigation
 
 The iPhone acceptance confirmed the risk: a VP9 MP4 did not play, while an
-H.264 MP4 encoded as `yuv420p` with `faststart` did. The next active stage is
-media normalization. It must validate and normalize incoming media before it
-is presented to the offline player; no normalization is implemented by this
-cleanup.
+H.264 MP4 encoded as `yuv420p` with `faststart` did. Stage 1A now provides a
+typed ffprobe/decode-validation/remux-or-transcode boundary and requires its
+output to pass the same checks. It is not yet connected to `seed_video`, MinIO
+or PostgreSQL, so unnormalized input can still enter the current ingestion
+path until Stage 1B.
 
 ## Status
 
-Open. Codec normalization, long sessions, and storage-pressure behavior still
-need validation after the normalization stage.
+Open. Stage 1B integration, long sessions, and storage-pressure behavior still
+need validation after normalization is used by ingestion.
 
 ---
 
