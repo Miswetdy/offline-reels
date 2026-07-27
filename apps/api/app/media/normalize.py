@@ -113,6 +113,7 @@ def _normalize_to_output(
         source_path=source,
         output_path=destination,
         strategy=strategy,
+        original_probe=source_probe,
         probe=normalized_probe,
     )
 

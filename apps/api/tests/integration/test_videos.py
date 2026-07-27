@@ -1,10 +1,13 @@
 import hashlib
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect, text
 
 from alembic import command
 from app.db.models.video import Video
@@ -13,9 +16,34 @@ from app.repositories.videos import VideoRepository
 from app.services.videos import VideoService
 
 
-def seed_video(tmp_path: Path, session_factory, storage, content: bytes = b"0123456789"):
+def create_h264_fixture(path: Path, *, duration_seconds: int = 1) -> None:
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpeg must be available in the API integration image")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x180:rate=24",
+            "-t",
+            str(duration_seconds),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(path),
+        ],
+        check=True,
+    )
+
+
+def seed_video(tmp_path: Path, session_factory, storage):
     file_path = tmp_path / "fixture.mp4"
-    file_path.write_bytes(content)
+    create_h264_fixture(file_path, duration_seconds=3)
     return VideoService(session_factory, VideoRepository(), storage).seed_file(file_path, "Fixture")
 
 
@@ -34,23 +62,66 @@ def create_video(session_factory, video_id: UUID, created_at: datetime, suffix: 
         return video
 
 
-def test_migration_upgrade_and_downgrade_cycle() -> None:
+def test_migration_upgrade_and_downgrade_cycle(session_factory) -> None:
     config = Config("alembic.ini")
-    command.downgrade(config, "0001_initial_schema")
+    command.downgrade(config, "0002_create_videos")
+    with session_factory() as session:
+        engine = session.get_bind()
+    historical_id = uuid4()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO videos (id, title, object_key, content_type, byte_size)
+                VALUES (:id, :title, :object_key, :content_type, :byte_size)
+                """
+            ),
+            {
+                "id": historical_id,
+                "title": "Historical video",
+                "object_key": "videos/historical.mp4",
+                "content_type": "video/mp4",
+                "byte_size": 10,
+            },
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        historical = connection.execute(
+            text(
+                """
+                SELECT title, normalization_strategy, original_video_codec,
+                       normalized_video_codec, width, height, duration_ms,
+                       file_size_bytes, has_audio, normalized_at
+                FROM videos WHERE id = :id
+                """
+            ),
+            {"id": historical_id},
+        ).one()
+    assert historical.title == "Historical video"
+    assert all(value is None for value in historical[1:])
+
+    command.downgrade(config, "0002_create_videos")
+    assert "normalization_strategy" not in {
+        column["name"] for column in inspect(engine).get_columns("videos")
+    }
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT title FROM videos WHERE id = :id"), {"id": historical_id}
+        ).scalar_one() == "Historical video"
     command.upgrade(config, "head")
 
 
 def test_repository_and_seed_are_idempotent(tmp_path: Path, session_factory, storage) -> None:
     service = VideoService(session_factory, VideoRepository(), storage)
     file_path = tmp_path / "fixture.mp4"
-    file_path.write_bytes(b"seed-data")
+    create_h264_fixture(file_path)
 
     first = service.seed_file(file_path, "Fixture")
     second = service.seed_file(file_path, "Changed title")
 
     assert first.id == second.id
     assert [video.id for video in service.list(20).items] == [first.id]
-    assert storage.stat(first.object_key).byte_size == len(b"seed-data")
+    assert storage.stat(first.object_key).byte_size == first.byte_size
 
 
 def test_list_detail_stream_and_cors_range(tmp_path: Path, session_factory, storage) -> None:
@@ -68,17 +139,17 @@ def test_list_detail_stream_and_cors_range(tmp_path: Path, session_factory, stor
 
     full = client.get(f"/videos/{video.id}/stream")
     assert full.status_code == 200
-    assert full.content == b"0123456789"
+    assert full.content
     assert full.headers["accept-ranges"] == "bytes"
-    assert full.headers["content-length"] == "10"
+    assert full.headers["content-length"] == str(len(full.content))
 
     partial = client.get(
         f"/videos/{video.id}/stream",
         headers={"Range": "bytes=2-5", "Origin": "http://localhost:3000"},
     )
     assert partial.status_code == 206
-    assert partial.content == b"2345"
-    assert partial.headers["content-range"] == "bytes 2-5/10"
+    assert partial.content == full.content[2:6]
+    assert partial.headers["content-range"] == f"bytes 2-5/{len(full.content)}"
     assert partial.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "Content-Range" in partial.headers["access-control-expose-headers"]
 
@@ -110,7 +181,7 @@ def test_rejects_invalid_range_and_missing_video(tmp_path: Path, session_factory
 
     response = client.get(f"/videos/{video.id}/stream", headers={"Range": "bytes=0-1,3-4"})
     assert response.status_code == 416
-    assert response.headers["content-range"] == "bytes */10"
+    assert response.headers["content-range"] == f"bytes */{video.byte_size}"
 
     missing = client.get(f"/videos/{UUID(int=0)}")
     assert missing.status_code == 404
@@ -129,17 +200,15 @@ def test_missing_object_is_safe_error(tmp_path: Path, session_factory, storage) 
 
 
 def test_stream_range_bodies_match_real_minio_object(
-    tmp_path: Path,
-    session_factory,
-    storage,
+    tmp_path: Path, session_factory, storage
 ) -> None:
-    content = bytes(range(256)) * 1024
-    video = seed_video(tmp_path, session_factory, storage, content)
+    video = seed_video(tmp_path, session_factory, storage)
     client = TestClient(create_app())
 
     full = client.get(f"/videos/{video.id}/stream")
     assert full.status_code == 200
-    assert full.content == content
+    content = full.content
+    assert len(content) > 1024
     assert hashlib.sha256(full.content).hexdigest() == hashlib.sha256(content).hexdigest()
 
     open_ended = client.get(f"/videos/{video.id}/stream", headers={"Range": "bytes=1024-"})
@@ -147,13 +216,16 @@ def test_stream_range_bodies_match_real_minio_object(
     assert open_ended.content == content[1024:]
     assert open_ended.headers["content-length"] == str(len(content) - 1024)
 
-    suffix = client.get(f"/videos/{video.id}/stream", headers={"Range": "bytes=-65536"})
+    suffix_length = min(65536, len(content))
+    suffix = client.get(
+        f"/videos/{video.id}/stream", headers={"Range": f"bytes=-{suffix_length}"}
+    )
     explicit = client.get(
         f"/videos/{video.id}/stream",
-        headers={"Range": f"bytes={len(content) - 65536}-{len(content) - 1}"},
+        headers={"Range": f"bytes={len(content) - suffix_length}-{len(content) - 1}"},
     )
     assert suffix.status_code == explicit.status_code == 206
-    assert suffix.content == explicit.content == content[-65536:]
+    assert suffix.content == explicit.content == content[-suffix_length:]
 
     clipped = client.get(
         f"/videos/{video.id}/stream",

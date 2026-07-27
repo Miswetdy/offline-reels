@@ -156,13 +156,14 @@ downloads only from the installed Home Screen PWA.
 
 The iPhone acceptance run showed that Safari and the installed PWA have
 separate offline-storage contexts. A VP9 MP4 failed on iPhone, while H.264
-with `yuv420p` and `faststart` played correctly. The next stage will add media
-normalization before stored media reaches playback.
+with `yuv420p` and `faststart` played correctly. Media normalization must run
+before stored media reaches playback.
 
 ## Status
 
-Accepted. Stage 1A implements the normalization boundary; ingestion integration
-remains pending in Stage 1B.
+Accepted. Stages 1A–1B implement the boundary and integrate it with new
+synchronous seed ingestion. Existing objects remain unchanged and require
+manual deletion/reseeding if incompatible.
 
 ---
 
@@ -179,12 +180,13 @@ compatible input; transcode all other supported input with `libx264`.
 This preserves compatible input where possible while addressing the confirmed
 iPhone VP9 failure. `ffprobe` metadata alone is insufficient, so both source
 and result must pass complete `ffmpeg` decode validation. The public API yields
-the result inside a deterministic context-managed temporary scope, which lets a
-future uploader consume it before cleanup. The first stage is deliberately
-independent of MinIO and database state to make the safety boundary testable
-before ingestion integration.
+the result inside a deterministic context-managed temporary scope, and the seed
+service uploads it before cleanup. PostgreSQL metadata is committed only after
+the normalized object upload; a later DB failure triggers best-effort object
+compensation.
 
 ## Status
 
-Accepted. Stage 1A is implemented; seed/ingestion integration is deferred to
-Stage 1B.
+Accepted. Stages 1A and 1B are implemented for new synchronous seeds. Collector
+ingestion, background processing and migration of historical objects remain
+separate work.

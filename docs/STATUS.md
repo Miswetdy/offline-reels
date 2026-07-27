@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Media normalization ingestion integration planning (Stage 1B).
+Media normalization ingestion integration (Stage 1B).
 
 ## Completed
 
@@ -20,13 +20,13 @@ Media normalization ingestion integration planning (Stage 1B).
 
 ## Current focus
 
-Stage 1A is complete: it provides an isolated typed media-normalization layer in the API image.
-It probes through `ffprobe`, validates complete decode through `ffmpeg`, then
-remuxes already-compatible H.264/`yuv420p`/AAC-or-no-audio MP4 or transcodes
-incompatible input to H.264 Main 4.1, `yuv420p`, optional AAC and `faststart`.
-The output is reprobed and decoded before publication. Stage 1B will connect
-this foundation to seed/ingestion; no MinIO, PostgreSQL, CLI or API behavior
-has changed yet.
+Stage 1B connects the typed Stage 1A media boundary to the existing synchronous
+`seed_video` ingest. Every newly seeded input is probed and decode-validated,
+then remuxed or transcoded to the canonical MP4 before MinIO upload and the
+PostgreSQL insert. The verified temporary output lives only inside the
+normalization context during upload and is removed on every exit path. A
+successful seed records nullable normalization metadata; existing objects and
+catalog DTOs remain unchanged.
 
 ## Production-like VPS foundation
 
@@ -56,8 +56,9 @@ monitoring, or a concrete VPS configuration.
 
 ## Next step
 
-Design and implement media normalization, then repeat the installed-PWA iPhone
-acceptance with normalized input.
+Run the local production-like normalization smoke, then implement
+previous/current/next preload and Reels-like controls before repeating the
+installed-PWA iPhone acceptance with normalized input.
 
 ## Recent decisions
 

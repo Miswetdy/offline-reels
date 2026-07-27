@@ -252,8 +252,7 @@ controls instead of native iOS controls.
 
 ## Media normalization foundation
 
-Stage 1A adds an isolated server-side `app.media` boundary without changing
-the seed CLI, MinIO, PostgreSQL, or API contracts. `probe_media` invokes
+Stage 1A adds an isolated server-side `app.media` boundary. `probe_media` invokes
 `ffprobe` without a shell and returns typed stream metadata; every source and
 normalized output must also pass a full `ffmpeg -map 0 -f null -` decode
 validation. The MVP canonical output is MP4 with H.264 video, `yuv420p`, AAC
@@ -268,9 +267,19 @@ verified result only inside a controlled context; Stage 1B must upload
 `result.output_path` before leaving that context. The output is removed on both
 normal and exceptional exit, rather than being left to garbage collection.
 Internally, normalization writes to a sibling temporary file, then reprobes and
-decodes it before atomically publishing into that private directory. Stage 1B
-will integrate this verified boundary into ingestion; Stage 1A does not upload,
-seed, or persist normalized files.
+decodes it before atomically publishing into that private directory.
+
+Stage 1B consumes this context from the existing synchronous seed service. It
+uses only the normalized MP4 bytes and the generated `videos/{sha256}.mp4`
+key; user filenames and original bytes never reach MinIO. The sequence is
+normalization → MinIO upload (`video/mp4`) → PostgreSQL upsert/commit. If
+normalization or upload fails, no row is created. If the database write fails
+after a newly created object, the session rolls back and the service makes a
+best-effort MinIO delete, logging a compensation failure separately. This is a
+compensating workflow rather than a distributed transaction. New rows store
+nullable strategy, source/output codecs, dimensions, duration, normalized byte
+size, audio presence and timestamp; existing objects are neither migrated nor
+changed, and the public catalog contract is unchanged.
 
 ---
 

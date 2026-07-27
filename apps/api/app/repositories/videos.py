@@ -46,6 +46,15 @@ class VideoRepository:
         object_key: str,
         content_type: str,
         byte_size: int,
+        normalization_strategy: str | None = None,
+        original_video_codec: str | None = None,
+        normalized_video_codec: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        duration_ms: int | None = None,
+        file_size_bytes: int | None = None,
+        has_audio: bool | None = None,
+        normalized_at: datetime | None = None,
     ) -> VideoUpsertResult:
         statement = (
             insert(Video)
@@ -54,6 +63,15 @@ class VideoRepository:
                 object_key=object_key,
                 content_type=content_type,
                 byte_size=byte_size,
+                normalization_strategy=normalization_strategy,
+                original_video_codec=original_video_codec,
+                normalized_video_codec=normalized_video_codec,
+                width=width,
+                height=height,
+                duration_ms=duration_ms,
+                file_size_bytes=file_size_bytes,
+                has_audio=has_audio,
+                normalized_at=normalized_at,
             )
             .on_conflict_do_nothing(index_elements=[Video.object_key])
             .returning(Video)

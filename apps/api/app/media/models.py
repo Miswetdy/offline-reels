@@ -26,4 +26,5 @@ class NormalizedMedia:
     source_path: Path
     output_path: Path
     strategy: NormalizationStrategy
+    original_probe: MediaProbe
     probe: MediaProbe
