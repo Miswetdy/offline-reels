@@ -115,7 +115,7 @@ uv --directory apps/api run uvicorn app.main:app --reload
 
 ## Offline PWA
 
-The production build registers one Serwist worker at `/serwist/sw.js` with scope `/`. The manifest opens installed applications at `/offline`; its app shell is precached separately from `offline-reels-media-v1`, which holds downloaded MP4 responses. `/offline-media/{id}` is same-origin and served only from the local media cache; it has no Backend fallback. The offline page shows exact library bytes from IndexedDB, approximate origin usage/quota when supported, and whether `navigator.storage.persisted()` reports persistent storage. This is a diagnostic only: the app never requests persistence automatically and iOS may still evict data.
+The production build registers one Serwist worker at `/serwist/sw.js` with scope `/`. The manifest opens installed applications at `/offline`; its app shell is precached separately from `offline-reels-media-v1`, which holds downloaded MP4 responses. `/offline-media/{id}` is same-origin and served only from the local media cache; it has no Backend fallback. When Serwist reports a waiting shell update, the installed PWA shows a safe-area-aware Russian notification. The user must select **«Обновить»**; only then does the app send Serwist's supported `SKIP_WAITING` message, wait for `controllerchange`, and reload once. This does not clear the media cache or IndexedDB. The offline page shows exact library bytes from IndexedDB, approximate origin usage/quota when supported, and whether `navigator.storage.persisted()` reports persistent storage. This is a diagnostic only: the app never requests persistence automatically and iOS may still evict data.
 
 ## Security
 

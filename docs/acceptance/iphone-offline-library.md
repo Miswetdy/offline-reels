@@ -107,11 +107,11 @@ Expected: local media and metadata disappear together (or reconciliation repairs
 
 1. Keep an older installed PWA window open.
 2. Produce a new frontend build revision and open it online.
-3. Observe a waiting worker if old clients remain open.
-4. Close older windows, reopen the app, and confirm the new worker controls it.
-5. Verify `offline-reels-media-v1` and downloaded videos remain intact.
+3. In the installed PWA, observe the compact **«Доступна новая версия»** notification with **«Обновить»**. Confirm that no reload happens before the button is pressed, including while a video is playing or a download is active.
+4. Select **«Обновить»** once. Confirm one reload after the worker takes control, then confirm that the notification does not create a reload loop.
+5. Verify the new shell controls the reopened PWA, `offline-reels-media-v1` and downloaded videos remain intact, and the offline catalog still contains its completed records.
 
-Expected: no forced `skipWaiting`, automatic reload loop, or media-cache deletion.
+Expected: `skipWaiting` is not forced during install. The user alone starts the message-based activation of the waiting worker; exactly one post-`controllerchange` reload occurs, with no media-cache or IndexedDB deletion.
 
 ## H. Storage recovery
 

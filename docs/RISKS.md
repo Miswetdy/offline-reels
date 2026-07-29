@@ -281,6 +281,7 @@ TASK-005 Block 4.1 precaches the production application shell so a previously vi
 - Navigation fallback is restricted to same-origin `GET /offline`; the Backend API, video streams and media are not runtime-cached.
 - Serwist's precache cleanup is isolated from `offline-reels-media-v1`; local-library delete/clear also targets only that media cache.
 - `reloadOnOnline=false` prevents a connection change from forcing an application reload.
+- A waiting worker is surfaced through Serwist's lifecycle API. The user explicitly starts the documented message-based `SKIP_WAITING` activation, and only its subsequent `controllerchange` reloads once; the update UI does not access Cache Storage or IndexedDB.
 
 ## Remaining limitation
 
@@ -312,7 +313,7 @@ The required iPhone acceptance has run, but Browser quota and persistence APIs
 remain hints, not retention guarantees; iOS may evict storage. Single-range
 delivery materializes a complete MP4 in worker memory per request, so
 20-minute and 50-swipe tests remain important targets. Multipart Range,
-background download, codec normalization, and an iOS-specific update UX
+background download, and long-session behavior after a controlled shell update
 remain follow-up work.
 
 ## Status
@@ -333,12 +334,12 @@ The network hint from `navigator.onLine` is not a guarantee that the Backend is 
 - A failed catalog request that is classified as a fetch-level network failure, or a request while the browser reports offline, renders a controlled state with an explicit link to `/offline`; there is no redirect. This avoids relying on `navigator.onLine` as an authoritative reachability signal.
 - `/offline` is the sole navigation fallback. Unknown routes do not receive the offline-library document.
 - The network indicator is informational and does not infer downloaded-video availability.
-- `skipWaiting` is disabled and `reloadOnOnline=false`; the application does not force worker updates or page reloads.
+- `skipWaiting` is disabled and `reloadOnOnline=false`. A waiting update remains inert until the user selects **«Обновить»**; Serwist then activates only that waiting worker through its supported message API and the page reloads once after `controllerchange`.
 - Shell cache lifecycle remains isolated from `offline-reels-media-v1`.
 
 ## Remaining limitation
 
-Two open tabs can stay on different shell versions until the older clients close. There is deliberately no update banner, cross-tab coordination, forced activation or background synchronization. Manual desktop and iPhone lifecycle testing remains required.
+Two open tabs can stay on different shell versions until a user accepts the update in each relevant client; there is no cross-tab coordination or background synchronization. Manual desktop and iPhone lifecycle testing remains required.
 
 ## Status
 

@@ -4,6 +4,7 @@ import { SerwistProvider } from "@serwist/turbopack/react";
 import type { ReactNode } from "react";
 
 import { serviceWorkerRegistrationOptions } from "../lib/pwa/service-worker-policy";
+import { PwaUpdateNotification } from "./pwa-update-notification";
 
 export function OfflineShellProvider({ children }: { children: ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export function OfflineShellProvider({ children }: { children: ReactNode }) {
       options={{ scope: serviceWorkerRegistrationOptions.scope }}
     >
       {children}
+      <PwaUpdateNotification />
     </SerwistProvider>
   );
 }
