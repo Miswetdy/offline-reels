@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export type VerticalVideoFeedItem = {
   id: string;
@@ -19,6 +19,7 @@ type VerticalVideoFeedProps = {
 
 type MediaMode = "previous" | "active" | "next" | "inactive";
 type PlaybackErrorKind = "media" | "autoplay";
+type StartPreparation = { pending: boolean; callbacks: Set<() => void> };
 
 export function VerticalVideoFeed({
   items,
@@ -40,6 +41,7 @@ export function VerticalVideoFeed({
   const activeItemIdRef = useRef<string | null>(null);
   const lastPlaybackActiveItemIdRef = useRef<string | null>(null);
   const playbackGenerationRef = useRef(0);
+  const startPreparationsRef = useRef(new Map<HTMLVideoElement, StartPreparation>());
 
   const activeItemStillExists = activeItemId !== null && items.some((item) => item.id === activeItemId);
   const fallbackActiveItemId = items[Math.min(lastActiveIndex, items.length - 1)]?.id ?? null;
@@ -190,7 +192,39 @@ export function VerticalVideoFeed({
     };
   }, [closestItemToFeedCenter, items.length, setCurrentActiveItemId]);
 
+  const prepareVideoForStart = useCallback((video: HTMLVideoElement, onPrepared?: () => void) => {
+    const existingPreparation = startPreparationsRef.current.get(video);
+    if (existingPreparation?.pending) {
+      if (onPrepared) existingPreparation.callbacks.add(onPrepared);
+      return;
+    }
+
+    const preparation: StartPreparation = { pending: true, callbacks: new Set() };
+    if (onPrepared) preparation.callbacks.add(onPrepared);
+    startPreparationsRef.current.set(video, preparation);
+    video.pause();
+    video.style.visibility = "hidden";
+
+    const finishPreparation = () => {
+      if (startPreparationsRef.current.get(video) !== preparation) return;
+      preparation.pending = false;
+      video.style.visibility = "";
+      for (const callback of preparation.callbacks) callback();
+      preparation.callbacks.clear();
+    };
+
+    if (video.currentTime === 0) {
+      finishPreparation();
+      return;
+    }
+
+    video.addEventListener("seeked", finishPreparation, { once: true });
+    video.currentTime = 0;
+  }, []);
+
   const clearVideoSource = useCallback((video: HTMLVideoElement) => {
+    startPreparationsRef.current.delete(video);
+    video.style.visibility = "";
     if (video.hasAttribute("src")) {
       video.pause();
       video.removeAttribute("src");
@@ -230,8 +264,16 @@ export function VerticalVideoFeed({
 
   useEffect(() => () => {
     pauseAllVideos();
+    startPreparationsRef.current.clear();
     videoRefs.current.forEach(clearVideoSource);
   }, [clearVideoSource, pauseAllVideos]);
+
+  useEffect(() => {
+    const mountedVideos = new Set(videoRefs.current.values());
+    for (const video of startPreparationsRef.current.keys()) {
+      if (!mountedVideos.has(video)) startPreparationsRef.current.delete(video);
+    }
+  }, [items]);
 
   useEffect(() => {
     const desiredItems = items.filter((item) => sourceMode(item.id) !== "inactive");
@@ -257,21 +299,21 @@ export function VerticalVideoFeed({
   useEffect(() => {
     const activeVideo = effectiveActiveItemId ? videoRefs.current.get(effectiveActiveItemId) : undefined;
     const generation = ++playbackGenerationRef.current;
-    const isNewActiveItem = lastPlaybackActiveItemIdRef.current !== effectiveActiveItemId;
+    const previousPlaybackActiveItemId = lastPlaybackActiveItemIdRef.current;
+    const isNewActiveItem = previousPlaybackActiveItemId !== effectiveActiveItemId;
     lastPlaybackActiveItemIdRef.current = effectiveActiveItemId;
+    if (isNewActiveItem && previousPlaybackActiveItemId !== null && previousPlaybackActiveItemId !== effectiveActiveItemId) {
+      const previousVideo = videoRefs.current.get(previousPlaybackActiveItemId);
+      if (previousVideo) prepareVideoForStart(previousVideo);
+    }
     videoRefs.current.forEach((video, itemId) => {
       video.muted = muted;
       if (itemId !== effectiveActiveItemId) video.pause();
     });
     if (!activeVideo || !effectiveActiveItemId) return;
 
-    let resetBeforePlay = isNewActiveItem;
-    const playActiveVideo = () => {
+    const startActivePlayback = () => {
       if (generation !== playbackGenerationRef.current) return;
-      if (resetBeforePlay) {
-        activeVideo.currentTime = 0;
-        resetBeforePlay = false;
-      }
       void activeVideo.play().then(
         () => {
           if (generation !== playbackGenerationRef.current) activeVideo.pause();
@@ -282,6 +324,17 @@ export function VerticalVideoFeed({
           }
         },
       );
+    };
+
+    let resetBeforePlay = isNewActiveItem;
+    const playActiveVideo = () => {
+      if (generation !== playbackGenerationRef.current) return;
+      if (!resetBeforePlay) {
+        startActivePlayback();
+        return;
+      }
+      resetBeforePlay = false;
+      prepareVideoForStart(activeVideo, startActivePlayback);
     };
 
     let waitingForCanPlay = false;
@@ -295,7 +348,7 @@ export function VerticalVideoFeed({
       if (generation === playbackGenerationRef.current) playbackGenerationRef.current += 1;
       if (waitingForCanPlay) activeVideo.removeEventListener("canplay", playActiveVideo);
     };
-  }, [effectiveActiveItemId, items, muted]);
+  }, [effectiveActiveItemId, items, muted, prepareVideoForStart]);
 
   const setItemRef = useCallback((itemId: string, element: HTMLElement | null) => {
     const version = (itemRefVersions.current.get(itemId) ?? 0) + 1;
@@ -313,12 +366,14 @@ export function VerticalVideoFeed({
     });
   }, []);
 
-  const setVideoRef = useCallback(
-    (itemId: string) => (element: HTMLVideoElement | null) => {
-      if (element) videoRefs.current.set(itemId, element);
-      else videoRefs.current.delete(itemId);
-    },
-    [],
+  const setVideoRef = useCallback((itemId: string, element: HTMLVideoElement | null) => {
+    if (element) videoRefs.current.set(itemId, element);
+    else videoRefs.current.delete(itemId);
+  }, []);
+
+  const videoRefCallbacks = useMemo(
+    () => new Map(items.map((item) => [item.id, (element: HTMLVideoElement | null) => setVideoRef(item.id, element)])),
+    [items, setVideoRef],
   );
 
   if (items.length === 0) {
@@ -345,7 +400,7 @@ export function VerticalVideoFeed({
           aria-label={item.title}
         >
           <video
-            ref={setVideoRef(item.id)}
+            ref={videoRefCallbacks.get(item.id)}
             className="h-full w-full object-contain"
             controls
             muted={muted}
