@@ -38,6 +38,7 @@ export function VerticalVideoFeed({
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
   const intersectionRatios = useRef(new Map<string, number>());
   const activeItemIdRef = useRef<string | null>(null);
+  const lastPlaybackActiveItemIdRef = useRef<string | null>(null);
   const playbackGenerationRef = useRef(0);
 
   const activeItemStillExists = activeItemId !== null && items.some((item) => item.id === activeItemId);
@@ -256,14 +257,21 @@ export function VerticalVideoFeed({
   useEffect(() => {
     const activeVideo = effectiveActiveItemId ? videoRefs.current.get(effectiveActiveItemId) : undefined;
     const generation = ++playbackGenerationRef.current;
+    const isNewActiveItem = lastPlaybackActiveItemIdRef.current !== effectiveActiveItemId;
+    lastPlaybackActiveItemIdRef.current = effectiveActiveItemId;
     videoRefs.current.forEach((video, itemId) => {
       video.muted = muted;
       if (itemId !== effectiveActiveItemId) video.pause();
     });
     if (!activeVideo || !effectiveActiveItemId) return;
 
+    let resetBeforePlay = isNewActiveItem;
     const playActiveVideo = () => {
       if (generation !== playbackGenerationRef.current) return;
+      if (resetBeforePlay) {
+        activeVideo.currentTime = 0;
+        resetBeforePlay = false;
+      }
       void activeVideo.play().then(
         () => {
           if (generation !== playbackGenerationRef.current) activeVideo.pause();

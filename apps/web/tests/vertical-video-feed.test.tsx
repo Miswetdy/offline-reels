@@ -144,6 +144,122 @@ describe("VerticalVideoFeed", () => {
     expect(sourcedPlayerCount()).toBe(2);
   });
 
+  it("restarts a video before playback only when it becomes active again", async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+    const playSnapshots: Array<{ video: HTMLMediaElement; currentTime: number }> = [];
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function play(this: HTMLMediaElement) {
+      playSnapshots.push({ video: this, currentTime: this.currentTime });
+      return Promise.resolve();
+    });
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    const second = playerFor("Second video");
+
+    fireEvent.canPlay(first);
+    expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
+    first.currentTime = 7;
+    pause.mockClear();
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    expect(pause.mock.contexts).toContain(first);
+    fireEvent.canPlay(second);
+    expect(playSnapshots).toContainEqual({ video: second, currentTime: 0 });
+    second.currentTime = 4;
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.9 },
+      { target: secondSection, ratio: 0 },
+    ]);
+    await waitFor(() => expect(first).toHaveAttribute("preload", "auto"));
+    fireEvent.canPlay(first);
+    expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
+    expect(first.currentTime).toBe(0);
+    first.currentTime = 6;
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 0.9 },
+    ]);
+    await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    fireEvent.canPlay(second);
+    expect(playSnapshots).toContainEqual({ video: second, currentTime: 0 });
+    expect(second.currentTime).toBe(0);
+    expect(sourcedPlayerCount()).toBe(3);
+  });
+
+  it("does not reset the active video for mute or item updates", async () => {
+    const view = render(<VerticalVideoFeed items={items} />);
+    await screen.findByLabelText("First video");
+    const first = playerFor("First video");
+    fireEvent.canPlay(first);
+    first.currentTime = 7;
+
+    fireEvent.click(screen.getByRole("button", { name: "Turn sound on" }));
+    expect(first.currentTime).toBe(7);
+
+    view.rerender(<VerticalVideoFeed items={[...items]} />);
+    expect(first.currentTime).toBe(7);
+  });
+
+  it("ignores stale canplay callbacks after a rapid active-video transition", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    const second = playerFor("Second video");
+    let firstCurrentTime = 7;
+    const setFirstCurrentTime = vi.fn((value: number) => {
+      firstCurrentTime = value;
+    });
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: setFirstCurrentTime,
+    });
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    fireEvent.canPlay(first);
+    expect(firstCurrentTime).toBe(7);
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+    expect(play.mock.contexts).not.toContain(first);
+
+    fireEvent.canPlay(second);
+    expect(play.mock.contexts).toContain(second);
+    expect(play.mock.contexts).not.toContain(first);
+  });
+
+  it("pauses an obsolete play promise after a rapid active-video transition", async () => {
+    let resolveFirstPlay: (() => void) | undefined;
+    const firstPlay = new Promise<void>((resolve) => {
+      resolveFirstPlay = resolve;
+    });
+    let first: HTMLVideoElement;
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function play(this: HTMLMediaElement) {
+      return this === first ? firstPlay : Promise.resolve();
+    });
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    first = playerFor("First video");
+    const second = playerFor("Second video");
+
+    fireEvent.canPlay(first);
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    fireEvent.canPlay(second);
+    pause.mockClear();
+    resolveFirstPlay?.();
+
+    await waitFor(() => expect(pause.mock.contexts).toContain(first));
+    expect(play.mock.contexts).toContain(second);
+  });
+
   it("releases distant sources across rapid active changes and keeps a valid active item after removal", async () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
     const view = render(<VerticalVideoFeed items={fiveItems} />);
