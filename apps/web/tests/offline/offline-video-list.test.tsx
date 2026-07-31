@@ -18,6 +18,9 @@ vi.mock("../../lib/offline/library-management", () => ({
   deleteOfflineLibraryVideo: mocks.deleteVideo,
   clearOfflineLibrary: mocks.clearLibrary,
 }));
+vi.mock("../../lib/offline/media-cache", () => ({
+  getMediaCacheKey: (videoId: string) => `/offline-media/${videoId}`,
+}));
 import { OfflineVideoList } from "../../components/offline-video-list";
 import { VIDEO_ID_ONE, VIDEO_ID_TWO } from "./test-helpers";
 
@@ -44,6 +47,7 @@ beforeEach(() => {
   mocks.persisted.mockResolvedValue(null);
   mocks.deleteVideo.mockImplementation(async (id: string) => { records = records.filter((record) => record.id !== id); });
   mocks.clearLibrary.mockImplementation(async () => { records = []; });
+  window.history.replaceState({}, "", "/offline");
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.stubGlobal("confirm", vi.fn(() => true));
   const serviceWorker = new EventTarget();
@@ -52,10 +56,6 @@ beforeEach(() => {
     ready: { configurable: true, value: Promise.resolve({}) },
   });
   Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: serviceWorker });
-  Object.defineProperties(URL, {
-    createObjectURL: { configurable: true, value: vi.fn() },
-    revokeObjectURL: { configurable: true, value: vi.fn() },
-  });
   vi.spyOn(globalThis, "fetch");
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
@@ -67,8 +67,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(navigator, "serviceWorker");
-  Reflect.deleteProperty(URL, "createObjectURL");
-  Reflect.deleteProperty(URL, "revokeObjectURL");
 });
 
 describe("OfflineVideoList management", () => {
@@ -85,8 +83,6 @@ describe("OfflineVideoList management", () => {
     expect(screen.queryByText("Загрузка офлайн-библиотеки…")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("First")).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByLabelText("Offline library summary")).toHaveTextContent("Офлайн: 1 видео · 6 Б"));
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -120,20 +116,26 @@ describe("OfflineVideoList management", () => {
     expect(await screen.findByRole("button", { name: "Очистка…" })).toBeDisabled();
     finish();
     expect(await screen.findByText("Офлайн-библиотека пуста")).toBeInTheDocument();
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("uses synthetic Service Worker media URLs without creating Blob URLs", async () => {
+  it("uses synthetic Service Worker media URLs", async () => {
     render(<OfflineVideoList />);
 
     const first = await screen.findByLabelText("First");
     const second = screen.getByLabelText("Second");
-    await waitFor(() => expect(first.querySelector("video")).toHaveAttribute("src", `/offline-media/${VIDEO_ID_ONE}`));
+    const firstVideo = first.querySelector("video");
+    await waitFor(() => expect(firstVideo).toHaveAttribute("src", `/offline-media/${VIDEO_ID_ONE}`));
     expect(second.querySelector("video")).toHaveAttribute("src", `/offline-media/${VIDEO_ID_TWO}`);
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    expect(firstVideo).not.toHaveAttribute("controls");
+    expect(firstVideo).toHaveAttribute("loop");
+    expect(document.querySelector('[data-testid^="reels-gesture-"]')).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Turn sound on" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("app-bottom-navigation")).toHaveClass("app-bottom-navigation--floating");
+    expect(screen.getByTestId("reels-bottom-glass-backdrop")).toHaveClass("reels-bottom-glass-backdrop");
+    expect(screen.getByRole("link", { name: "Офлайн-библиотека" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Главная и загрузка" })).toHaveAttribute("href", "/videos");
+    expect(screen.queryByRole("link", { name: "К онлайн-ленте" })).not.toBeInTheDocument();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 

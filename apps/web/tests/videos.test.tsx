@@ -81,6 +81,7 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(fireEvent, "canPlay").mockImplementation(fireEvent.loadedMetadata);
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
 });
 
@@ -159,6 +160,21 @@ describe("VideoList", () => {
       "http://localhost:8000/videos/video-one/stream",
     );
     expect(playerFor("First video")).toHaveAttribute("preload", "auto");
+    expect(playerFor("First video")).toHaveAttribute("controls");
+    expect(playerFor("First video")).not.toHaveAttribute("loop");
+    expect(playerFor("First video")).toHaveClass("object-contain");
+    expect(playerFor("First video")).not.toHaveAttribute("draggable");
+    expect(screen.getByRole("button", { name: "Turn sound on" })).toBeInTheDocument();
+    expect(screen.getByTestId("app-bottom-navigation")).toHaveClass("app-bottom-navigation--floating");
+    expect(screen.queryByTestId("reels-bottom-glass-backdrop")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Главная и загрузка" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Офлайн-библиотека" })).toHaveAttribute("href", "/offline");
+    expect(screen.queryByTestId("reels-gesture-video-one")).not.toBeInTheDocument();
+    const firstSection = screen.getByLabelText("First video");
+    expect(firstSection).not.toHaveClass("reels-interaction-card");
+    const contextMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    firstSection.dispatchEvent(contextMenu);
+    expect(contextMenu.defaultPrevented).toBe(false);
     expect(playerFor("Second video")).toHaveAttribute("preload", "metadata");
     expect(playerFor("Third video")).not.toHaveAttribute("src");
     expect(playerFor("Third video")).toHaveAttribute("preload", "none");

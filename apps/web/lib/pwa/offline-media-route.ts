@@ -114,19 +114,27 @@ export async function handleOfflineMediaRequest(
   cacheStorage: Pick<CacheStorage, "open"> | undefined = globalThis.caches,
 ): Promise<Response> {
   const videoId = getOfflineMediaRouteVideoId(new URL(request.url));
-  if (videoId === null) return createControlledResponse(404);
-  if (cacheStorage === undefined) return createControlledResponse(503);
+  const rangeHeader = request.headers.get("range");
+  if (videoId === null) {
+    return createControlledResponse(404);
+  }
+  if (cacheStorage === undefined) {
+    return createControlledResponse(503);
+  }
 
   try {
     const mediaCache = await cacheStorage.open(OFFLINE_MEDIA_CACHE_NAME);
     const cached = await mediaCache.match(getOfflineMediaPath(videoId));
-    if (!cached) return createControlledResponse(404);
+    if (!cached) {
+      return createControlledResponse(404);
+    }
 
     const bytes = new Uint8Array(await cached.arrayBuffer());
     const totalSize = bytes.byteLength;
-    const rangeHeader = request.headers.get("range");
     const range = rangeHeader === null ? undefined : parseSingleByteRange(rangeHeader, totalSize);
-    if (rangeHeader !== null && range === null) return createRangeNotSatisfiableResponse(totalSize);
+    if (rangeHeader !== null && range === null) {
+      return createRangeNotSatisfiableResponse(totalSize);
+    }
 
     const parsedRange = range ?? undefined;
     const headers = createMediaHeaders(cached, totalSize, parsedRange);

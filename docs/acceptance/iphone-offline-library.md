@@ -15,7 +15,9 @@ set `FRONTEND_ORIGIN=https://HOST.ts.net`. Do not put secrets in either value.
   media normalization is required before the next acceptance run.
 - Post-iPhone hardening block 2 now keeps a previous/current/next preload
   window to improve return to the prior item while bounding resource use.
-  Block 3 will add Reels-like controls.
+- Post-iPhone hardening block 3 now enables Reels-like controls only on
+  `/offline`; `/videos` retains native controls. Block 4 is the installed-PWA
+  real-device acceptance for this lifecycle.
 
 | Field | Value |
 | --- | --- |
@@ -77,14 +79,47 @@ Expected: the Serwist application shell, IndexedDB catalog, and local media rout
 
 ## D. Playback and lifecycle
 
-1. Swipe quickly forward and backward through the offline feed.
-2. Seek each tested video near the beginning, middle, and end.
-3. Pause/resume and toggle sound.
-4. Background the PWA and return.
-5. Lock the screen for 30 seconds, unlock, and verify the resulting controlled playback state.
-6. Confirm only one video plays audibly/visibly at a time.
+1. Cold-launch the installed PWA at `/offline`. Confirm the first active reel requests playback with sound enabled. If iOS blocks audible autoplay, it must remain unmuted and paused with the central Play control visible; tap it once and confirm the same item starts with sound. The app must not silently switch to muted playback.
+2. Short-tap the central video area twice. Confirm the first tap pauses and reveals one central SVG play control with one smaller SVG sound control above it. Resume with both the play button and a second short surface tap; controls must disappear only after playback actually resumes, and remain available if iOS rejects play.
+3. Tap sound directly. Confirm only mute changes and the tap does not also pause, resume or trigger a hold.
+4. While a video is playing, hold the centre for at least 250 ms without moving. Confirm temporary pause and release-to-resume without showing tap controls. Repeat while already paused and confirm release does not start playback or show new controls.
+5. Hold the outer left 10%, then outer right 10%. Confirm a nearby `2×` indicator, temporary double speed, restoration on release, and no playback start when already paused. Confirm touches immediately inside the remaining central 80% use centre-hold behaviour instead.
+6. Begin each hold and then move vertically more than roughly 12 CSS px, both before and after the hold threshold. Confirm temporary actions end, no tap is synthesized, centre hold resumes only while its item remains active, and native vertical scrolling remains smooth.
+7. Start with A fully snapped. Drag toward B until B becomes active but does not fill the viewport, then reverse to A; repeat A↔B several times without releasing into a full snap. Each card must resume from its own paused position and retain its frame—no seek to 0 or black frame. Then let B fully fill the feed, wait for A to leave completely, and return to A: it must start at 0:00 without a stale-frame flash. Repeat symmetrically from B back to A. Full commit is expected only at an effectively full card (observer ratio at least 0.999 with geometry tolerance), never at a partial 50–99% overlap.
+8. Confirm video fills the viewport without letterboxing (symmetric crop is acceptable). Check the lower order is metadata/actions, thin non-seekable progress, then glass bottom navigation; the video should remain visible but blurred only behind that lower navigation zone. Confirm progress tracks only the active video, resets at the start, and does not overlap card actions, navigation, or the iPhone safe area. Check `/offline` marks **Офлайн-библиотека** active and `/videos` marks **Главная и загрузка** active; both links must remain tappable without triggering playback gestures. Author/caption UI is intentionally not present yet.
+9. During pending and active holds, test normal release, system gesture/pointer cancellation where reproducible, background/foreground, and a 30-second screen lock. Confirm no stuck `2×`, text selection, magnifier, copy callout, stale overlay, old-video resume or forbidden autoplay.
 
-Expected: the previous/current/next media window holds at most three `src` values, videos use `playsInline`, return from background does not force forbidden autoplay, and a failed card remains terminal without blocking neighbouring cards.
+Expected: `/offline` has no native video controls, retains `playsInline`, looping and native vertical scroll-snap, keeps the previous/current/next window to at most three `src` values, and never plays two videos simultaneously. Gesture controls remain safe-area-aware and accessible, return from background does not force autoplay, and a failed card remains terminal without blocking neighbouring cards. Interactive horizontal seeking is intentionally not part of block 3.
+
+### Lower visual layout
+
+The floating navigation should sit visibly above the home indicator in both the
+installed PWA and Safari, with a bounded adaptive gap rather than a single
+device-specific height. On `/videos`, confirm native controls and the final
+content are above the same reserved footprint. On `/offline`, confirm the order
+is metadata/actions, transparent pointer-inert progress over one continuous
+blurred backdrop, navigation pill, then safe-area gap. The video itself must
+remain sharp outside that shared glass zone; this visual tuning must not change tap, hold, swipe or
+playback behaviour.
+
+### Accepted edge-rate limitation
+
+Keep normal audio and standard pitch preservation enabled. On iOS WebKit, AAC
+MP4 can show a short frame freeze or clock jump at the temporary `1× → 2× →
+1×` edge-hold boundary. This was reproduced with both Service Worker and Blob
+sources while fully buffered; short GOP and B-frames were not the root cause.
+A no-audio variant was much smoother, but disabling pitch preservation only
+partly helped and distorted speech. Record the symptom in acceptance evidence,
+but do not replace it with a forced short-GOP/no-B-frames transcode in the PWA
+MVP. Re-downloading unchanged server media alone is not expected to remove this
+platform behavior.
+
+After a full B snap, immediately reverse to A without waiting for a further
+scroll callback. Test both directions and repeat with a short pause after the
+snap. A must already be prepared at 0:00 and play without a black frame,
+activation-time seek or hidden-to-visible flash. This must hold whether the
+old card's zero-overlap observer callback was delivered before or after the
+new card's full-screen callback.
 
 ## E. Long offline session
 

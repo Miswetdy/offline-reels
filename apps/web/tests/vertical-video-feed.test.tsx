@@ -72,6 +72,7 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(fireEvent, "canPlay").mockImplementation(fireEvent.loadedMetadata);
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
 });
 
@@ -144,8 +145,7 @@ describe("VerticalVideoFeed", () => {
     expect(sourcedPlayerCount()).toBe(2);
   });
 
-  it("restarts a video before playback only when it becomes active again", async () => {
-    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+  it("preserves temporary positions until a full-screen commit, then restarts the committed-away item", async () => {
     const playSnapshots: Array<{ video: HTMLMediaElement; currentTime: number }> = [];
     vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function play(this: HTMLMediaElement) {
       playSnapshots.push({ video: this, currentTime: this.currentTime });
@@ -160,34 +160,139 @@ describe("VerticalVideoFeed", () => {
     fireEvent.canPlay(first);
     expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
     first.currentTime = 7;
-    pause.mockClear();
 
-    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.9 },
+    ]);
     await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
-    expect(pause.mock.contexts).toContain(first);
+    await waitFor(() => expect(first).toHaveAttribute("preload", "metadata"));
     fireEvent.canPlay(second);
     expect(playSnapshots).toContainEqual({ video: second, currentTime: 0 });
     second.currentTime = 4;
 
     observerFor(firstSection).trigger([
       { target: firstSection, ratio: 0.9 },
-      { target: secondSection, ratio: 0 },
+      { target: secondSection, ratio: 0.5 },
     ]);
     await waitFor(() => expect(first).toHaveAttribute("preload", "auto"));
-    fireEvent.canPlay(first);
-    expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
-    expect(first.currentTime).toBe(0);
-    first.currentTime = 6;
+    await waitFor(() => {
+      fireEvent.canPlay(first);
+      expect(playSnapshots).toContainEqual({ video: first, currentTime: 7 });
+    });
+    expect(first.currentTime).toBe(7);
+    first.currentTime = 8;
 
     observerFor(firstSection).trigger([
-      { target: firstSection, ratio: 0 },
+      { target: firstSection, ratio: 0.5 },
       { target: secondSection, ratio: 0.9 },
     ]);
     await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
     fireEvent.canPlay(second);
-    expect(playSnapshots).toContainEqual({ video: second, currentTime: 0 });
-    expect(second.currentTime).toBe(0);
+    expect(playSnapshots).toContainEqual({ video: second, currentTime: 4 });
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    expect(first.currentTime).toBe(0);
+    expect(first.style.visibility).toBe("hidden");
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.9 },
+      { target: secondSection, ratio: 0 },
+    ]);
+    fireEvent.seeked(first);
+    expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
     expect(sourcedPlayerCount()).toBe(3);
+  });
+
+  it("commits only an effectively full card and rejects rounded or stale observer ratios", async () => {
+    render(<VerticalVideoFeed items={items} />);
+    const feed = await screen.findByLabelText("Video feed");
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    setRect(feed, 0, 100);
+    setRect(firstSection, 0, 100);
+    setRect(secondSection, 1, 100);
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    expect(feed).toHaveAttribute("data-committed-item-id", "one");
+
+    setRect(firstSection, -100, 100);
+    setRect(secondSection, 0, 100);
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 0.99 },
+    ]);
+    expect(feed).toHaveAttribute("data-committed-item-id", "one");
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 0.999 },
+    ]);
+    await waitFor(() => expect(feed).toHaveAttribute("data-committed-item-id", "two"));
+  });
+
+  it("starts exactly one background reset when A zero is observed before B becomes committed", async () => {
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    let firstCurrentTime = 7;
+    const setFirstCurrentTime = vi.fn((value: number) => {
+      firstCurrentTime = value;
+    });
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: setFirstCurrentTime,
+    });
+
+    observerFor(firstSection).trigger([{ target: firstSection, ratio: 0 }]);
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 1 }]);
+    expect(setFirstCurrentTime).toHaveBeenCalledTimes(1);
+    expect(setFirstCurrentTime).toHaveBeenCalledWith(0);
+    expect(first.style.visibility).toBe("hidden");
+
+    observerFor(firstSection).trigger([{ target: firstSection, ratio: 0 }]);
+    expect(setFirstCurrentTime).toHaveBeenCalledTimes(1);
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 1 }]);
+    expect(setFirstCurrentTime).toHaveBeenCalledTimes(1);
+  });
+
+  it("queues B-full-before-A-zero and starts the reset as soon as A is geometrically offscreen", async () => {
+    render(<VerticalVideoFeed items={items} />);
+    const feed = await screen.findByLabelText("Video feed");
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    let firstCurrentTime = 7;
+    const setFirstCurrentTime = vi.fn((value: number) => {
+      firstCurrentTime = value;
+    });
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: setFirstCurrentTime,
+    });
+    setRect(feed, 0, 100);
+    setRect(firstSection, 0, 100);
+    setRect(secondSection, 0, 100);
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 1 }]);
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+
+    setRect(firstSection, -100, 100);
+    observerFor(firstSection).trigger([{ target: firstSection, ratio: 0 }]);
+    expect(setFirstCurrentTime).toHaveBeenCalledTimes(1);
+    expect(first.style.visibility).toBe("hidden");
   });
 
   it("does not reset the active video for mute or item updates", async () => {
@@ -204,7 +309,7 @@ describe("VerticalVideoFeed", () => {
     expect(first.currentTime).toBe(7);
   });
 
-  it("prepares a deactivated video at the start and ignores its stale canplay callback", async () => {
+  it("keeps a partially visible outgoing video frozen, then prepares it only once fully offscreen", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     render(<VerticalVideoFeed items={items} />);
     const firstSection = await screen.findByLabelText("First video");
@@ -223,15 +328,91 @@ describe("VerticalVideoFeed", () => {
 
     observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
     await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    expect(firstCurrentTime).toBe(7);
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+    expect(first.style.visibility).toBe("");
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
     expect(firstCurrentTime).toBe(0);
     expect(setFirstCurrentTime).toHaveBeenCalledWith(0);
     expect(first.style.visibility).toBe("hidden");
     fireEvent.canPlay(first);
     expect(play.mock.contexts).not.toContain(first);
 
+    await waitFor(() => expect(screen.getByLabelText("Video feed")).toHaveAttribute("data-committed-item-id", "two"));
     fireEvent.canPlay(second);
     expect(play.mock.contexts).toContain(second);
     expect(play.mock.contexts).not.toContain(first);
+  });
+
+  it("also preserves the outgoing frame while scrolling backward until that card fully leaves", async () => {
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    const second = playerFor("Second video");
+    let secondCurrentTime = 8;
+    const setSecondCurrentTime = vi.fn((value: number) => {
+      secondCurrentTime = value;
+    });
+    Object.defineProperty(second, "currentTime", {
+      configurable: true,
+      get: () => secondCurrentTime,
+      set: setSecondCurrentTime,
+    });
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    await waitFor(() => expect(first).toHaveAttribute("preload", "metadata"));
+
+    observerFor(firstSection).trigger([{ target: firstSection, ratio: 0.9 }]);
+    expect(secondCurrentTime).toBe(8);
+    expect(setSecondCurrentTime).not.toHaveBeenCalled();
+    expect(second.style.visibility).toBe("");
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 1 },
+      { target: secondSection, ratio: 0 },
+    ]);
+    expect(setSecondCurrentTime).toHaveBeenCalledWith(0);
+    expect(second.style.visibility).toBe("hidden");
+  });
+
+  it("cancels a pending offscreen reset when that video's source changes", async () => {
+    const view = render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    let firstCurrentTime = 7;
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: (value: number) => {
+        firstCurrentTime = value;
+      },
+    });
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    expect(first.style.visibility).toBe("hidden");
+
+    view.rerender(<VerticalVideoFeed items={[
+      { ...items[0], mediaUrl: "https://media.test/one-replaced.mp4" },
+      ...items.slice(1),
+    ]} />);
+    await waitFor(() => expect(first).toHaveAttribute("src", "https://media.test/one-replaced.mp4"));
+    expect(first.style.visibility).toBe("");
+
+    fireEvent.seeked(first);
+    fireEvent.loadedData(first);
+    expect(first.style.visibility).toBe("");
   });
 
   it("keeps a returning video hidden until its prepared seek reaches the start", async () => {
@@ -256,6 +437,12 @@ describe("VerticalVideoFeed", () => {
 
     observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
     await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    expect(first.style.visibility).toBe("");
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
     expect(first.style.visibility).toBe("hidden");
 
     observerFor(firstSection).trigger([
@@ -263,18 +450,115 @@ describe("VerticalVideoFeed", () => {
       { target: secondSection, ratio: 0 },
     ]);
     await waitFor(() => expect(first).toHaveAttribute("preload", "auto"));
+    await waitFor(() => expect(second).toHaveAttribute("preload", "metadata"));
     fireEvent.canPlay(first);
     expect(playSnapshots).not.toContainEqual({ video: first, currentTime: 7 });
     expect(first.style.visibility).toBe("hidden");
 
     fireEvent.seeked(first);
+    fireEvent.loadedData(first);
 
     expect(firstCurrentTime).toBe(0);
     expect(first.style.visibility).toBe("");
     expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
   });
 
-  it("does not let stale seeked work revive an old video during a rapid 1-to-2-to-1 transition", async () => {
+  it("reuses a prepared-at-zero card on return without another seek or hidden frame", async () => {
+    const playSnapshots: Array<{ video: HTMLMediaElement; currentTime: number }> = [];
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function play(this: HTMLMediaElement) {
+      playSnapshots.push({ video: this, currentTime: this.currentTime });
+      return Promise.resolve();
+    });
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    let firstCurrentTime = 7;
+    const setFirstCurrentTime = vi.fn((value: number) => {
+      firstCurrentTime = value;
+    });
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: setFirstCurrentTime,
+    });
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    expect(first.style.visibility).toBe("hidden");
+    fireEvent.seeked(first);
+    fireEvent.loadedData(first);
+    expect(first.style.visibility).toBe("");
+    expect(setFirstCurrentTime).toHaveBeenCalledTimes(1);
+    playSnapshots.length = 0;
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.9 },
+      { target: secondSection, ratio: 0 },
+    ]);
+    await waitFor(() => expect(playerFor("Second video")).toHaveAttribute("preload", "metadata"));
+    fireEvent.loadedMetadata(first);
+
+    expect(first.style.visibility).toBe("");
+    expect(setFirstCurrentTime).toHaveBeenCalledTimes(1);
+    expect(playSnapshots).toContainEqual({ video: first, currentTime: 0 });
+  });
+
+  it("marks an already-zero offscreen card prepared without waiting for seeked", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(HTMLMediaElement.HAVE_CURRENT_DATA);
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    let firstCurrentTime = 0;
+    const setFirstCurrentTime = vi.fn((value: number) => {
+      firstCurrentTime = value;
+    });
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: setFirstCurrentTime,
+    });
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+    expect(first.style.visibility).toBe("");
+  });
+
+  it("waits for loaded media data when seeked arrives before a decodable frame", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(HTMLMediaElement.HAVE_METADATA);
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    let firstCurrentTime = 7;
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: (value: number) => {
+        firstCurrentTime = value;
+      },
+    });
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    expect(first.style.visibility).toBe("hidden");
+    fireEvent.seeked(first);
+    expect(first.style.visibility).toBe("hidden");
+
+    fireEvent.loadedData(first);
+    expect(first.style.visibility).toBe("");
+  });
+
+  it("does not let a stale seeked callback revive an item after a committed departure", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     render(<VerticalVideoFeed items={items} />);
     const firstSection = await screen.findByLabelText("First video");
@@ -290,16 +574,18 @@ describe("VerticalVideoFeed", () => {
       },
     });
 
-    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
     await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
     observerFor(firstSection).trigger([
       { target: firstSection, ratio: 0.9 },
-      { target: secondSection, ratio: 0 },
+      { target: secondSection, ratio: 0.5 },
     ]);
     await waitFor(() => expect(first).toHaveAttribute("preload", "auto"));
-    fireEvent.canPlay(first);
     observerFor(firstSection).trigger([
-      { target: firstSection, ratio: 0 },
+      { target: firstSection, ratio: 0.5 },
       { target: secondSection, ratio: 0.9 },
     ]);
     await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
@@ -338,6 +624,97 @@ describe("VerticalVideoFeed", () => {
 
     await waitFor(() => expect(pause.mock.contexts).toContain(first));
     expect(play.mock.contexts).toContain(second);
+  });
+
+  it("starts from loadedmetadata without waiting for canplay after Safari metadata and suspend", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} />);
+    const first = playerFor("First video");
+
+    expect(play).not.toHaveBeenCalled();
+    first.dispatchEvent(new Event("canplay"));
+    fireEvent.suspend(first);
+    expect(play).not.toHaveBeenCalled();
+
+    fireEvent.loadedMetadata(first);
+
+    expect(play.mock.contexts).toEqual([first]);
+    first.dispatchEvent(new Event("canplay"));
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts immediately when metadata is already available", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(HTMLMediaElement.HAVE_METADATA);
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} />);
+
+    expect(play.mock.contexts).toEqual([playerFor("First video")]);
+  });
+
+  it("ignores late loadedmetadata from a stale active video", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    const second = playerFor("Second video");
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    first.dispatchEvent(new Event("loadedmetadata"));
+    expect(play.mock.contexts).not.toContain(first);
+
+    await waitFor(() => {
+      fireEvent.loadedMetadata(second);
+      expect(play.mock.contexts).toContain(second);
+    });
+    expect(play.mock.contexts).not.toContain(first);
+  });
+
+  it("waits for seeked only when a returning video actually needs a reset", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} />);
+    const firstSection = await screen.findByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    const second = playerFor("Second video");
+    let firstCurrentTime = 0;
+    const setFirstCurrentTime = vi.fn((value: number) => {
+      firstCurrentTime = value;
+    });
+    Object.defineProperty(first, "currentTime", {
+      configurable: true,
+      get: () => firstCurrentTime,
+      set: setFirstCurrentTime,
+    });
+
+    fireEvent.loadedMetadata(first);
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+    expect(play.mock.contexts).toContain(first);
+    firstCurrentTime = 7;
+
+    observerFor(firstSection).trigger([{ target: secondSection, ratio: 0.9 }]);
+    await waitFor(() => expect(second).toHaveAttribute("preload", "auto"));
+    expect(setFirstCurrentTime).not.toHaveBeenCalled();
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0 },
+      { target: secondSection, ratio: 1 },
+    ]);
+    expect(setFirstCurrentTime).toHaveBeenCalledWith(0);
+    fireEvent.loadedMetadata(second);
+
+    observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.9 },
+      { target: secondSection, ratio: 0 },
+    ]);
+    await waitFor(() => expect(first).toHaveAttribute("preload", "auto"));
+    play.mockClear();
+    fireEvent.loadedMetadata(first);
+    expect(play).not.toHaveBeenCalled();
+
+    fireEvent.seeked(first);
+    fireEvent.loadedData(first);
+    expect(play.mock.contexts).toEqual([first]);
   });
 
   it("releases distant sources across rapid active changes and keeps a valid active item after removal", async () => {

@@ -143,6 +143,8 @@ Creating a video requires an object in MinIO and a metadata record in PostgreSQL
 
 TASK-003 creates or verifies the object first and then upserts metadata by the deterministic object key. Repeating the seed repairs a missing object or missing database record without creating duplicates.
 
+- Full-screen commit is tied to geometry rather than callback timing. It atomically marks the prior committed card and immediately checks cached intersection/root geometry, so either callback order starts one offscreen preparation. The card progresses from reset-required through reset-in-flight to prepared-at-zero, and becomes visible only after a decodable first frame. Device acceptance must still confirm WebKit retains that prepared frame offscreen.
+
 ## Remaining limitation
 
 If PostgreSQL fails after a successful upload, an orphan object can remain. Automatic orphan cleanup is outside TASK-003. PostgreSQL can also retain ready video metadata after its MinIO object is deleted; the catalog can therefore list a video whose stream is unavailable. The streaming endpoint returns the safe `video_object_not_found` error without exposing storage internals. The frontend turns that media failure into a terminal per-card state, clears its source and does not retry or fall back to Backend storage, but it does not automatically reconcile PostgreSQL and MinIO.
@@ -180,11 +182,11 @@ Open.
 
 ## Problem
 
-Browser autoplay policies and device conditions can reject `HTMLMediaElement.play()` even for a muted video.
+Browser autoplay policies and device conditions can reject `HTMLMediaElement.play()`, especially the first audible attempt in an installed iOS PWA.
 
 ## Mitigation
 
-The feed begins muted and catches every `play()` rejection. A playback error is local to that item; the rest of the feed remains usable through scrolling and native controls.
+The native feed retains muted-first behavior. Reels deliberately begins unmuted and catches every `play()` rejection. An audible `NotAllowedError` leaves the active Reels item paused and unmuted with an explicit Play button; it never performs a hidden muted fallback or retries in a loop. A user gesture can then request the same active item with sound. Other playback errors remain local to their item, while the rest of the feed stays usable.
 
 ## Status
 
@@ -305,7 +307,9 @@ Desktop Chromium verification does not establish iPhone Safari/WebKit behavior. 
 - The standalone manifest starts at `/offline`, and the worker serves the same-origin offline shell and `/offline-media/{id}` without a Backend fallback.
 - The local summary presents exact library bytes, approximate origin usage/quota when available, and the non-invasive `navigator.storage.persisted()` result. It does not promise that iOS will retain data or request persistence automatically.
 - Safari and the installed Home Screen PWA use distinct offline-storage contexts; users must install first and download media inside the installed PWA.
-- Safe-area-aware controls, `100dvh`, `playsInline`, muted autoplay, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. The current window improves return to the previous item while bounding sources to three; a Reels-like player remains follow-up work.
+- Safe-area-aware controls, `100dvh`, `playsInline`, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. Native `/videos` remains muted-first; Reels starts with normal sound and leaves an iOS-blocked audible startup paused for an explicit user Play, without a silent workaround. The current window improves return to the previous item while bounding sources to three.
+- `/offline` now uses the shared feed's Reels-like mode. One tokenized pointer state machine separates tap, centre hold, symmetric outer-10% edge hold and movement cancellation without `preventDefault` or pointer capture. Only tap-pause exposes controls; move/scroll/pointer cancellation can restore a still-active centre hold, while active-item and lifecycle cancellation cannot. Reels-only `touch-action: pan-y`, callout/selection suppression and drag prevention do not apply to `/videos`. The lower metadata → progress → glass-navigation layout uses scoped backdrop blur with an opaque fallback; its safe-area sizing and WebKit rendering still need device acceptance.
+- The production startup path attempts guarded playback on `HAVE_METADATA` or `loadedmetadata`, which avoids the observed WebKit metadata/suspend deadlock without relying on `canplay`. A nonzero reset still waits for current `seeked`. Effective active selection only pauses/plays cards and is reversible while a drag is partial. A distinct commit requires ratio ≥ 0.999 and card/root geometry within 2 CSS px; only the previous committed card may reset after its ratio-zero, fully offscreen exit. A post-commit rapid return waits for the same guarded seek, while a pre-commit reversal retains its paused position.
 
 ## Remaining limitation
 
@@ -314,7 +318,18 @@ remain hints, not retention guarantees; iOS may evict storage. Single-range
 delivery materializes a complete MP4 in worker memory per request, so
 20-minute and 50-swipe tests remain important targets. Multipart Range,
 background download, and long-session behavior after a controlled shell update
-remain follow-up work.
+remain follow-up work. For AAC MP4, iOS WebKit can briefly freeze or jump its
+media clock at the 1×↔2× edge-hold boundary even with complete buffering; the
+same experiment was observed through both Service Worker and Blob sources, and
+short GOP/B-frames were not the root cause. A no-audio variant was much
+smoother, while `preservesPitch=false` helped only partly and distorted speech.
+The MVP therefore keeps normal audio and standard pitch preservation. Forced
+short-GOP/no-B-frames transcoding is rejected because it adds storage, CPU and
+quality costs without a complete fix; a future native AVPlayer remains the
+full solution. Re-downloading unchanged server media does not by itself alter
+this WebKit AAC limitation. Pointer Events, safe-area layout and gesture arbitration still
+require block 4 testing in the installed iPhone PWA; desktop/JSDOM tests cannot
+prove native scroll and touch behavior.
 
 ## Status
 

@@ -30,5 +30,5 @@ const serwist = new Serwist({
   disableDevLogs: true,
 });
 
-serwist.registerRoute(new Route(shouldHandleOfflineMediaRequest, async ({ request }) => handleOfflineMediaRequest(request)));
+serwist.registerRoute(new Route(shouldHandleOfflineMediaRequest, ({ request }) => handleOfflineMediaRequest(request)));
 serwist.addEventListeners();

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { NetworkStatusIndicator } from "./network-status-indicator";
+import { AppBottomNavigation } from "./app-bottom-navigation";
 import { VerticalVideoFeed, type VerticalVideoFeedItem } from "./vertical-video-feed";
 import { OfflineStorageError, toOfflineStorageError } from "../lib/offline/errors";
 import { getMediaCacheKey } from "../lib/offline/media-cache";
@@ -44,7 +45,6 @@ export function OfflineVideoList() {
   const [clearing, setClearing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [serviceWorkerReadiness, setServiceWorkerReadiness] = useState<ServiceWorkerReadiness>(getServiceWorkerReadiness);
-
   const refreshServiceWorkerControl = useCallback(() => {
     setServiceWorkerReadiness(getServiceWorkerReadiness());
   }, []);
@@ -174,6 +174,8 @@ export function OfflineVideoList() {
     <>
       <VerticalVideoFeed
         items={feedItems}
+        controlsMode="reels"
+        hasBottomNavigation
         renderActions={(item) => (
           <button
             className="rounded bg-amber-200 px-3 py-1 text-sm text-slate-950 disabled:opacity-50"
@@ -196,8 +198,8 @@ export function OfflineVideoList() {
         <button className="mt-2 rounded bg-amber-200 px-2 py-1 text-slate-950 disabled:opacity-50" type="button" disabled={clearing || pendingVideoId !== null} onClick={() => void clearLibrary()}>
           {clearing ? "Очистка…" : "Очистить офлайн-библиотеку"}
         </button>
-        <Link className="mt-2 inline-block underline" href="/videos">К онлайн-ленте</Link>
       </aside>
+      <AppBottomNavigation activeRoute="offline" withReelsGlassBackdrop />
     </>
   );
 }

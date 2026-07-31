@@ -2,6 +2,25 @@
 
 :root {
   color-scheme: light;
+  --app-bottom-navigation-lift: clamp(0.5rem, 2svh, 1.1rem);
+  --app-bottom-navigation-height: 4.2rem;
+  --app-bottom-navigation-top-gap: clamp(0.35rem, 0.8svh, 0.55rem);
+  --app-bottom-navigation-space: calc(
+    env(safe-area-inset-bottom)
+    + var(--app-bottom-navigation-lift)
+    + var(--app-bottom-navigation-height)
+    + var(--app-bottom-navigation-top-gap)
+  );
+  --reels-progress-navigation-gap: clamp(0.1rem, 0.5svh, 0.3rem);
+  --reels-progress-glass-height: clamp(1.4rem, 3.5svh, 1.9rem);
+  --reels-bottom-backdrop-overhang: clamp(0.15rem, 0.5svh, 0.3rem);
+  --reels-bottom-backdrop-height: calc(
+    var(--app-bottom-navigation-space)
+    + var(--reels-progress-navigation-gap)
+    + var(--reels-progress-glass-height)
+    + var(--reels-bottom-backdrop-overhang)
+  );
+  --reels-metadata-progress-gap: clamp(0.35rem, 1svh, 0.6rem);
 }
 
 body {
@@ -10,4 +29,122 @@ body {
   background: #f8fafc;
   color: #0f172a;
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Scoped to the offline Reels interaction card: preserve native page scrolling
+   while preventing iOS long-press selection, callouts, and media dragging. */
+.reels-interaction-card {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.reels-gesture-surface {
+  touch-action: pan-y;
+}
+
+.reels-interaction-card video {
+  -webkit-user-drag: none;
+}
+
+/* Navigation links stay above both media and the Reels-only decorative layer. */
+.app-bottom-navigation--floating {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  pointer-events: none;
+  padding: var(--app-bottom-navigation-top-gap) max(1rem, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + var(--app-bottom-navigation-lift)) max(1rem, env(safe-area-inset-left));
+  isolation: isolate;
+}
+
+.app-bottom-navigation__pill {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(21rem, 100%);
+  margin: 0 auto;
+  padding: 0.35rem;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 9999px;
+  background: rgb(28 35 47 / 0.7);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.22);
+  pointer-events: auto;
+}
+
+.app-bottom-navigation__item {
+  display: grid;
+  min-height: 3.35rem;
+  place-items: center;
+  border-radius: 9999px;
+  color: rgb(255 255 255 / 0.66);
+}
+
+.app-bottom-navigation__item svg {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+
+.app-bottom-navigation__item--active {
+  color: #fff;
+  background: rgb(255 255 255 / 0.2);
+}
+
+.app-bottom-navigation__item:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.reels-bottom-layout {
+  position: absolute;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: calc(var(--app-bottom-navigation-space) + var(--reels-progress-navigation-gap));
+  left: max(0.75rem, env(safe-area-inset-left));
+  z-index: 20;
+  display: grid;
+  gap: var(--reels-metadata-progress-gap);
+  pointer-events: none;
+}
+
+.reels-metadata-overlay {
+  padding: 2.25rem 0.5rem 0.15rem;
+  text-shadow: 0 1px 10px rgb(0 0 0 / 0.55);
+  background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.58) 52%, rgb(0 0 0 / 0.72));
+}
+
+/* This stays transparent: the shared fixed backdrop below supplies the only
+   wide blur, so progress and navigation read as one uninterrupted surface. */
+.reels-progress-glass-zone {
+  display: flex;
+  height: var(--reels-progress-glass-height);
+  align-items: flex-end;
+  margin-inline: -0.75rem;
+  padding: 0.3rem 0.75rem 0.35rem;
+}
+
+.reels-progress-glass-zone .reels-progress {
+  width: 100%;
+}
+
+/* The only wide blur in the Reels lower composition. It begins above progress
+   and continues behind the pill through the safe area without intercepting UI. */
+.reels-bottom-glass-backdrop {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 15;
+  height: var(--reels-bottom-backdrop-height);
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgb(8 15 25 / 0.04), rgb(8 15 25 / 0.42) 28%, rgb(8 15 25 / 0.72) 72%, rgb(8 15 25 / 0.82));
+  -webkit-backdrop-filter: blur(18px) saturate(1.12);
+  backdrop-filter: blur(18px) saturate(1.12);
+  mask-image: linear-gradient(to bottom, transparent, black 16%, black);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 16%, black);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .reels-bottom-glass-backdrop {
+    background: linear-gradient(to bottom, rgb(8 15 25 / 0.42), rgb(8 15 25 / 0.78) 28%, rgb(8 15 25 / 0.92) 72%, rgb(8 15 25 / 0.96));
+  }
 }
