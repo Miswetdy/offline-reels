@@ -45,12 +45,19 @@ export function useOfflineDownloads() {
     return retried;
   }, []);
 
+  const enqueueCatalogAndStart = useCallback(async (videos: Video[]) => {
+    return getOfflineDownloadQueue().enqueueCatalogAndStart(videos);
+  }, []);
+
   return {
     snapshot,
     enqueueAndStart,
     enqueueManyAndStart,
     retryAndStart,
+    enqueueCatalogAndStart,
     continueDownloads: () => void getOfflineDownloadQueue().start().catch(() => undefined),
     abortActive: () => getOfflineDownloadQueue().abortActive(),
+    cancelBatch: () => getOfflineDownloadQueue().cancelBatch(),
+    cancelAndClear: () => getOfflineDownloadQueue().cancelAndClear(),
   };
 }

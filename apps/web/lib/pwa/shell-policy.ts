@@ -1,9 +1,10 @@
+export const HOME_SHELL_PATH = "/";
 export const OFFLINE_SHELL_PATH = "/offline";
 export const VIDEOS_SHELL_PATH = "/videos";
 export const OFFLINE_MEDIA_CACHE_NAME = "offline-reels-media-v1";
 const SERWIST_PRECACHE_MARKER = "-precache-";
 
-export const offlineNavigationAllowlist = [/^\/offline$/];
+export const offlineNavigationAllowlist = [/^\/$/, /^\/offline$/, /^\/videos$/];
 
 export type ShellRequest = {
   method: string;
@@ -24,11 +25,12 @@ export function isExcludedFromShellCaching(request: ShellRequest): boolean {
     return true;
   }
 
-  return /^\/videos\/[^/]+\/stream$/.test(request.url.pathname);
+  return /^\/api\/videos(?:\/[^/]+\/stream)?$/.test(request.url.pathname)
+    || /^\/videos\/[^/]+\/stream$/.test(request.url.pathname);
 }
 
 export function isExplicitApplicationShellPath(pathname: string): boolean {
-  return pathname === OFFLINE_SHELL_PATH || pathname === VIDEOS_SHELL_PATH;
+  return pathname === HOME_SHELL_PATH || pathname === OFFLINE_SHELL_PATH || pathname === VIDEOS_SHELL_PATH;
 }
 
 export function selectOutdatedShellCaches(

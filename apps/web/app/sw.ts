@@ -21,7 +21,7 @@ const serwist = new Serwist({
   cacheId: serviceWorkerLifecyclePolicy.cacheId,
   precacheEntries: injectedManifest,
   precacheOptions: {
-    navigateFallback: "/offline",
+    navigateFallback: "/",
     navigateFallbackAllowlist: offlineNavigationAllowlist,
   },
   skipWaiting: serviceWorkerLifecyclePolicy.skipWaiting,

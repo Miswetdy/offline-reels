@@ -279,8 +279,9 @@ TASK-005 Block 4.1 precaches the production application shell so a previously vi
 ## Mitigation
 
 - One Turbopack-built Serwist worker is served at `/serwist/sw.js` with scope `/` and automatic registration by `SerwistProvider`.
-- The Turbopack glob manifest contains static assets but not literal App Router page URLs. `/offline`, `/videos`, and `/manifest.webmanifest` are therefore explicitly precached with deterministic SHA-256 revisions derived from application-shell build inputs; the fallback cannot bind until the `/offline` entry exists.
-- Navigation fallback is restricted to same-origin `GET /offline`; the Backend API, video streams and media are not runtime-cached.
+- The Turbopack glob manifest contains static assets but not literal App Router page URLs. `/`, `/offline`, legacy `/videos`, and `/manifest.webmanifest` are therefore explicitly precached with deterministic SHA-256 revisions derived from application-shell build inputs.
+- Navigation fallback is restricted to same-origin `GET /`, `/offline`, and legacy `/videos`; the Backend API, video streams and media are not runtime-cached.
+- iOS can retain an old Home Screen launch URL after a manifest `start_url` change. The app deliberately has no runtime redirect because a precached `/offline` document is also a valid offline navigation target; users must reinstall once to adopt the new `/` launch route.
 - Serwist's precache cleanup is isolated from `offline-reels-media-v1`; local-library delete/clear also targets only that media cache.
 - `reloadOnOnline=false` prevents a connection change from forcing an application reload.
 - A waiting worker is surfaced through Serwist's lifecycle API. The user explicitly starts the documented message-based `SKIP_WAITING` activation, and only its subsequent `controllerchange` reloads once; the update UI does not access Cache Storage or IndexedDB.
@@ -304,11 +305,11 @@ Desktop Chromium verification does not establish iPhone Safari/WebKit behavior. 
 ## Mitigation
 
 - Real-device acceptance uses one HTTPS Tailscale Funnel origin. `NEXT_PUBLIC_API_BASE_URL` is validated and required in the client, and `FRONTEND_ORIGIN` is configured for that same origin; neither value is a secret.
-- The standalone manifest starts at `/offline`, and the worker serves the same-origin offline shell and `/offline-media/{id}` without a Backend fallback.
-- The local summary presents exact library bytes, approximate origin usage/quota when available, and the non-invasive `navigator.storage.persisted()` result. It does not promise that iOS will retain data or request persistence automatically.
+- The standalone manifest starts at `/`, and the worker serves the same-origin dashboard shell and `/offline-media/{id}` without a Backend fallback.
+- The dashboard presents only a percentage derived from `navigator.storage.estimate()`; this remains a hint and does not promise retention or request persistence automatically.
 - Safari and the installed Home Screen PWA use distinct offline-storage contexts; users must install first and download media inside the installed PWA.
-- Safe-area-aware controls, `100dvh`, `playsInline`, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. Native `/videos` remains muted-first; Reels starts with normal sound and leaves an iOS-blocked audible startup paused for an explicit user Play, without a silent workaround. The current window improves return to the previous item while bounding sources to three.
-- `/offline` now uses the shared feed's Reels-like mode. One tokenized pointer state machine separates tap, centre hold, symmetric outer-10% edge hold and movement cancellation without `preventDefault` or pointer capture. Only tap-pause exposes controls; move/scroll/pointer cancellation can restore a still-active centre hold, while active-item and lifecycle cancellation cannot. Reels-only `touch-action: pan-y`, callout/selection suppression and drag prevention do not apply to `/videos`. The lower metadata → progress → glass-navigation layout uses scoped backdrop blur with an opaque fallback; its safe-area sizing and WebKit rendering still need device acceptance.
+- Safe-area-aware controls, `100dvh`, `playsInline`, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. `/videos` is now a legacy redirect; Reels starts with normal sound and leaves an iOS-blocked audible startup paused for an explicit user Play, without a silent workaround. The current window improves return to the previous item while bounding sources to three.
+- `/offline` now uses the shared feed's Reels-like mode. One tokenized pointer state machine separates tap, centre hold, symmetric outer-10% edge hold and movement cancellation without `preventDefault` or pointer capture. Only tap-pause exposes controls; an activated centre hold retains a scoped pause lock through move/scroll and iOS `pointercancel`, then resumes only after the actual touch ends if its original item remains active and unchanged. Lifecycle and source cleanup clear that lock without autoplay. Reels-only `touch-action: pan-y`, callout/selection suppression and drag prevention do not apply to the dashboard. The lower progress → glass-navigation layout uses scoped backdrop blur with an opaque fallback; its safe-area sizing and WebKit rendering still need device acceptance.
 - The production startup path attempts guarded playback on `HAVE_METADATA` or `loadedmetadata`, which avoids the observed WebKit metadata/suspend deadlock without relying on `canplay`. A nonzero reset still waits for current `seeked`. Effective active selection only pauses/plays cards and is reversible while a drag is partial. A distinct commit requires ratio ≥ 0.999 and card/root geometry within 2 CSS px; only the previous committed card may reset after its ratio-zero, fully offscreen exit. A post-commit rapid return waits for the same guarded seek, while a pre-commit reversal retains its paused position.
 
 ## Remaining limitation
@@ -341,13 +342,13 @@ Open for long-session and post-normalization re-acceptance.
 
 ## Problem
 
-The network hint from `navigator.onLine` is not a guarantee that the Backend is reachable. Service Worker updates can wait while several tabs remain open, and `/videos` must not present an old server feed as current content when offline.
+The network hint from `navigator.onLine` is not a guarantee that the Backend is reachable. Service Worker updates can wait while several tabs remain open, and the `/` dashboard must not claim that a failed catalog is ready for download.
 
 ## Mitigation
 
-- `/videos` precaches only its application shell and keeps the Backend catalog request `cache: "no-store"`.
-- A failed catalog request that is classified as a fetch-level network failure, or a request while the browser reports offline, renders a controlled state with an explicit link to `/offline`; there is no redirect. This avoids relying on `navigator.onLine` as an authoritative reachability signal.
-- `/offline` is the sole navigation fallback. Unknown routes do not receive the offline-library document.
+- `/` precaches its application shell and keeps the Backend catalog request `cache: "no-store"`; `/videos` is a legacy redirect shell only.
+- A failed catalog request renders a controlled dashboard state. This avoids relying on `navigator.onLine` as an authoritative reachability signal.
+- `/`, `/offline`, and legacy `/videos` are the only navigation fallbacks. Unknown routes do not receive a shell document.
 - The network indicator is informational and does not infer downloaded-video availability.
 - `skipWaiting` is disabled and `reloadOnOnline=false`. A waiting update remains inert until the user selects **«Обновить»**; Serwist then activates only that waiting worker through its supported message API and the page reloads once after `controllerchange`.
 - Shell cache lifecycle remains isolated from `offline-reels-media-v1`.
@@ -364,7 +365,7 @@ Open, accepted for TASK-005 Block 4.2.
 
 # Risk 12: Local cleanup is not cross-tab synchronized
 
-`/offline` deletes media cache data before IndexedDB metadata and refreshes its own catalog after each operation. Reconciliation compensates if the metadata step fails, but another open tab will not receive a live update. Browser storage estimates can also remain nonzero or update with delay after deletion. This is accepted for TASK-005 Block 3.3; cross-tab synchronization is deferred.
+The dashboard cancels the singleton queue, waits for its pump, then clears media cache data before IndexedDB metadata. Reconciliation compensates if the metadata step fails, but another open tab will not receive a live update. Browser storage estimates can also remain nonzero or update with delay after deletion. Cross-tab synchronization is deferred.
 
 Next.js 16.2.11 transitively includes sharp 0.34.5 and postcss 8.4.31,
 which remain reported by npm audit.

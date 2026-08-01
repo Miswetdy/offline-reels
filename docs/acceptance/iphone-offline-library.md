@@ -15,9 +15,9 @@ set `FRONTEND_ORIGIN=https://HOST.ts.net`. Do not put secrets in either value.
   media normalization is required before the next acceptance run.
 - Post-iPhone hardening block 2 now keeps a previous/current/next preload
   window to improve return to the prior item while bounding resource use.
-- Post-iPhone hardening block 3 now enables Reels-like controls only on
-  `/offline`; `/videos` retains native controls. Block 4 is the installed-PWA
-  real-device acceptance for this lifecycle.
+- Post-iPhone hardening block 3 enables Reels-like controls only on
+  `/offline`. Block 4A makes `/videos` a legacy redirect to `/`; block 4B is
+  the installed-PWA real-device acceptance for this lifecycle.
 
 | Field | Value |
 | --- | --- |
@@ -52,14 +52,14 @@ For every scenario record the expected result, actual result, pass/fail, screens
 1. Open the frontend HTTPS URL in Safari.
 2. Use **Share → Add to Home Screen**.
 3. Start the new icon from the Home Screen.
-4. Verify standalone presentation and that the initial route is `/offline`.
+4. Verify standalone presentation and that the initial route is `/`. If this PWA was installed before the start-route migration, remove that Home Screen icon and install it once again; there is intentionally no runtime redirect from `/offline`.
 5. In Safari Web Inspector (when available), confirm the Service Worker has scope `/` and controls the page.
 
-Expected: the manifest supplies the standalone name, colors, and icon; no online navigation is required merely to open `/offline`.
+Expected: the manifest supplies the standalone name, colors, icon, `id`, scope, and `/` start route. No online navigation is required to move between the precached `/` and `/offline` shells.
 
 ## B. Download
 
-1. Online, open `/videos`.
+1. Online, open `/`.
 2. Download at least ten different videos.
 3. Request an already completed video again; confirm it is not downloaded twice.
 4. Close the PWA during one active download, reopen it, and confirm the record becomes interrupted/failed with a manual retry path.
@@ -69,24 +69,24 @@ Expected: one download is active at a time; only fully validated cache entries b
 
 ## C. Full offline restart
 
-1. While online, open `/offline` once and wait for the catalog.
+1. While online, open `/` once, then open `/offline` and wait for the local library.
 2. Fully close the PWA from the app switcher.
 3. Enable Airplane Mode.
-4. Launch from the Home Screen and open `/offline`.
+4. Launch from the Home Screen, then use **Рилсы** to open `/offline`.
 5. Play at least ten downloaded videos consecutively.
 
 Expected: the Serwist application shell, IndexedDB catalog, and local media route work without Backend/API requests.
 
 ## D. Playback and lifecycle
 
-1. Cold-launch the installed PWA at `/offline`. Confirm the first active reel requests playback with sound enabled. If iOS blocks audible autoplay, it must remain unmuted and paused with the central Play control visible; tap it once and confirm the same item starts with sound. The app must not silently switch to muted playback.
+1. Cold-launch the installed PWA at `/`, then open `/offline`. Confirm the first active reel requests playback with sound enabled. If iOS blocks audible autoplay, it must remain unmuted and paused with the central Play control visible; tap it once and confirm the same item starts with sound. The app must not silently switch to muted playback.
 2. Short-tap the central video area twice. Confirm the first tap pauses and reveals one central SVG play control with one smaller SVG sound control above it. Resume with both the play button and a second short surface tap; controls must disappear only after playback actually resumes, and remain available if iOS rejects play.
 3. Tap sound directly. Confirm only mute changes and the tap does not also pause, resume or trigger a hold.
 4. While a video is playing, hold the centre for at least 250 ms without moving. Confirm temporary pause and release-to-resume without showing tap controls. Repeat while already paused and confirm release does not start playback or show new controls.
 5. Hold the outer left 10%, then outer right 10%. Confirm a nearby `2×` indicator, temporary double speed, restoration on release, and no playback start when already paused. Confirm touches immediately inside the remaining central 80% use centre-hold behaviour instead.
-6. Begin each hold and then move vertically more than roughly 12 CSS px, both before and after the hold threshold. Confirm temporary actions end, no tap is synthesized, centre hold resumes only while its item remains active, and native vertical scrolling remains smooth.
+6. Begin each hold and then move vertically more than roughly 12 CSS px, both before and after the hold threshold. Confirm no tap is synthesized and native vertical scrolling remains smooth. After an activated centre hold, the original card must remain paused throughout the same touch—even if iOS emits `pointercancel`—while a newly active card can play normally. If the drag reverses before release, the original card remains paused; it resumes only after release when it is active and was playing before the hold.
 7. Start with A fully snapped. Drag toward B until B becomes active but does not fill the viewport, then reverse to A; repeat A↔B several times without releasing into a full snap. Each card must resume from its own paused position and retain its frame—no seek to 0 or black frame. Then let B fully fill the feed, wait for A to leave completely, and return to A: it must start at 0:00 without a stale-frame flash. Repeat symmetrically from B back to A. Full commit is expected only at an effectively full card (observer ratio at least 0.999 with geometry tolerance), never at a partial 50–99% overlap.
-8. Confirm video fills the viewport without letterboxing (symmetric crop is acceptable). Check the lower order is metadata/actions, thin non-seekable progress, then glass bottom navigation; the video should remain visible but blurred only behind that lower navigation zone. Confirm progress tracks only the active video, resets at the start, and does not overlap card actions, navigation, or the iPhone safe area. Check `/offline` marks **Офлайн-библиотека** active and `/videos` marks **Главная и загрузка** active; both links must remain tappable without triggering playback gestures. Author/caption UI is intentionally not present yet.
+8. Confirm video fills the viewport without letterboxing (symmetric crop is acceptable). Check the lower order is thin non-seekable progress, then glass bottom navigation; technical title, size, summary, and delete controls must not be visible. The video should remain visible but blurred only behind that lower navigation zone. Confirm progress tracks only the active video, resets at the start, and does not overlap navigation or the iPhone safe area. Check `/offline` marks **Рилсы** active and `/` marks **Главная** active; both links must remain tappable without triggering playback gestures. Author/caption UI is intentionally not present yet.
 9. During pending and active holds, test normal release, system gesture/pointer cancellation where reproducible, background/foreground, and a 30-second screen lock. Confirm no stuck `2×`, text selection, magnifier, copy callout, stale overlay, old-video resume or forbidden autoplay.
 
 Expected: `/offline` has no native video controls, retains `playsInline`, looping and native vertical scroll-snap, keeps the previous/current/next window to at most three `src` values, and never plays two videos simultaneously. Gesture controls remain safe-area-aware and accessible, return from background does not force autoplay, and a failed card remains terminal without blocking neighbouring cards. Interactive horizontal seeking is intentionally not part of block 3.
@@ -95,9 +95,9 @@ Expected: `/offline` has no native video controls, retains `playsInline`, loopin
 
 The floating navigation should sit visibly above the home indicator in both the
 installed PWA and Safari, with a bounded adaptive gap rather than a single
-device-specific height. On `/videos`, confirm native controls and the final
-content are above the same reserved footprint. On `/offline`, confirm the order
-is metadata/actions, transparent pointer-inert progress over one continuous
+device-specific height. On `/`, confirm dashboard controls remain above the same
+reserved footprint. On `/offline`, confirm the order is transparent pointer-inert
+progress over one continuous
 blurred backdrop, navigation pill, then safe-area gap. The video itself must
 remain sharp outside that shared glass zone; this visual tuning must not change tap, hold, swipe or
 playback behaviour.
@@ -129,14 +129,15 @@ new card's full-screen callback.
 
 Expected target (not yet a release blocker): no material degradation. This specifically measures the known full-file Service Worker Range-slicing memory cost.
 
-## F. Delete and clear
+## F. Dashboard download and clear
 
-1. Delete the current video, then the next video.
-2. Restart the PWA and verify both deletions persist.
-3. Clear the offline library.
-4. Close the PWA, enable Airplane Mode, and open it again.
+1. Open the installed PWA at `/`. Confirm **Offline Reels**, network status, and storage fill are shown only as percentages; no video player, UUID, byte size, or catalog count is visible.
+2. While online, select **Загрузить Reels**. Confirm all available catalog Reels download sequentially and the batch percentage never decreases. Cancel once during a transfer, then select **Повторить** and let the batch finish.
+3. Select **Очистить библиотеку** and confirm the exact prompt **Вы точно хотите удалить все скачанные Reels?**. Confirm the batch stops, `/offline` shows **Пока нет скачанных Reels**, and **Перейти на главную** opens `/`.
+4. Close the PWA, enable Airplane Mode, and reopen `/offline`. Confirm the empty shell remains available without server content.
+5. While online, open legacy `/videos`. Confirm it redirects to `/` and no old online video feed appears.
 
-Expected: local media and metadata disappear together (or reconciliation repairs a partial operation), the empty state appears, and the application shell remains available. Online catalog records and server objects are never deleted.
+Expected: clear removes local media and metadata together (or reconciliation repairs a partial operation), never deletes server records or objects, and no late download restores a cleared local record. Future watched-retention is not implemented: a later policy may delete watched media locally after one hour and refill only when the app is open online; iOS cannot guarantee work while the PWA is fully closed.
 
 ## G. Service Worker update
 
@@ -167,7 +168,7 @@ The following are required before TASK-005 can be declared complete:
 - [ ] Range seek works.
 - [ ] Fast swipes do not break the feed.
 - [ ] Two videos never play simultaneously.
-- [ ] Delete and clear survive restart.
+- [ ] Dashboard batch download, cancel, and clear survive restart.
 - [ ] Storage inconsistency is reconciled.
 - [ ] Worker update preserves media cache.
 - [ ] No crash, reload loop, or white screen occurs.

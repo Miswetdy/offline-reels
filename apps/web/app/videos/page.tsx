@@ -1,5 +1,5 @@
-import { VideoList } from "../../components/video-list";
+import { redirect } from "next/navigation";
 
 export default function VideosPage() {
-  return <VideoList />;
+  redirect("/");
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getVideoStreamUrl, getVideos } from "../lib/api/videos";
+import { getEntireVideoCatalog, getVideoStreamUrl, getVideos } from "../lib/api/videos";
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -64,5 +64,24 @@ describe("videos API client", () => {
       expect.anything(),
     );
     expect(getVideoStreamUrl("video-one")).toBe("https://staging.example.ts.net/api/videos/video-one/stream");
+  });
+
+  it("reads every catalog page while deduplicating repeated items", async () => {
+    const first = { id: "one", title: "One", content_type: "video/mp4", byte_size: 1, created_at: "2026-08-01T00:00:00Z" };
+    const second = { ...first, id: "two", title: "Two" };
+    const getPage = vi.fn()
+      .mockResolvedValueOnce({ items: [first, second], next_cursor: "cursor-1" })
+      .mockResolvedValueOnce({ items: [second], next_cursor: null });
+
+    await expect(getEntireVideoCatalog({}, getPage)).resolves.toEqual([first, second]);
+    expect(getPage).toHaveBeenNthCalledWith(1, { limit: 30, cursor: null, signal: undefined });
+    expect(getPage).toHaveBeenNthCalledWith(2, { limit: 30, cursor: "cursor-1", signal: undefined });
+  });
+
+  it("rejects a cursor loop instead of fetching forever", async () => {
+    const getPage = vi.fn().mockResolvedValue({ items: [], next_cursor: "cursor-loop" });
+
+    await expect(getEntireVideoCatalog({}, getPage)).rejects.toMatchObject({ kind: "response" });
+    expect(getPage).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 type AppBottomNavigationProps = {
-  activeRoute: "videos" | "offline";
+  activeRoute: "home" | "offline";
   withReelsGlassBackdrop?: boolean;
 };
 
@@ -25,7 +25,7 @@ function OfflineLibraryIcon() {
 }
 
 export function AppBottomNavigation({ activeRoute, withReelsGlassBackdrop = false }: AppBottomNavigationProps) {
-  const isVideosActive = activeRoute === "videos";
+  const isHomeActive = activeRoute === "home";
   const isOfflineActive = activeRoute === "offline";
 
   return (
@@ -34,18 +34,18 @@ export function AppBottomNavigation({ activeRoute, withReelsGlassBackdrop = fals
       <nav className="app-bottom-navigation app-bottom-navigation--floating" aria-label="Основная навигация" data-testid="app-bottom-navigation">
       <div className="app-bottom-navigation__pill">
         <Link
-          className={`app-bottom-navigation__item${isVideosActive ? " app-bottom-navigation__item--active" : ""}`}
-          href="/videos"
-          aria-label="Главная и загрузка"
-          aria-current={isVideosActive ? "page" : undefined}
-          data-testid="bottom-navigation-videos"
+          className={`app-bottom-navigation__item${isHomeActive ? " app-bottom-navigation__item--active" : ""}`}
+          href="/"
+          aria-label="Главная"
+          aria-current={isHomeActive ? "page" : undefined}
+          data-testid="bottom-navigation-home"
         >
           <HomeDownloadIcon />
         </Link>
         <Link
           className={`app-bottom-navigation__item${isOfflineActive ? " app-bottom-navigation__item--active" : ""}`}
           href="/offline"
-          aria-label="Офлайн-библиотека"
+          aria-label="Рилсы"
           aria-current={isOfflineActive ? "page" : undefined}
           data-testid="bottom-navigation-offline"
         >

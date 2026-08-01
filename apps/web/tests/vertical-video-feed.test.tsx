@@ -782,7 +782,7 @@ describe("VerticalVideoFeed", () => {
 
     fireEvent.error(first);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This video could not be played.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось воспроизвести видео.");
     expect(first).not.toHaveAttribute("src");
     expect(first).toHaveAttribute("aria-busy", "false");
     expect(load).toHaveBeenCalledTimes(loadsBeforeError + 1);

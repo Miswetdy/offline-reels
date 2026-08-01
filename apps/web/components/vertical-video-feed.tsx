@@ -38,6 +38,7 @@ type VerticalVideoFeedProps = {
   emptyState?: ReactNode;
   footer?: ReactNode;
   renderActions?: (item: VerticalVideoFeedItem) => ReactNode;
+  showMetadata?: boolean;
   onActiveItemChange?: (item: VerticalVideoFeedItem | null) => void;
 };
 
@@ -59,6 +60,15 @@ type ReelsGesture = {
   timerId: number | null;
   wasPlaying: boolean;
   originalPlaybackRate: number;
+};
+type CenterHoldPause = {
+  itemId: string;
+  video: HTMLVideoElement;
+  source: string | null;
+  pointerId: number;
+  token: number;
+  wasPlaying: boolean;
+  playbackGeneration: number;
 };
 type ProgressState = { itemId: string | null; value: number };
 type PlaybackUiState = { itemId: string | null; paused: boolean };
@@ -85,6 +95,7 @@ export function VerticalVideoFeed({
   emptyState,
   footer,
   renderActions,
+  showMetadata = true,
   onActiveItemChange,
 }: VerticalVideoFeedProps) {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
@@ -107,6 +118,7 @@ export function VerticalVideoFeed({
   const playbackGenerationRef = useRef(0);
   const startPreparationsRef = useRef(new Map<HTMLVideoElement, StartPreparation>());
   const reelsGestureRef = useRef<ReelsGesture | null>(null);
+  const centerHoldPauseRef = useRef<CenterHoldPause | null>(null);
   const reelsGestureTokenRef = useRef(0);
   const cancelReelsGestureRef = useRef<(_reason: ReelsGestureCancellation) => void>(() => undefined);
   const reelsResumeRequestRef = useRef<ReelsResumeRequest | null>(null);
@@ -475,10 +487,17 @@ export function VerticalVideoFeed({
   }, [cancelStartPreparation]);
 
   const markMediaFailed = useCallback((itemId: string, video: HTMLVideoElement) => {
+    const expectedSource = items.find((item) => item.id === itemId)?.mediaUrl;
+    if (
+      activeItemIdRef.current !== itemId
+      || videoRefs.current.get(itemId) !== video
+      || expectedSource === undefined
+      || video.getAttribute("src") !== expectedSource
+    ) return;
     playbackGenerationRef.current += 1;
     clearVideoSource(video);
     setPlaybackErrors((errors) => errors[itemId] === "media" ? errors : { ...errors, [itemId]: "media" });
-  }, [clearVideoSource]);
+  }, [clearVideoSource, items]);
 
   const pauseAllVideos = useCallback(() => {
     playbackGenerationRef.current += 1;
@@ -517,7 +536,23 @@ export function VerticalVideoFeed({
     );
   }, []);
 
-  const finishReelsGesture = useCallback((resumeCenterHold: boolean) => {
+  const releaseCenterHoldPause = useCallback((pointerId: number | null, allowResume: boolean) => {
+    const centerHoldPause = centerHoldPauseRef.current;
+    if (!centerHoldPause || (pointerId !== null && centerHoldPause.pointerId !== pointerId)) return;
+    centerHoldPauseRef.current = null;
+    if (
+      !allowResume
+      || !centerHoldPause.wasPlaying
+      || document.visibilityState === "hidden"
+      || activeItemIdRef.current !== centerHoldPause.itemId
+      || videoRefs.current.get(centerHoldPause.itemId) !== centerHoldPause.video
+      || centerHoldPause.video.getAttribute("src") !== centerHoldPause.source
+      || playbackGenerationRef.current !== centerHoldPause.playbackGeneration
+    ) return;
+    playCurrentVideo(centerHoldPause.itemId, centerHoldPause.video);
+  }, [playCurrentVideo]);
+
+  const finishReelsGesture = useCallback(() => {
     const gesture = reelsGestureRef.current;
     reelsGestureTokenRef.current += 1;
     reelsGestureRef.current = null;
@@ -528,25 +563,15 @@ export function VerticalVideoFeed({
       reelsSpeedIndicatorRef.current?.hide();
       return;
     }
-    if (
-      gesture.phase === "center-hold"
-      && resumeCenterHold
-      && gesture.wasPlaying
-      && document.visibilityState !== "hidden"
-    ) {
-      playCurrentVideo(gesture.itemId, gesture.video);
-    }
-  }, [playCurrentVideo]);
+  }, []);
 
   const cancelReelsGesture = useCallback((reason: ReelsGestureCancellation) => {
-    const gesture = reelsGestureRef.current;
-    const resumeCenterHold = (reason === "movement" || reason === "pointer" || reason === "scroll")
-      && gesture?.phase === "center-hold";
-    finishReelsGesture(resumeCenterHold);
+    finishReelsGesture();
+    if (reason === "lifecycle") releaseCenterHoldPause(null, false);
     reelsResumeRequestRef.current = null;
     reelsSpeedIndicatorRef.current?.hide();
     setReelsControlsItemId(null);
-  }, [finishReelsGesture]);
+  }, [finishReelsGesture, releaseCenterHoldPause]);
 
   const toggleCurrentVideo = useCallback((itemId: string, video: HTMLVideoElement) => {
     if (activeItemIdRef.current !== itemId || videoRefs.current.get(itemId) !== video) return;
@@ -583,7 +608,10 @@ export function VerticalVideoFeed({
       || event.button !== 0
       || activeItemIdRef.current !== itemId
     ) return;
-    finishReelsGesture(false);
+    finishReelsGesture();
+    // A new primary touch is a reliable boundary for any old sequence that
+    // failed to report its end. Never autoplay the old held item here.
+    releaseCenterHoldPause(null, false);
     const video = videoRefs.current.get(itemId);
     if (!video) return;
 
@@ -615,17 +643,24 @@ export function VerticalVideoFeed({
         || activeItemIdRef.current !== itemId
         || videoRefs.current.get(itemId) !== video
       ) {
-        finishReelsGesture(false);
+        finishReelsGesture();
         return;
       }
       gesture.timerId = null;
       if (gesture.zone === "center") {
         gesture.phase = "center-hold";
         gesture.wasPlaying = !video.paused;
-        if (gesture.wasPlaying) {
-          playbackGenerationRef.current += 1;
-          video.pause();
-        }
+        const playbackGeneration = ++playbackGenerationRef.current;
+        centerHoldPauseRef.current = {
+          itemId,
+          video,
+          source: video.getAttribute("src"),
+          pointerId: event.pointerId,
+          token,
+          wasPlaying: gesture.wasPlaying,
+          playbackGeneration,
+        };
+        if (gesture.wasPlaying) video.pause();
         return;
       }
       gesture.phase = "edge-hold";
@@ -634,7 +669,7 @@ export function VerticalVideoFeed({
       reelsSpeedIndicatorRef.current?.show(itemId, gesture.zone);
     }, REELS_HOLD_DELAY_MS);
     reelsGestureRef.current = gesture;
-  }, [controlsMode, finishReelsGesture]);
+  }, [controlsMode, finishReelsGesture, releaseCenterHoldPause]);
 
   const handleReelsPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const gesture = reelsGestureRef.current;
@@ -649,15 +684,20 @@ export function VerticalVideoFeed({
     itemId: string,
   ) => {
     const gesture = reelsGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || gesture.itemId !== itemId) return;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.itemId !== itemId) {
+      releaseCenterHoldPause(event.pointerId, true);
+      return;
+    }
     if (gesture.phase === "pending") {
       const video = gesture.video;
-      finishReelsGesture(false);
+      finishReelsGesture();
       toggleCurrentVideo(itemId, video);
       return;
     }
-    finishReelsGesture(gesture.phase === "center-hold");
-  }, [finishReelsGesture, toggleCurrentVideo]);
+    const isCenterHold = gesture.phase === "center-hold";
+    finishReelsGesture();
+    if (isCenterHold) releaseCenterHoldPause(event.pointerId, true);
+  }, [finishReelsGesture, releaseCenterHoldPause, toggleCurrentVideo]);
 
   const handleReelsPointerCancellation = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const gesture = reelsGestureRef.current;
@@ -671,6 +711,25 @@ export function VerticalVideoFeed({
       cancelReelsGestureRef.current = () => undefined;
     };
   }, [cancelReelsGesture]);
+
+  useEffect(() => {
+    const releaseFromPointerUp = (event: PointerEvent) => releaseCenterHoldPause(event.pointerId, true);
+    const releaseFromTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length === 0) releaseCenterHoldPause(null, true);
+    };
+    const clearFromTouchCancel = (event: TouchEvent) => {
+      if (event.touches.length === 0) releaseCenterHoldPause(null, false);
+    };
+
+    document.addEventListener("pointerup", releaseFromPointerUp);
+    document.addEventListener("touchend", releaseFromTouchEnd);
+    document.addEventListener("touchcancel", clearFromTouchCancel);
+    return () => {
+      document.removeEventListener("pointerup", releaseFromPointerUp);
+      document.removeEventListener("touchend", releaseFromTouchEnd);
+      document.removeEventListener("touchcancel", clearFromTouchCancel);
+    };
+  }, [releaseCenterHoldPause]);
 
   useEffect(() => {
     const pauseForBackground = () => {
@@ -741,6 +800,23 @@ export function VerticalVideoFeed({
       if (itemId !== effectiveActiveItemId) video.pause();
     });
     if (!activeVideo || !effectiveActiveItemId) return;
+
+    const centerHoldPause = centerHoldPauseRef.current;
+    if (centerHoldPause?.itemId === effectiveActiveItemId) {
+      if (
+        centerHoldPause.video === activeVideo
+        && centerHoldPause.source === activeVideo.getAttribute("src")
+      ) {
+        // A centre hold remains scoped to its original item while the same
+        // physical touch continues. Another active item is not blocked, but
+        // a partial-scroll reversal must not autoplay this held item.
+        centerHoldPause.playbackGeneration = generation;
+        activeVideo.pause();
+        return;
+      }
+      // A source or DOM replacement invalidates the old physical hold.
+      centerHoldPauseRef.current = null;
+    }
 
     const isSameActiveVideo = () => (
       activeItemIdRef.current === effectiveActiveItemId
@@ -866,6 +942,7 @@ export function VerticalVideoFeed({
         const isActivePaused = playbackUi.itemId === item.id && playbackUi.paused;
         const showReelsControls = controlsMode === "reels" && isActive && reelsControlsItemId === item.id;
         const progressValue = progress.itemId === item.id ? progress.value : 0;
+        const hasTerminalMediaError = playbackErrors[item.id] === "media";
 
         return (
           <section
@@ -892,8 +969,17 @@ export function VerticalVideoFeed({
               muted={muted}
               playsInline
               preload={mode === "active" ? "auto" : mode === "inactive" ? "none" : "metadata"}
-              aria-busy={mode !== "inactive" && playbackErrors[item.id] !== "media"}
+              aria-busy={mode !== "inactive" && !hasTerminalMediaError}
               onPlay={(event) => {
+                const video = event.currentTarget;
+                if (
+                  controlsMode === "reels"
+                  && (
+                    activeItemIdRef.current !== item.id
+                    || videoRefs.current.get(item.id) !== video
+                    || video.getAttribute("src") !== item.mediaUrl
+                  )
+                ) return;
                 setPlaybackErrors((errors) => {
                   if (errors[item.id] === undefined) return errors;
                   const nextErrors = { ...errors };
@@ -909,7 +995,7 @@ export function VerticalVideoFeed({
                   controlsMode === "reels"
                   && activeItemIdRef.current === item.id
                   && resumeRequest?.itemId === item.id
-                  && resumeRequest.video === event.currentTarget
+                  && resumeRequest.video === video
                   && resumeRequest.generation === playbackGenerationRef.current
                 ) {
                   reelsResumeRequestRef.current = null;
@@ -970,41 +1056,45 @@ export function VerticalVideoFeed({
                 <ReelsSpeedIndicator ref={reelsSpeedIndicatorRef} />
               </>
             ) : null}
-            {controlsMode === "reels" && isActive ? (
-              <div className="reels-bottom-layout" data-testid={`reels-bottom-layout-${item.id}`}>
-                <div className="reels-metadata-overlay" data-testid={`reels-metadata-${item.id}`}>
-              <h2 className="font-semibold">{item.title}</h2>
-              {item.subtitle ? <p className="text-sm text-slate-200">{item.subtitle}</p> : null}
-              {playbackErrors[item.id] ? (
-                <p className="mt-1 text-sm text-amber-200" role="alert">This video could not be played.</p>
-              ) : null}
-                  {renderActions ? <div className="pointer-events-auto mt-2">{renderActions(item)}</div> : null}
-                </div>
-                <div className="reels-progress-glass-zone pointer-events-none" data-testid={`reels-progress-glass-${item.id}`}>
-                  <div
-                    className="reels-progress h-0.5 overflow-hidden rounded-full bg-white/30"
-                    data-testid={`reels-progress-${item.id}`}
-                    role="progressbar"
-                    aria-label="Прогресс видео"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(progressValue * 100)}
-                  >
-                    <span
-                      className="block h-full origin-left bg-white transition-transform duration-100 motion-reduce:transition-none"
-                      style={{ transform: `scaleX(${progressValue})` }}
-                    />
+            {controlsMode === "reels" ? (
+              isActive ? (
+                <div className="reels-bottom-layout" data-testid={`reels-bottom-layout-${item.id}`}>
+                  {showMetadata || hasTerminalMediaError || renderActions ? (
+                    <div className="reels-metadata-overlay" data-testid={`reels-metadata-${item.id}`}>
+                      {showMetadata ? <h2 className="font-semibold">{item.title}</h2> : null}
+                      {showMetadata && item.subtitle ? <p className="text-sm text-slate-200">{item.subtitle}</p> : null}
+                      {hasTerminalMediaError ? (
+                        <p className="mt-1 text-sm text-amber-200" role="alert">Не удалось воспроизвести видео.</p>
+                      ) : null}
+                      {renderActions ? <div className="pointer-events-auto mt-2">{renderActions(item)}</div> : null}
+                    </div>
+                  ) : null}
+                  <div className="reels-progress-glass-zone pointer-events-none" data-testid={`reels-progress-glass-${item.id}`}>
+                    <div
+                      className="reels-progress h-0.5 overflow-hidden rounded-full bg-white/30"
+                      data-testid={`reels-progress-${item.id}`}
+                      role="progressbar"
+                      aria-label="Прогресс видео"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(progressValue * 100)}
+                    >
+                      <span
+                        className="block h-full origin-left bg-white transition-transform duration-100 motion-reduce:transition-none"
+                        style={{ transform: `scaleX(${progressValue})` }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : null
             ) : (
               <div className={`pointer-events-none absolute left-4 right-4 z-10 rounded bg-black/60 p-3${
                 hasBottomNavigation ? " bottom-[var(--app-bottom-navigation-space)]" : " bottom-[calc(env(safe-area-inset-bottom)+2rem)]"
               }`}>
                 <h2 className="font-semibold">{item.title}</h2>
                 {item.subtitle ? <p className="text-sm text-slate-200">{item.subtitle}</p> : null}
-                {playbackErrors[item.id] ? (
-                  <p className="mt-1 text-sm text-amber-200" role="alert">This video could not be played.</p>
+                {hasTerminalMediaError ? (
+                  <p className="mt-1 text-sm text-amber-200" role="alert">Не удалось воспроизвести видео.</p>
                 ) : null}
                 {renderActions ? <div className="pointer-events-auto mt-2">{renderActions(item)}</div> : null}
               </div>

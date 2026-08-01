@@ -31,6 +31,10 @@ function createQueueHarness(options: { online?: boolean; failFirst?: "network_er
   const records = new Map<string, OfflineVideoRecord>();
   const subscribers = new Set<() => void>();
   const downloads: string[] = [];
+  const listRecords = vi.fn(async () => [...records.values()]);
+  const clearLibrary = vi.fn(async () => {
+    records.clear();
+  });
   let online = options.online ?? true;
   let remainingFailure = options.failFirst;
   const update = vi.fn(async (id: string, updater: OfflineVideoPatch | ((record: OfflineVideoRecord) => OfflineVideoPatch)) => {
@@ -63,20 +67,21 @@ function createQueueHarness(options: { online?: boolean; failFirst?: "network_er
     downloadVideoForOffline: downloader as never,
     reconcileOfflineLibrary: vi.fn().mockResolvedValue({}),
     getOfflineVideo: vi.fn(async (id: string) => records.get(id)),
-    listOfflineVideos: vi.fn(async () => [...records.values()]),
+    listOfflineVideos: listRecords,
     putOfflineVideo: vi.fn(async (record: OfflineVideoRecord) => void records.set(record.id, record)),
     updateOfflineVideo: update,
     deleteOfflineVideo: vi.fn(async (id: string) => {
       records.delete(id);
     }),
     calculateCompletedLibrarySize: vi.fn(async () => [...records.values()].filter((record) => record.status === "completed").reduce((total, record) => total + record.byteSize, 0)),
+    clearOfflineLibrary: clearLibrary,
     isOnline: () => online,
     addNetworkListener: (_event, listener) => {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
     },
   });
-  return { queue, records, downloads, downloader, setOnline: (value: boolean) => { online = value; subscribers.forEach((listener) => listener()); } };
+  return { queue, records, downloads, downloader, clearLibrary, listRecords, setOnline: (value: boolean) => { online = value; subscribers.forEach((listener) => listener()); } };
 }
 
 describe("offline download queue", () => {
@@ -168,5 +173,101 @@ describe("offline download queue", () => {
     await start;
 
     expect(harness.queue.getSnapshot()).toMatchObject({ paused: true, activeVideoId: null, queuedCount: 2, currentErrorCode: "download_aborted" });
+  });
+
+  it("downloads a deduplicated catalog batch sequentially and exposes monotonic aggregate progress", async () => {
+    const harness = createQueueHarness();
+
+    await expect(harness.queue.enqueueCatalogAndStart([videoOne, videoOne, videoTwo])).resolves.toBe(2);
+    await vi.waitFor(() => expect(harness.queue.getSnapshot().batchProgress).toMatchObject({ totalBytes: 30, completedBytes: 30, displayedBytes: 30, state: "completed" }));
+    expect(harness.downloads).toEqual([VIDEO_ID_ONE, VIDEO_ID_TWO]);
+  });
+
+  it("requeues failed catalog records but keeps valid completed records untouched", async () => {
+    const harness = createQueueHarness();
+    harness.records.set(VIDEO_ID_ONE, makeRecord(videoOne, "completed"));
+    harness.records.set(VIDEO_ID_TWO, makeRecord(videoTwo, "failed"));
+
+    await expect(harness.queue.enqueueCatalogAndStart([videoOne, videoTwo])).resolves.toBe(1);
+    await vi.waitFor(() => expect(harness.records.get(VIDEO_ID_TWO)?.status).toBe("completed"));
+    expect(harness.downloads).toEqual([VIDEO_ID_TWO]);
+  });
+
+  it("cancels an active batch and removes its remaining queued work", async () => {
+    const harness = createQueueHarness();
+    harness.downloader.mockImplementationOnce(({ video, signal }: { video: typeof videoOne; signal: AbortSignal }) =>
+      new Promise((_, reject) => {
+        signal.addEventListener("abort", () => {
+          void harness.records.set(video.id, makeRecord(video, "failed"));
+          reject(new DOMException("abort", "AbortError"));
+        }, { once: true });
+      }),
+    );
+
+    await harness.queue.enqueueCatalogAndStart([videoOne, videoTwo]);
+    await vi.waitFor(() => expect(harness.queue.getSnapshot().activeVideoId).toBe(VIDEO_ID_ONE));
+    await harness.queue.cancelBatch();
+
+    expect(harness.records.get(VIDEO_ID_ONE)?.status).toBe("failed");
+    expect(harness.records.has(VIDEO_ID_TWO)).toBe(false);
+    expect(harness.queue.getSnapshot().batchProgress?.state).toBe("failed");
+  });
+
+  it("waits for an aborted active write before clearing so a late completion cannot repopulate the library", async () => {
+    let finishDownload!: () => void;
+    const harness = createQueueHarness();
+    harness.downloader.mockImplementationOnce(({ video, onProgress }: { video: typeof videoOne; onProgress?: (progress: never) => void }) =>
+      new Promise((resolve) => {
+        finishDownload = () => {
+          onProgress?.({ videoId: video.id, downloadedBytes: video.byte_size, totalBytes: video.byte_size, percent: 100 } as never);
+          const completed = makeRecord(video, "completed");
+          harness.records.set(video.id, completed);
+          resolve(completed);
+        };
+      }),
+    );
+    await harness.queue.enqueue(videoOne);
+    const start = harness.queue.start();
+    await vi.waitFor(() => expect(harness.queue.getSnapshot().activeVideoId).toBe(VIDEO_ID_ONE));
+
+    const clear = harness.queue.cancelAndClear();
+    expect(harness.clearLibrary).not.toHaveBeenCalled();
+    finishDownload();
+    await Promise.all([start, clear]);
+
+    expect(harness.clearLibrary).toHaveBeenCalledOnce();
+    expect(harness.records.size).toBe(0);
+    expect(harness.queue.getSnapshot()).toMatchObject({ clearing: false, queuedCount: 0, completedCount: 0, activeVideoId: null });
+  });
+
+  it("refreshes the observable snapshot after a partially failed clear and leaves clearing false", async () => {
+    const clearError = new Error("metadata cleanup failed");
+    const harness = createQueueHarness();
+    harness.records.set(VIDEO_ID_ONE, makeRecord(videoOne, "completed"));
+    await harness.queue.initialize();
+    harness.clearLibrary.mockImplementationOnce(async () => {
+      harness.records.delete(VIDEO_ID_ONE);
+      throw clearError;
+    });
+
+    await expect(harness.queue.cancelAndClear()).rejects.toBe(clearError);
+
+    expect(harness.clearLibrary).toHaveBeenCalledOnce();
+    expect(harness.queue.getSnapshot()).toMatchObject({ records: [], completedCount: 0, clearing: false });
+  });
+
+  it("preserves the original clear error when the best-effort refresh also fails", async () => {
+    const clearError = new Error("clear failed");
+    const refreshError = new Error("refresh failed");
+    const harness = createQueueHarness();
+    await harness.queue.initialize();
+    harness.clearLibrary.mockRejectedValueOnce(clearError);
+    harness.listRecords.mockRejectedValueOnce(refreshError);
+
+    await expect(harness.queue.cancelAndClear()).rejects.toBe(clearError);
+
+    expect(harness.clearLibrary).toHaveBeenCalledOnce();
+    expect(harness.listRecords).toHaveBeenCalledTimes(2);
+    expect(harness.queue.getSnapshot().clearing).toBe(false);
   });
 });

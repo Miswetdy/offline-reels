@@ -166,6 +166,7 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     expect(first.muted).toBe(false);
     expect(screen.getByTestId("reels-controls-one")).toHaveClass("opacity-100");
     expect(screen.getByRole("button", { name: "Воспроизвести видео" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     const gesture = gestureFor();
     pointerDown(gesture, 50);
@@ -176,6 +177,57 @@ describe("VerticalVideoFeed Reels-like controls", () => {
 
     fireEvent.play(first);
     expect(screen.getByTestId("reels-controls-one")).toHaveClass("opacity-0");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not render inactive Reels metadata while a partially visible card loses active status", () => {
+    render(<VerticalVideoFeed items={items} controlsMode="reels" showMetadata={false} />);
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.6 },
+    ]));
+
+    expect(screen.queryByTestId("reels-bottom-layout-one")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reels-metadata-one")).not.toBeInTheDocument();
+    expect(screen.queryByText("First video")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reels-progress-two")).toBeInTheDocument();
+
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.6 },
+      { target: secondSection, ratio: 0.4 },
+    ]));
+    expect(screen.getByTestId("reels-progress-one")).toBeInTheDocument();
+    expect(screen.queryByTestId("reels-bottom-layout-two")).not.toBeInTheDocument();
+  });
+
+  it("shows a Russian terminal error only for an actual active media error", async () => {
+    render(<VerticalVideoFeed items={items} controlsMode="reels" showMetadata={false} />);
+    const first = playerFor("First video");
+
+    fireEvent.error(first);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Не удалось воспроизвести видео.");
+    expect(first).not.toHaveAttribute("src");
+  });
+
+  it("ignores a stale inactive media error instead of rendering an error or metadata overlay", () => {
+    render(<VerticalVideoFeed items={items} controlsMode="reels" showMetadata={false} />);
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.6 },
+    ]));
+    fireEvent.error(first);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reels-bottom-layout-one")).not.toBeInTheDocument();
+    expect(playerFor("Second video")).toHaveAttribute("src", items[1].mediaUrl);
   });
 
   it("ignores a stale audible-start rejection after the active item changes", async () => {
@@ -565,10 +617,12 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     expect(pause.mock.contexts).toContain(video);
   });
 
-  it("cancels pending recognition after movement beyond slop without creating a tap or hold", () => {
+  it("keeps pending movement as an ordinary scroll and lets the next item activate", () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
     render(<VerticalVideoFeed items={items} controlsMode="reels" />);
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
     const video = playerFor("First video");
     fireEvent.canPlay(video);
     play.mockClear();
@@ -578,15 +632,21 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     pointerDown(gesture, 50);
     pointerMove(gesture, 50, 100 + REELS_MOVEMENT_SLOP_PX + 1);
     advanceHold();
-    pointerUp(gesture, 50);
 
     expect(play).not.toHaveBeenCalled();
     expect(pause).not.toHaveBeenCalled();
     expect(video.playbackRate).toBe(1);
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.6 },
+    ]));
+    const second = playerFor("Second video");
+    fireEvent.canPlay(second);
+    expect(play.mock.contexts).toContain(second);
     expect(screen.queryByText("2×")).not.toBeInTheDocument();
   });
 
-  it("finishes an activated hold immediately when movement starts", () => {
+  it("keeps an activated center hold paused through movement until pointer release", () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
     render(<VerticalVideoFeed items={items} controlsMode="reels" />);
@@ -600,9 +660,10 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     advanceHold();
     pointerMove(gesture, 50, 100 + REELS_MOVEMENT_SLOP_PX + 1);
     expect(pause.mock.contexts).toContain(video);
-    expect(play.mock.contexts).toContain(video);
+    expect(play).not.toHaveBeenCalled();
+    expect(video).toHaveProperty("paused", true);
     pointerUp(gesture, 50);
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(play.mock.contexts).toContain(video);
 
     play.mockClear();
     pause.mockClear();
@@ -615,7 +676,7 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     expect(pause).not.toHaveBeenCalled();
   });
 
-  it("cleans edge holds on pointer cancel, lost capture, scroll, visibility, and page lifecycle", () => {
+  it("cleans edge holds and keeps center hold paused across pointercancel until the touch ends", () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     render(<VerticalVideoFeed items={items} controlsMode="reels" />);
     const video = playerFor("First video");
@@ -642,7 +703,18 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     pointerDown(gesture, 50, 6);
     advanceHold();
     fireEvent.pointerCancel(gesture, { pointerId: 6 });
+    expect(play).not.toHaveBeenCalled();
+    expect(video).toHaveProperty("paused", true);
+    fireEvent.touchEnd(document, { touches: [] });
     expect(play.mock.contexts).toContain(video);
+
+    fireEvent.canPlay(video);
+    play.mockClear();
+    pointerDown(gesture, 50, 7);
+    advanceHold();
+    fireEvent.pointerCancel(gesture, { pointerId: 7 });
+    fireEvent.touchCancel(document, { touches: [] });
+    expect(play).not.toHaveBeenCalled();
 
     pointerDown(gesture, 90, 4);
     advanceHold();
@@ -659,40 +731,119 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     expect(screen.getByTestId("reels-controls-one")).toHaveClass("opacity-0");
   });
 
-  it("resumes an active center hold after scroll cancellation but never after active-item or lifecycle cancellation", () => {
+  it("keeps a center-hold lock scoped to A while B activates and only resumes A after a reversal plus release", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+    render(<VerticalVideoFeed items={items} controlsMode="reels" />);
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    const first = playerFor("First video");
+    fireEvent.canPlay(first);
+    play.mockClear();
+    pause.mockClear();
+
+    pointerDown(gestureFor("one"), 50);
+    advanceHold();
+    fireEvent.scroll(screen.getByLabelText("Video feed"));
+    expect(play).not.toHaveBeenCalled();
+    expect(first).toHaveProperty("paused", true);
+
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.6 },
+    ]));
+    const second = playerFor("Second video");
+    fireEvent.canPlay(second);
+    expect(play.mock.contexts).toContain(second);
+    expect(play.mock.contexts).not.toContain(first);
+    expect(first).toHaveProperty("paused", true);
+
+    play.mockClear();
+    pause.mockClear();
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.6 },
+      { target: secondSection, ratio: 0.4 },
+    ]));
+    expect(pause.mock.contexts).toContain(second);
+    expect(first).toHaveProperty("paused", true);
+    expect(play).not.toHaveBeenCalled();
+
+    pointerUp(gestureFor("one"), 50);
+    expect(play.mock.contexts).toContain(first);
+  });
+
+  it("does not resume a center-held A when the same touch ends while B is active", () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     render(<VerticalVideoFeed items={items} controlsMode="reels" />);
     const firstSection = screen.getByLabelText("First video");
     const secondSection = screen.getByLabelText("Second video");
     const first = playerFor("First video");
     fireEvent.canPlay(first);
-    const gesture = gestureFor();
-    const feed = screen.getByLabelText("Video feed");
     play.mockClear();
 
-    pointerDown(gesture, 50);
+    pointerDown(gestureFor("one"), 50);
     advanceHold();
-    fireEvent.scroll(feed);
-    expect(play.mock.contexts).toContain(first);
-
-    fireEvent.canPlay(first);
-    play.mockClear();
-    pointerDown(gesture, 50, 2);
-    advanceHold();
+    pointerMove(gestureFor("one"), 50, 100 + REELS_MOVEMENT_SLOP_PX + 1);
     act(() => observerFor(firstSection).trigger([
-      { target: firstSection, ratio: 0 },
-      { target: secondSection, ratio: 1 },
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.6 },
     ]));
-    expect(play.mock.contexts).not.toContain(first);
-
     const second = playerFor("Second video");
     fireEvent.canPlay(second);
     play.mockClear();
-    const secondGesture = gestureFor("two");
-    pointerDown(secondGesture, 50, 3);
+
+    pointerUp(gestureFor("two"), 50);
+
+    expect(play).not.toHaveBeenCalled();
+    expect(first).toHaveProperty("paused", true);
+    expect(second).toHaveProperty("paused", false);
+  });
+
+  it("does not let a stale A play promise revive the held item after B becomes active", async () => {
+    let resolveFirstStart!: () => void;
+    const firstStart = new Promise<void>((resolve) => {
+      resolveFirstStart = resolve;
+    });
+    let first!: HTMLVideoElement;
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function play(this: HTMLMediaElement) {
+      pausedState.set(this, false);
+      return this === first ? firstStart : Promise.resolve();
+    });
+    render(<VerticalVideoFeed items={items} controlsMode="reels" />);
+    const firstSection = screen.getByLabelText("First video");
+    const secondSection = screen.getByLabelText("Second video");
+    first = playerFor("First video");
+    fireEvent.canPlay(first);
+
+    pointerDown(gestureFor("one"), 50);
     advanceHold();
-    act(() => window.dispatchEvent(new Event("pagehide")));
-    expect(play.mock.contexts).not.toContain(second);
+    pointerMove(gestureFor("one"), 50, 100 + REELS_MOVEMENT_SLOP_PX + 1);
+    act(() => observerFor(firstSection).trigger([
+      { target: firstSection, ratio: 0.4 },
+      { target: secondSection, ratio: 0.6 },
+    ]));
+    const second = playerFor("Second video");
+    fireEvent.canPlay(second);
+
+    resolveFirstStart();
+    await act(async () => Promise.resolve());
+
+    expect(first).toHaveProperty("paused", true);
+    expect(second).toHaveProperty("paused", false);
+  });
+
+  it("never resumes a center hold that was already paused before the hold", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(<VerticalVideoFeed items={items} controlsMode="reels" />);
+    const first = playerFor("First video");
+    play.mockClear();
+
+    pointerDown(gestureFor("one"), 50);
+    advanceHold();
+    pointerUp(gestureFor("one"), 50);
+
+    expect(first).toHaveProperty("paused", true);
+    expect(play).not.toHaveBeenCalled();
   });
 
   it("uses inline SVG controls instead of system emoji and keeps scoped interaction suppression in Reels mode", () => {
@@ -809,7 +960,7 @@ describe("VerticalVideoFeed Reels-like controls", () => {
     fireEvent.canPlay(video);
     pause.mockClear();
 
-    const navigationLink = screen.getByRole("link", { name: "Главная и загрузка" });
+    const navigationLink = screen.getByRole("link", { name: "Главная" });
     expect(screen.getByTestId("reels-bottom-glass-backdrop")).toHaveAttribute("aria-hidden", "true");
     fireEvent.pointerDown(navigationLink, { button: 0, clientX: 50, clientY: 190, isPrimary: true, pointerId: 10 });
     fireEvent.pointerUp(navigationLink, { button: 0, clientX: 50, clientY: 190, isPrimary: true, pointerId: 10 });

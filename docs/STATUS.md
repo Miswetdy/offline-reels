@@ -2,11 +2,7 @@
 
 ## Current stage
 
-Post-iPhone hardening after TASK-005: Stage 1A media-normalization foundation,
-Stage 1B ingest integration and hardening, block 2 previous/current/next
-preload, and block 3 Reels-like offline player are implemented. The next stage
-is block 4 installed-PWA iPhone acceptance; TASK-006 remains reserved for the
-subsequent Instagram Collector.
+Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. The next stage is block 4B installed-PWA iPhone acceptance; TASK-006 remains reserved for the subsequent Instagram Collector.
 
 ## Completed
 
@@ -24,10 +20,10 @@ subsequent Instagram Collector.
 
 ## Current focus
 
-Post-iPhone hardening block 3 gives only `/offline` a Reels-like control mode
-through the shared `VerticalVideoFeed`. The online `/videos` feed retains native
-controls and `object-contain`. Offline video loops with `object-cover` and starts
-with sound enabled. It first attempts normal audible autoplay; an iOS policy
+Block 4A keeps `/offline` as the Reels-like control mode through the shared
+`VerticalVideoFeed`; `/videos` is now a legacy redirect and no longer carries an
+online feed or native player. `/` is a video-free dashboard that loads the full
+paginated server catalog into the existing sequential offline queue. Offline video loops with `object-cover` and starts with sound enabled. It first attempts normal audible autoplay; an iOS policy
 rejection leaves the video unmuted and paused with an explicit Play control,
 never a silent muted fallback. Explicit tap-pause state alone otherwise reveals
 central SVG controls, which hide on the current video's confirmed guarded
@@ -48,10 +44,7 @@ a second seek or hidden-frame transition.
 
 The final visual tuning uses a bounded safe-area-aware navigation lift. Reels
 places progress in a transparent non-interactive layer over one fixed shared
-glass backdrop that continues through the pill and safe area; `/videos` keeps
-only the pill and reserves the same navigation footprint for native controls.
-This is CSS/DOM layout work only and does not alter media, gesture or scroll
-lifecycles.
+glass backdrop that continues through the pill and safe area. The shared navigation marks `/` (**Главная**) or `/offline` (**Рилсы**) active. This is CSS/DOM layout work only and does not alter media, gesture or scroll lifecycles.
 
 ## Production-like VPS foundation
 
@@ -81,9 +74,9 @@ monitoring, or a concrete VPS configuration.
 
 ## Next step
 
-Run post-iPhone hardening block 4: repeat installed-PWA iPhone acceptance with
-normalized input and the Reels-like offline player. After that, begin TASK-006
-Instagram Collector.
+Run post-iPhone hardening block 4B: repeat installed-PWA iPhone acceptance for
+the dashboard batch download, cancel-and-clear race protection, legacy redirect,
+and clean Reels UI. After that, begin TASK-006 Instagram Collector.
 
 ## Recent decisions
 
@@ -119,7 +112,8 @@ Added:
 - TASK-005 Block 6.1 makes local reconciliation idempotent across interrupted downloads and partial cleanup. Only a metadata record whose cached MP4 validates remains `completed`; cache entries belonging to failed records, missing metadata, zero-byte bodies or invalid media are deleted. Cache Storage failures become controlled local-storage errors, while delete/clear retain their cache-first, reconciliation-backed compensation order. Quota, unavailable browser storage and interrupted download states remain typed safe errors; iPhone quota and long-session acceptance are still pending.
 - TASK-005 Block 6.2 pauses local playback on visibility/page lifecycle transitions and prevents stale asynchronous `play()` work from reviving an old item. Source assignment stays bounded during rapid navigation and list mutations; active-item removal selects a valid successor without a backend request. Worker readiness is controlled through `navigator.serviceWorker.controller` and `controllerchange`, with no automatic reload. The Range handler still reads a cached MP4 once into worker memory per request; real iPhone memory and lifecycle acceptance remain pending.
 - Post-iPhone hardening block 2 changes the shared media window to previous/current/next. The active player keeps `preload="auto"` and autoplay; both adjacent players retain a source with `preload="metadata"` and remain paused. Distant and terminally failed players clear `src` and call `load()`. This improves backward navigation without changing API pagination, downloader/queue, IndexedDB, Cache Storage or Service Worker contracts. A real iPhone smoke is required because `preload` is advisory and offline Range handling can materialize an MP4 in worker memory.
-- Post-iPhone hardening block 3 adds an explicit Reels-like mode to the shared `VerticalVideoFeed` and enables it only for `/offline`; `/videos` retains native controls and `object-contain`. Reels initializes unmuted and first attempts guarded audible playback. If iOS rejects that autoplay, it stays unmuted and paused with an accessible Play control; no silent fallback is attempted. A single pointer state machine distinguishes tap, 250 ms centre hold, outer-10% edge hold and movement beyond 12 CSS px without preventing native scroll. Only an explicit tap-pause or audible-policy rejection exposes central SVG play/sound controls; an actual guarded `play` event for the current video hides them. Holds never reveal controls. Offline videos loop with `object-cover`, temporary edge holds use 2×, and scoped Reels styles suppress iOS callout/selection/drag without affecting `/videos`. Effective active selection is reversible and controls only pause/play while cards are partial. A full-screen commit requires observer ratio ≥ 0.999 plus 2 CSS px card/root geometry tolerance; only after it may the previous committed and fully invisible card reset offscreen. Thus a partial reversal resumes the saved position, while a post-commit return starts from 0 under existing seek guards. The lower Reels hierarchy is metadata overlay, non-seekable progress, then a safe-area-aware glass navigation; scoped backdrop blur is limited to that lower zone. The shared two-link navigation marks `/videos` (**Главная и загрузка**, the temporary download destination) or `/offline` (**Офлайн-библиотека**) active. Startup attempts guarded play at `HAVE_METADATA`/`loadedmetadata` rather than waiting for `canplay`; reset seeks still wait for current `seeked`. Stale-frame protection, playback generations and the previous/current/next three-source bound remain unchanged. iOS WebKit can briefly freeze or jump at 1×↔2× for AAC media; the MVP keeps normal audio and standard pitch preservation, accepts this platform limitation, and retains remux-first ingest rather than forcing short-GOP/no-B-frames transcodes. Re-downloading unchanged server media does not itself change that WebKit behavior.
+- Post-iPhone hardening block 3 adds an explicit Reels-like mode to the shared `VerticalVideoFeed` and enables it only for `/offline`; block 4A later makes `/videos` a legacy redirect. Reels initializes unmuted and first attempts guarded audible playback. If iOS rejects that autoplay, it stays unmuted and paused with an accessible Play control; no silent fallback is attempted. A single pointer state machine distinguishes tap, 250 ms centre hold, outer-10% edge hold and movement beyond 12 CSS px without preventing native scroll. Only an explicit tap-pause or audible-policy rejection exposes central SVG play/sound controls; an actual guarded `play` event for the current video hides them. Holds never reveal controls. An activated centre hold preserves a pause lock for its original item/video/source/pointer sequence during scroll and iOS `pointercancel`; it resumes only on the actual touch end when that original item is active and was playing before the hold. Offline videos loop with `object-cover`, temporary edge holds use 2×, and scoped Reels styles suppress iOS callout/selection/drag without affecting the dashboard. Effective active selection is reversible and controls only pause/play while cards are partial. A full-screen commit requires observer ratio ≥ 0.999 plus 2 CSS px card/root geometry tolerance; only after it may the previous committed and fully invisible card reset offscreen. Thus a partial reversal resumes the saved position, while a post-commit return starts from 0 under existing seek guards. The lower Reels hierarchy is metadata overlay, non-seekable progress, then a safe-area-aware glass navigation; scoped backdrop blur is limited to that lower zone. The shared two-link navigation marks `/` (**Главная**) or `/offline` (**Рилсы**) active. Startup attempts guarded play at `HAVE_METADATA`/`loadedmetadata` rather than waiting for `canplay`; reset seeks still wait for current `seeked`. Stale-frame protection, playback generations and the previous/current/next three-source bound remain unchanged. iOS WebKit can briefly freeze or jump at 1×↔2× for AAC media; the MVP keeps normal audio and standard pitch preservation, accepts this platform limitation, and retains remux-first ingest rather than forcing short-GOP/no-B-frames transcodes. Re-downloading unchanged server media does not itself change that WebKit behavior.
+- Post-iPhone hardening block 4A makes `/` the canonical dashboard and manifest `id`/`scope`/start route. It fetches every signed-cursor catalog page with duplicate/cursor-loop protection only while online, treats an offline catalog as neutral rather than an error, aborts and invalidates a pending request on connectivity loss, and reloads automatically on return to network. It sends only incomplete or failed records to the existing one-at-a-time queue, and reports storage and batch state as percentages only. Clear aborts the active queue, waits for its pump to settle, then removes only `offline-reels-media-v1` and IndexedDB records; a late download cannot repopulate the library. `/offline` removes summary, byte-size, technical-title and individual-delete presentation while preserving all Reels lifecycle guards. `/videos` remains an explicit precached legacy redirect to `/`; API video routes remain uncached. There is no runtime redirect from `/offline` to `/`: existing iOS installations must be reinstalled once after the manifest start-route migration, while precached `/` and `/offline` continue to support offline navigation. Future watched-retention policy is not implemented: a watched reel may later be removed locally after one hour and replaced when online, but a fully closed iOS PWA cannot guarantee background work.
 - Post-iPhone hardening adds a controlled installed-PWA shell update. Serwist's supported `waiting` and `controlling` lifecycle events drive a compact Russian notification; no update is activated or page reloaded until the user selects **«Обновить»**. The action uses Serwist's message-based `SKIP_WAITING` path, reloads exactly once after `controllerchange`, and never accesses `offline-reels-media-v1` or the offline IndexedDB store.
 - A manual smoke exposed the accepted PostgreSQL/MinIO inconsistency where metadata can outlive a deleted MinIO object. `VerticalVideoFeed` now treats a media `error` as terminal for that card: it clears the source and native loading state, shows a safe local message, and suppresses automatic source retries. Neighboring cards remain usable; no automatic PostgreSQL/MinIO reconciliation or backend fallback was added.
 

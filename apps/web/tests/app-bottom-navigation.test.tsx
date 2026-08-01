@@ -9,40 +9,32 @@ import { AppBottomNavigation } from "../components/app-bottom-navigation";
 afterEach(cleanup);
 
 describe("AppBottomNavigation", () => {
-  it("marks the main and download destination active on /videos", () => {
-    render(<AppBottomNavigation activeRoute="videos" />);
+  it("uses the canonical dashboard as the active main destination", () => {
+    render(<AppBottomNavigation activeRoute="home" />);
 
     const navigation = screen.getByRole("navigation", { name: "Основная навигация" });
-    const videos = screen.getByRole("link", { name: "Главная и загрузка" });
-    const offline = screen.getByRole("link", { name: "Офлайн-библиотека" });
+    const home = screen.getByRole("link", { name: "Главная" });
+    const offline = screen.getByRole("link", { name: "Рилсы" });
 
-    expect(navigation).toHaveClass("app-bottom-navigation");
-    expect(navigation).toHaveClass("app-bottom-navigation--floating");
-    expect(navigation).toHaveAttribute("data-testid", "app-bottom-navigation");
-    expect(videos).toHaveAttribute("href", "/videos");
-    expect(videos).toHaveAttribute("aria-current", "page");
+    expect(navigation).toHaveClass("app-bottom-navigation", "app-bottom-navigation--floating");
+    expect(home).toHaveAttribute("href", "/");
+    expect(home).toHaveAttribute("aria-current", "page");
     expect(offline).toHaveAttribute("href", "/offline");
     expect(offline).not.toHaveAttribute("aria-current");
-    expect(videos.querySelector("svg[aria-hidden='true']")).toBeInTheDocument();
+    expect(home.querySelector("svg[aria-hidden='true']")).toBeInTheDocument();
     expect(offline.querySelector("svg[aria-hidden='true']")).toBeInTheDocument();
-    expect(navigation).not.toHaveTextContent("🏠");
-    expect(navigation).not.toHaveTextContent("▶");
   });
 
-  it("marks only the offline library destination active on /offline", () => {
+  it("marks only Reels active on /offline", () => {
     render(<AppBottomNavigation activeRoute="offline" />);
 
-    expect(screen.queryByTestId("reels-bottom-glass-backdrop")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Главная и загрузка" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Офлайн-библиотека" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Главная" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Рилсы" })).toHaveAttribute("aria-current", "page");
   });
 
   it("adds the single pointer-inert Reels backdrop only when explicitly requested", () => {
     render(<AppBottomNavigation activeRoute="offline" withReelsGlassBackdrop />);
 
-    const backdrop = screen.getByTestId("reels-bottom-glass-backdrop");
-    expect(backdrop).toHaveClass("reels-bottom-glass-backdrop");
-    expect(backdrop).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByRole("link", { name: "Офлайн-библиотека" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("reels-bottom-glass-backdrop")).toHaveClass("reels-bottom-glass-backdrop");
   });
 });

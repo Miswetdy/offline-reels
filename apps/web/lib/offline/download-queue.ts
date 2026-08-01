@@ -1,6 +1,7 @@
 import type { Video } from "../api/videos";
 import { toOfflineStorageError } from "./errors";
 import { downloadVideoForOffline, type DownloadProgress } from "./downloader";
+import { clearOfflineLibrary } from "./library-management";
 import { reconcileOfflineLibrary } from "./reconciliation";
 import {
   calculateCompletedLibrarySize,
@@ -22,7 +23,17 @@ export type DownloadQueueSnapshot = {
   currentProgress: DownloadProgress | null;
   currentErrorCode: OfflineErrorCode | null;
   online: boolean;
+  initialized: boolean;
+  clearing: boolean;
+  batchProgress: DownloadBatchProgress | null;
   records: OfflineVideoRecord[];
+};
+
+export type DownloadBatchProgress = {
+  totalBytes: number;
+  completedBytes: number;
+  displayedBytes: number;
+  state: "active" | "failed" | "completed";
 };
 
 type DownloadQueueDependencies = {
@@ -34,6 +45,7 @@ type DownloadQueueDependencies = {
   updateOfflineVideo: typeof updateOfflineVideo;
   deleteOfflineVideo: typeof deleteOfflineVideo;
   calculateCompletedLibrarySize: typeof calculateCompletedLibrarySize;
+  clearOfflineLibrary: typeof clearOfflineLibrary;
   now: () => string;
   isOnline: () => boolean;
   addNetworkListener: (event: "online" | "offline", listener: () => void) => () => void;
@@ -48,6 +60,7 @@ const DEFAULT_DEPENDENCIES: DownloadQueueDependencies = {
   updateOfflineVideo,
   deleteOfflineVideo,
   calculateCompletedLibrarySize,
+  clearOfflineLibrary,
   now: () => new Date().toISOString(),
   isOnline: () => typeof navigator === "undefined" || navigator.onLine,
   addNetworkListener: (event, listener) => {
@@ -86,6 +99,9 @@ function emptySnapshot(online: boolean): DownloadQueueSnapshot {
     currentProgress: null,
     currentErrorCode: null,
     online,
+    initialized: false,
+    clearing: false,
+    batchProgress: null,
     records: [],
   };
 }
@@ -98,6 +114,9 @@ export class OfflineDownloadQueue {
   private activeController: AbortController | null = null;
   private pumpPromise: Promise<void> | null = null;
   private initializationPromise: Promise<void> | null = null;
+  private controlTail: Promise<void> = Promise.resolve();
+  private clearing = false;
+  private batchVideoIds: Set<string> | null = null;
 
   constructor(partialDependencies: Partial<DownloadQueueDependencies> = {}) {
     this.dependencies = { ...DEFAULT_DEPENDENCIES, ...partialDependencies };
@@ -127,60 +146,103 @@ export class OfflineDownloadQueue {
       this.initializationPromise = (async () => {
         await this.dependencies.reconcileOfflineLibrary();
         await this.refreshRecords();
+        this.snapshot = { ...this.snapshot, initialized: true };
+        this.emit();
       })();
     }
     return this.initializationPromise;
   }
 
   async enqueue(video: Video): Promise<boolean> {
-    const videoId = normalizeVideoId(video.id);
-    const existing = await this.dependencies.getOfflineVideo(videoId);
-    if (existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") {
-      return false;
-    }
-    if (existing?.status === "failed") return false;
-
-    await this.dependencies.putOfflineVideo(toQueueRecord(video, this.dependencies.now()));
-    await this.refreshRecords();
-    return true;
+    return this.runControlled(async () => this.enqueueUnlocked(video));
   }
 
   async enqueueMany(videos: Video[]): Promise<number> {
-    let enqueued = 0;
-    for (const video of videos) {
-      if (await this.enqueue(video)) enqueued += 1;
-    }
-    return enqueued;
+    return this.runControlled(async () => {
+      let enqueued = 0;
+      for (const video of videos) {
+        if (await this.enqueueUnlocked(video)) enqueued += 1;
+      }
+      return enqueued;
+    });
   }
 
   async retry(videoId: string): Promise<boolean> {
-    const id = normalizeVideoId(videoId);
-    const record = await this.dependencies.getOfflineVideo(id);
-    if (!record || record.status !== "failed") return false;
-    await this.dependencies.updateOfflineVideo(id, {
-      status: "queued",
-      downloadedBytes: 0,
-      downloadedAt: null,
-      cacheKey: null,
-      lastErrorCode: null,
-      lastErrorMessage: null,
-      failedAt: null,
-    });
-    await this.refreshRecords();
-    return true;
+    return this.runControlled(async () => this.retryUnlocked(videoId));
   }
 
   async removeQueued(videoId: string): Promise<boolean> {
-    const id = normalizeVideoId(videoId);
-    const record = await this.dependencies.getOfflineVideo(id);
-    if (!record || record.status !== "queued") return false;
-    await this.dependencies.deleteOfflineVideo(id);
-    await this.refreshRecords();
-    return true;
+    return this.runControlled(async () => {
+      const id = normalizeVideoId(videoId);
+      const record = await this.dependencies.getOfflineVideo(id);
+      if (!record || record.status !== "queued") return false;
+      await this.dependencies.deleteOfflineVideo(id);
+      await this.refreshRecords();
+      return true;
+    });
+  }
+
+  async enqueueCatalogAndStart(videos: Video[]): Promise<number> {
+    await this.initialize();
+    const queued = await this.runControlled(async () => {
+      const uniqueVideos = new Map(videos.map((video) => [normalizeVideoId(video.id), video]));
+      const candidates: Video[] = [];
+      for (const video of uniqueVideos.values()) {
+        const existing = await this.dependencies.getOfflineVideo(video.id);
+        if (existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") continue;
+        if (existing?.status === "failed") {
+          if (await this.retryUnlocked(video.id)) candidates.push(video);
+          continue;
+        }
+        if (await this.enqueueUnlocked(video)) candidates.push(video);
+      }
+      this.batchVideoIds = new Set(candidates.map((video) => video.id));
+      this.snapshot = {
+        ...this.snapshot,
+        batchProgress: candidates.length === 0 ? null : {
+          totalBytes: candidates.reduce((total, video) => total + video.byte_size, 0),
+          completedBytes: 0,
+          displayedBytes: 0,
+          state: "active",
+        },
+      };
+      this.emit();
+      return candidates.length;
+    });
+    if (queued > 0) void this.start().catch(() => undefined);
+    return queued;
+  }
+
+  async cancelAndClear(): Promise<void> {
+    await this.runControlled(async () => {
+      this.clearing = true;
+      this.snapshot = { ...this.snapshot, clearing: true, paused: true, currentErrorCode: null };
+      this.activeController?.abort();
+      this.emit();
+    });
+
+    try {
+      await this.pumpPromise;
+      await this.dependencies.clearOfflineLibrary();
+      this.batchVideoIds = null;
+      this.snapshot = { ...emptySnapshot(this.dependencies.isOnline()), initialized: true, clearing: true };
+      await this.refreshRecords();
+    } catch (error) {
+      // Cleanup can partially complete (for example, media cache deletion can
+      // succeed before IndexedDB cleanup fails). Refresh the observable state
+      // without retrying destructive work, then preserve the original error.
+      await this.refreshRecords().catch(() => undefined);
+      throw error;
+    } finally {
+      this.clearing = false;
+      this.snapshot = { ...this.snapshot, clearing: false, paused: true };
+      this.emit();
+    }
   }
 
   async start(): Promise<void> {
     await this.initialize();
+    if (this.clearing) return;
     if (!this.dependencies.isOnline()) {
       this.snapshot = { ...this.snapshot, online: false, paused: true };
       this.emit();
@@ -220,6 +282,7 @@ export class OfflineDownloadQueue {
       const next = records.find((record) => record.status === "queued");
       if (!next) break;
 
+      if (this.clearing) break;
       const controller = new AbortController();
       this.activeController = controller;
       this.snapshot = {
@@ -241,8 +304,9 @@ export class OfflineDownloadQueue {
           },
           signal: controller.signal,
           onProgress: (progress) => {
-            if (this.activeController !== controller) return;
+            if (this.activeController !== controller || this.clearing) return;
             this.snapshot = { ...this.snapshot, currentProgress: progress };
+            this.updateBatchProgress();
             this.emit();
           },
         });
@@ -275,7 +339,87 @@ export class OfflineDownloadQueue {
       completedBytes,
       online: this.dependencies.isOnline(),
     };
+    this.updateBatchProgress();
     this.emit();
+  }
+
+  async cancelBatch(): Promise<void> {
+    await this.runControlled(async () => {
+      this.snapshot = { ...this.snapshot, paused: true };
+      this.activeController?.abort();
+      this.emit();
+    });
+    await this.pumpPromise;
+    await this.runControlled(async () => {
+      if (this.batchVideoIds) {
+        for (const record of this.snapshot.records) {
+          if (this.batchVideoIds.has(record.id) && record.status === "queued") {
+            await this.dependencies.deleteOfflineVideo(record.id);
+          }
+        }
+      }
+      await this.refreshRecords();
+    });
+  }
+
+  private async enqueueUnlocked(video: Video): Promise<boolean> {
+    if (this.clearing) return false;
+    const videoId = normalizeVideoId(video.id);
+    const existing = await this.dependencies.getOfflineVideo(videoId);
+    if (this.clearing || existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading" || existing?.status === "failed") {
+      return false;
+    }
+    await this.dependencies.putOfflineVideo(toQueueRecord(video, this.dependencies.now()));
+    await this.refreshRecords();
+    return true;
+  }
+
+  private async retryUnlocked(videoId: string): Promise<boolean> {
+    if (this.clearing) return false;
+    const id = normalizeVideoId(videoId);
+    const record = await this.dependencies.getOfflineVideo(id);
+    if (!record || record.status !== "failed") return false;
+    await this.dependencies.updateOfflineVideo(id, {
+      status: "queued",
+      downloadedBytes: 0,
+      downloadedAt: null,
+      cacheKey: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      failedAt: null,
+    });
+    await this.refreshRecords();
+    return true;
+  }
+
+  private runControlled<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.controlTail;
+    let release!: () => void;
+    this.controlTail = new Promise<void>((resolve) => { release = resolve; });
+    return previous.then(operation).finally(release);
+  }
+
+  private updateBatchProgress(): void {
+    const batch = this.snapshot.batchProgress;
+    if (!batch || !this.batchVideoIds) return;
+    const completedBytes = this.snapshot.records
+      .filter((record) => this.batchVideoIds?.has(record.id) && record.status === "completed")
+      .reduce((total, record) => total + record.byteSize, 0);
+    const progress = this.snapshot.currentProgress;
+    const currentBytes = progress && this.batchVideoIds.has(progress.videoId) ? progress.downloadedBytes : 0;
+    const observedBytes = Math.min(batch.totalBytes, completedBytes + currentBytes);
+    const hasPending = this.snapshot.records.some((record) => this.batchVideoIds?.has(record.id) && (record.status === "queued" || record.status === "downloading"));
+    this.snapshot = {
+      ...this.snapshot,
+      batchProgress: {
+        ...batch,
+        completedBytes,
+        displayedBytes: Math.max(batch.displayedBytes, observedBytes),
+        state: hasPending || this.snapshot.activeVideoId !== null
+          ? "active"
+          : completedBytes === batch.totalBytes ? "completed" : "failed",
+      },
+    };
   }
 
   private emit(): void {
