@@ -1,6 +1,6 @@
 # Offline Reels
 
-Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed, development MP4 seed flow, and a local PWA library backed by IndexedDB, Cache Storage and one Service Worker. It has no Instagram integration, authentication, recommendations, watched state, Celery worker, background downloading, or transcoding.
+Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed, development MP4 seed flow, media normalization, and a local PWA library backed by IndexedDB, Cache Storage and one Service Worker. It has no Instagram integration, authentication, recommendations, watched state, Celery worker, or background downloading.
 
 ## Supported versions
 
@@ -42,7 +42,7 @@ Install the PWA first, then download videos from inside that installed PWA;
 downloads made in a Safari tab do not populate the installed app library. The
 completed acceptance also confirmed that MP4 codec parameters matter: VP9 in an
 MP4 container failed on iPhone, while H.264 with `yuv420p` and `faststart`
-played correctly. Media normalization is the next functional stage.
+played correctly. Media normalization now validates and prepares ingest media for that supported profile.
 
 ## Commands
 

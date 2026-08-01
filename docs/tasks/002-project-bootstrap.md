@@ -23,9 +23,6 @@ offlineReels/
 ├── apps/
 │   ├── web/
 │   └── api/
-├── services/
-│   ├── instagram-collector/
-│   └── media-worker/
 ├── docs/
 ├── spikes/
 ├── compose.yaml
