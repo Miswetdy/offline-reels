@@ -78,13 +78,17 @@ The system may stop collecting new Reels.
 ## Mitigation
 
 - isolate Instagram Collector;
-- implement clear error handling;
-- store session status;
+- use explicit account and Reel pipeline states with safe reason codes;
+- stop on checkpoint, CAPTCHA, reauthentication or temporary limits;
+- keep browser profiles and the minimal in-memory CookieJar outside database,
+  logs and client devices;
 - make collector replaceable.
 
 ## Status
 
-Open.
+Partially mitigated at the architecture level only. No production Instagram
+runtime has been enabled; web changes, session loss and account restrictions
+remain open operational risks.
 
 ---
 

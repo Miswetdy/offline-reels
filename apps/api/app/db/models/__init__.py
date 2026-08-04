@@ -1,3 +1,17 @@
+from app.db.models.instagram import (
+    InstagramAccount,
+    InstagramCollectionRun,
+    InstagramCollectionRunItem,
+    InstagramNormalizationJob,
+    InstagramReel,
+)
 from app.db.models.video import Video
 
-__all__ = ["Video"]
+__all__ = [
+    "InstagramAccount",
+    "InstagramCollectionRun",
+    "InstagramCollectionRunItem",
+    "InstagramNormalizationJob",
+    "InstagramReel",
+    "Video",
+]

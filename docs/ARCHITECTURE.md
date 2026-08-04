@@ -37,6 +37,22 @@ The general data flow:
 
 8. Watched status is synchronized back to Backend when the connection is available.
 
+## Collector persistence foundation
+
+The implemented foundation contains no browser, downloader, worker, scheduler
+or public Collector API. It defines durable account, Reel, collection-run and
+normalization-job state for a later isolated server-side service. A Reel source
+must be committed as `source_ready` before the collector may scroll; a separate
+normalizer then advances it through `normalizing` to `ready`. Only `ready`
+canonical H.264/yuv420p/AAC MP4 can link to the existing `videos` catalog, so
+source VP9/AV1 media is never exposed to the PWA catalog. See
+[ADR 007](adr/007-instagram-collector-pipeline.md).
+
+A retryable normalizer failure returns a Reel from `normalizing` to
+`source_ready`; the failed job retains its safe reason and a later pending job
+is a new attempt. A permanent source failure becomes `failed`, which a later
+collection run may explicitly retry through `downloading`. `ready` is terminal.
+
 ---
 
 # Components
@@ -125,6 +141,10 @@ Responsibilities:
 - Discover new videos.
 - Extract required metadata.
 - Send discovered videos to Backend.
+
+Current status: the safe domain and persistence contracts are implemented, but
+the Collector service itself is not. Future browser session, minimal in-memory
+CookieJar and downloader integrations stay outside the core API boundary.
 
 Restrictions:
 

@@ -1,6 +1,6 @@
 # Offline Reels
 
-Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed, development MP4 seed flow, media normalization, and a local PWA library backed by IndexedDB, Cache Storage and one Service Worker. It has no Instagram integration, authentication, recommendations, watched state, Celery worker, or background downloading.
+Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed, development MP4 seed flow, media normalization, and a local PWA library backed by IndexedDB, Cache Storage and one Service Worker. It now also contains Collector domain states and a database foundation, but has no Instagram runtime integration, authentication flow, browser worker, downloader, scheduler, watched state, Celery worker, or background downloading.
 
 ## Supported versions
 
@@ -126,3 +126,14 @@ The lower visual layout uses shared CSS variables: the floating navigation reser
 ## Security
 
 `.env.example` contains templates only. Do not commit real passwords, tokens, Instagram cookies, sessions, or production data. The client communicates only with the Backend API; external Instagram integration remains outside this bootstrap.
+
+## Instagram Collector foundation
+
+The backend has durable Collector domain contracts and an Alembic schema for
+safe account connection state, Reel idempotency, sequential collection runs and
+future normalization jobs. The current catalog remains unchanged: only a
+future `ready` canonical MP4 (H.264/yuv420p/AAC) may be linked to `videos`.
+There is no production Instagram connection or worker yet. The next step is an
+isolated fixture-mode Collector service; the validated browser/download spike
+remains a separate local research project. See
+[ADR 007](docs/adr/007-instagram-collector-pipeline.md).

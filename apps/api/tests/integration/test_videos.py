@@ -64,7 +64,7 @@ def create_video(session_factory, video_id: UUID, created_at: datetime, suffix: 
 
 def test_migration_upgrade_and_downgrade_cycle(session_factory) -> None:
     config = Config("alembic.ini")
-    command.downgrade(config, "0002_create_videos")
+    command.downgrade(config, "0003_video_normalization")
     with session_factory() as session:
         engine = session.get_bind()
     historical_id = uuid4()
@@ -100,8 +100,9 @@ def test_migration_upgrade_and_downgrade_cycle(session_factory) -> None:
     assert historical.title == "Historical video"
     assert all(value is None for value in historical[1:])
 
-    command.downgrade(config, "0002_create_videos")
-    assert "normalization_strategy" not in {
+    command.downgrade(config, "0003_video_normalization")
+    assert "instagram_accounts" not in inspect(engine).get_table_names()
+    assert "normalization_strategy" in {
         column["name"] for column in inspect(engine).get_columns("videos")
     }
     with engine.connect() as connection:
