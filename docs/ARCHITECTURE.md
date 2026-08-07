@@ -37,15 +37,28 @@ The general data flow:
 
 8. Watched status is synchronized back to Backend when the connection is available.
 
-## Collector persistence foundation
+## Collector persistence and fixture orchestration
 
-The implemented foundation contains no browser, downloader, worker, scheduler
-or public Collector API. It defines durable account, Reel, collection-run and
-normalization-job state for a later isolated server-side service. A Reel source
-must be committed as `source_ready` before the collector may scroll; a separate
-normalizer then advances it through `normalizing` to `ready`. Only `ready`
-canonical H.264/yuv420p/AAC MP4 can link to the existing `videos` catalog, so
-source VP9/AV1 media is never exposed to the PWA catalog. See
+The implemented foundation contains durable account, Reel, collection-run and
+normalization-job state plus a fixture-only sequential Collector engine. It
+has narrow feed, downloader, validator and source-storage ports; real browser,
+session-first downloader and object-storage adapters are deliberately absent.
+The engine accepts only canonical Reel candidates, pauses the current candidate,
+validates a temporary source, publishes a deterministic source key and commits
+Reel `source_ready`, one pending normalization job, one ordered run item and
+run counters in one SQLAlchemy transaction. Only after that commit can the feed
+advance. An already durable `source_ready`, `normalizing` or `ready` Reel gets
+an `already_available` run item without a new download.
+
+Fixture publication and the database are not one transaction. If database
+commit fails after a newly created fixture object, the engine best-effort deletes
+only that object and keeps the database failure as the primary safe reason. A
+pre-existing object is never compensated. Startup reconciliation and real
+MinIO/browser adapters remain a later runtime stage.
+
+A separate normalizer advances `source_ready` through `normalizing` to `ready`.
+Only `ready` canonical H.264/yuv420p/AAC MP4 can link to the existing `videos`
+catalog, so source VP9/AV1 media is never exposed to the PWA catalog. See
 [ADR 007](adr/007-instagram-collector-pipeline.md).
 
 A retryable normalizer failure returns a Reel from `normalizing` to
@@ -142,9 +155,10 @@ Responsibilities:
 - Extract required metadata.
 - Send discovered videos to Backend.
 
-Current status: the safe domain and persistence contracts are implemented, but
-the Collector service itself is not. Future browser session, minimal in-memory
-CookieJar and downloader integrations stay outside the core API boundary.
+Current status: a network-free fixture Collector core is implemented, but no
+production Instagram browser, CookieJar, downloader, source-storage runtime or
+worker exists. Future browser session and minimal in-memory CookieJar adapters
+stay outside this core API boundary.
 
 Restrictions:
 

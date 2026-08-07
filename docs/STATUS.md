@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector stage 1 now adds only its domain and persistence foundation; no production Instagram runtime is enabled.
+Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector stage 2 adds a fixture-only sequential orchestration core; no production Instagram runtime is enabled.
 
 ## Completed
 
@@ -20,12 +20,14 @@ Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-libr
 
 ## Current focus
 
-Instagram Collector stage 1 defines explicit account, collection-run, Reel
-pipeline and normalization-job states; it adds safe PostgreSQL persistence,
-short machine reason codes, source-before-scroll invariants, and the rule that
-only canonical `ready` media can enter `videos`. There is no browser worker,
-yt-dlp integration, scheduler, Collector API or frontend surface yet. The next
-Collector step is an isolated fixture-mode service; the validated local spike
+Instagram Collector stage 2 implements the network-free fixture service over
+the stage 1 account, collection-run, Reel pipeline and normalization-job state.
+It proves `pause -> temporary download -> validation -> publication -> one DB
+transaction -> advance`, including compensation of an object created by the
+failed attempt. Fixture storage and SQLite are isolated from production settings.
+There is still no browser worker, yt-dlp integration, real source storage,
+scheduler, Collector API or frontend surface. The next Collector step is real
+browser/session-first adapters in an isolated runtime; the validated local spike
 remains separate and is not copied into production.
 
 Block 4A keeps `/offline` as the Reels-like control mode through the shared

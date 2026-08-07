@@ -103,6 +103,20 @@ Alternative approaches rejected for this foundation:
 - combining normalization with feed collection: it would break the durable
   source-before-scroll throughput boundary.
 
-The next implementation stage is an isolated Collector service with fixture
-mode. It must use these contracts without changing current PWA, video API, or
+## Implemented fixture core
+
+Stage 2 implements the orchestration core only with deterministic fixtures. It
+uses production-owned typed ports for a feed, downloader, validator and source
+storage; no port exposes DOM, HTML, cookies, browser state or media URLs. The
+fixture service proves the required `detect -> pause -> download -> validate ->
+publish -> durable DB commit -> advance` order and records only safe summary
+fields. It creates the pending normalization job in the same database
+transaction as the Reel source metadata and run item.
+
+Because source storage and PostgreSQL are separate systems, a failure after a
+new fixture publication gets best-effort compensation for that new object only.
+Compensation cannot delete an object that existed before the attempt and cannot
+replace the original safe database-failure reason. Full startup reconciliation,
+MinIO, browser automation and session-first yt-dlp adapters remain future,
+isolated runtime work. This core does not change current PWA, video API, or
 normalizer behavior.

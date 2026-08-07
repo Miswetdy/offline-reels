@@ -129,11 +129,23 @@ The lower visual layout uses shared CSS variables: the floating navigation reser
 
 ## Instagram Collector foundation
 
-The backend has durable Collector domain contracts and an Alembic schema for
-safe account connection state, Reel idempotency, sequential collection runs and
-future normalization jobs. The current catalog remains unchanged: only a
-future `ready` canonical MP4 (H.264/yuv420p/AAC) may be linked to `videos`.
-There is no production Instagram connection or worker yet. The next step is an
-isolated fixture-mode Collector service; the validated browser/download spike
-remains a separate local research project. See
-[ADR 007](docs/adr/007-instagram-collector-pipeline.md).
+The backend has durable Collector domain contracts, an Alembic schema and a
+fixture-only sequential orchestration core. Fixture mode uses deterministic
+canonical Reel candidates, a temporary local source directory and SQLite; it
+never makes a network request or accesses an Instagram session. Its ordering is
+strict: pause, validate and publish a source, then atomically commit Reel,
+normalization-job and run-item state before one advance is permitted. A
+database failure after a newly published fixture object triggers best-effort
+compensation of that object only; a pre-existing object is never removed.
+
+Run the isolated fixture command with a bounded target and allowlisted scenario:
+
+```powershell
+uv --directory apps/api run python -m app.scripts.run_instagram_collector_fixture --scenario happy --target 3
+```
+
+The current catalog remains unchanged: only a future `ready` canonical MP4
+(H.264/yuv420p/AAC) may be linked to `videos`. There is no production Instagram
+connection, browser adapter, downloader, source-storage runtime or normalizer
+worker yet. The validated browser/download spike remains a separate local
+research project. See [ADR 007](docs/adr/007-instagram-collector-pipeline.md).
