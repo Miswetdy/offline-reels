@@ -129,8 +129,9 @@ The lower visual layout uses shared CSS variables: the floating navigation reser
 
 ## Instagram Collector foundation
 
-The backend has durable Collector domain contracts, an Alembic schema and a
-fixture-only sequential orchestration core. Fixture mode uses deterministic
+The backend has durable Collector domain contracts, an Alembic schema, a
+fixture-only sequential orchestration core and optional runtime adapter
+implementations. Fixture mode uses deterministic
 canonical Reel candidates, a temporary local source directory and SQLite; it
 never makes a network request or accesses an Instagram session. Its ordering is
 strict: pause, validate and publish a source, then atomically commit Reel,
@@ -146,6 +147,9 @@ uv --directory apps/api run python -m app.scripts.run_instagram_collector_fixtur
 
 The current catalog remains unchanged: only a future `ready` canonical MP4
 (H.264/yuv420p/AAC) may be linked to `videos`. There is no production Instagram
-connection, browser adapter, downloader, source-storage runtime or normalizer
-worker yet. The validated browser/download spike remains a separate local
-research project. See [ADR 007](docs/adr/007-instagram-collector-pipeline.md).
+connection from the application, operator command, scheduler or normalizer
+worker yet. The optional `collector` extra pins Playwright and yt-dlp, but the
+ordinary API dependency set does not install Chromium or invoke those modules.
+The adapters have only been tested locally with synthetic/mocked fixtures; live
+Instagram remains an explicit Stage 3B operator task. See
+[ADR 007](docs/adr/007-instagram-collector-pipeline.md).

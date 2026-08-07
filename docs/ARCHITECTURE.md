@@ -155,10 +155,14 @@ Responsibilities:
 - Extract required metadata.
 - Send discovered videos to Backend.
 
-Current status: a network-free fixture Collector core is implemented, but no
-production Instagram browser, CookieJar, downloader, source-storage runtime or
-worker exists. Future browser session and minimal in-memory CookieJar adapters
-stay outside this core API boundary.
+Current status: a network-free fixture Collector core and optional runtime
+adapter implementations exist. The runtime layer is isolated from FastAPI
+startup and contains a bounded Playwright feed adapter, in-memory minimal
+CookieJar provider, session-first yt-dlp adapter, ffprobe validator and
+prefix-bound MinIO source-storage adapter. It is covered only by local synthetic
+and mocked tests: no live Instagram run, account connection, worker or operator
+command exists yet. Startup reconciliation and a normalizer worker remain later
+stages.
 
 Restrictions:
 

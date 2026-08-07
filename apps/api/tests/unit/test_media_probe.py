@@ -13,7 +13,7 @@ def test_probe_media_parses_primary_video_and_audio_streams() -> None:
         args=["ffprobe"],
         returncode=0,
         stdout=(
-            '{"format":{"duration":"1.25"},"streams":['
+            '{"format":{"duration":"1.25","format_name":"mov,mp4,m4a,3gp,3g2,mj2"},"streams":['
             '{"codec_type":"video","codec_name":"h264","pix_fmt":"yuv420p",'
             '"profile":"Main","level":41,"width":720,"height":1280},'
             '{"codec_type":"audio","codec_name":"aac"}]}'
@@ -31,6 +31,7 @@ def test_probe_media_parses_primary_video_and_audio_streams() -> None:
     assert (result.width, result.height) == (720, 1280)
     assert result.video_profile == "Main"
     assert result.video_level == 41
+    assert result.container_formats == frozenset({"mov", "mp4", "m4a", "3gp", "3g2", "mj2"})
     assert run.call_args.kwargs["timeout"] == 7
     assert "shell" not in run.call_args.kwargs
 
@@ -63,3 +64,20 @@ def test_probe_media_maps_timeout_to_typed_error() -> None:
     ):
         with pytest.raises(MediaProbeTimeoutError):
             probe_media(Path("input.mp4"))
+
+
+def test_probe_media_treats_missing_or_malformed_format_name_as_unknown() -> None:
+    completed = subprocess.CompletedProcess(
+        args=["ffprobe"],
+        returncode=0,
+        stdout=(
+            '{"format":{"duration":"1","format_name":["mp4"]},"streams":['
+            '{"codec_type":"video","codec_name":"h264","width":1,"height":1}]}'
+        ),
+        stderr="",
+    )
+
+    with patch("app.media.probe.subprocess.run", return_value=completed):
+        result = probe_media(Path("input.mp4"))
+
+    assert result.container_formats == frozenset()

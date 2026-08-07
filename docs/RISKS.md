@@ -87,8 +87,11 @@ The system may stop collecting new Reels.
 ## Status
 
 Partially mitigated at the architecture level and by a network-free fixture
-Collector engine only. No production Instagram runtime has been enabled; web
-changes, session loss and account restrictions remain open operational risks.
+Collector engine plus locally mocked runtime adapters only. No live production
+Instagram runtime has been enabled; web changes, session loss and account
+restrictions remain open operational risks. The MinIO `stat -> put` path is not
+a cross-system transaction; until a concurrent runner and reconciler exist, the
+future operator runner remains globally sequential.
 
 ---
 

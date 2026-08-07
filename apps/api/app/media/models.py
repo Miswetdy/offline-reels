@@ -19,6 +19,9 @@ class MediaProbe:
     height: int | None
     video_profile: str | None = None
     video_level: int | None = None
+    # ffprobe's comma-delimited format.format_name, normalized to lowercase.
+    # An empty set means the container was not identified safely.
+    container_formats: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

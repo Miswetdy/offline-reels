@@ -75,8 +75,10 @@ def _parse_probe_output(path: Path, output: str) -> MediaProbe:
 
     format_info = payload.get("format")
     duration = None
+    container_formats: frozenset[str] = frozenset()
     if isinstance(format_info, dict):
         duration = _optional_duration(format_info.get("duration"))
+        container_formats = _container_formats(format_info.get("format_name"))
 
     return MediaProbe(
         path=path,
@@ -88,6 +90,7 @@ def _parse_probe_output(path: Path, output: str) -> MediaProbe:
         height=_optional_positive_integer(video_stream.get("height")),
         video_profile=_optional_string(video_stream, "profile"),
         video_level=_optional_nonnegative_integer(video_stream.get("level")),
+        container_formats=container_formats,
     )
 
 
@@ -111,6 +114,14 @@ def _optional_duration(value: object) -> float | None:
     except ValueError:
         return None
     return duration if math.isfinite(duration) else None
+
+
+def _container_formats(value: object) -> frozenset[str]:
+    """Parse ffprobe's format aliases without treating a file suffix as evidence."""
+
+    if not isinstance(value, str):
+        return frozenset()
+    return frozenset(part.strip().lower() for part in value.split(",") if part.strip())
 
 
 def _optional_positive_integer(value: object) -> int | None:

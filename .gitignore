@@ -36,6 +36,7 @@ __pycache__/
 # Tests and tooling
 coverage/
 .playwright/
+.playwright-browsers/
 test-results/
 *.log
 *.tmp

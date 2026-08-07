@@ -120,3 +120,22 @@ replace the original safe database-failure reason. Full startup reconciliation,
 MinIO, browser automation and session-first yt-dlp adapters remain future,
 isolated runtime work. This core does not change current PWA, video API, or
 normalizer behavior.
+
+## Stage 3A runtime adapters
+
+The production package now has optional, explicitly composed adapters outside
+the core: Playwright persistent-profile feed control, a minimal in-memory
+Instagram CookieJar, session-first yt-dlp, ffprobe validation and an
+`instagram-sources/`-bound MinIO storage adapter. The `collector` optional
+dependency group pins the research-confirmed Playwright and yt-dlp versions;
+the normal API image does not install Chromium or load these modules at startup.
+
+The profile location is derived from the account UUID below an operator-set root
+and protected by a conservative lock. Cookie values, profile paths, media URLs,
+headers and browser state are neither persisted nor logged. The feed identity is
+the visible video nearest the viewport centre and its container-scoped canonical
+Reel link. One scroll waits for two stable samples.
+
+These adapters have only passed local file fixtures and fake clients. No live
+Instagram request, login, profile access or real object upload occurred in this
+stage. Stage 3B remains a separately authorized bounded operator run.

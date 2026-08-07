@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector stage 2 adds a fixture-only sequential orchestration core; no production Instagram runtime is enabled.
+Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3A adds optional runtime adapter implementations validated only with local fixtures and mocks; no live Instagram runtime is enabled.
 
 ## Completed
 
@@ -20,15 +20,18 @@ Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-libr
 
 ## Current focus
 
-Instagram Collector stage 2 implements the network-free fixture service over
+Instagram Collector Stage 3A retains the network-free fixture service over
 the stage 1 account, collection-run, Reel pipeline and normalization-job state.
 It proves `pause -> temporary download -> validation -> publication -> one DB
 transaction -> advance`, including compensation of an object created by the
 failed attempt. Fixture storage and SQLite are isolated from production settings.
 There is still no browser worker, yt-dlp integration, real source storage,
-scheduler, Collector API or frontend surface. The next Collector step is real
-browser/session-first adapters in an isolated runtime; the validated local spike
-remains separate and is not copied into production.
+scheduler, Collector API or frontend surface. Optional isolated adapters now
+exist for a persistent Playwright feed, minimal in-memory session cookie jar,
+session-first yt-dlp, ffprobe and MinIO source storage, but they have not made a
+live request and no operator command invokes them. The next step is Stage 3B:
+a bounded manually authorized test-account operator run. The validated local
+spike remains separate and is not copied into production.
 
 Block 4A keeps `/offline` as the Reels-like control mode through the shared
 `VerticalVideoFeed`; `/videos` is now a legacy redirect and no longer carries an
