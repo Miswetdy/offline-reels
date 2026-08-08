@@ -1,5 +1,6 @@
 """Prefix-bound MinIO source storage for validated Collector sources."""
 
+import hashlib
 from pathlib import Path
 from typing import Protocol
 
@@ -21,6 +22,8 @@ class MinioClientPort(Protocol):
     ): ...
 
     def remove_object(self, bucket_name: str, object_name: str): ...
+
+    def get_object(self, bucket_name: str, object_name: str): ...
 
 
 class MinioCollectorSourceStorage:
@@ -46,7 +49,14 @@ class MinioCollectorSourceStorage:
         path = self._validated_temporary_path(temporary_path)
         if path.stat().st_size <= 0 or path.stat().st_size > self._maximum_bytes:
             raise CollectorRuntimeError(RuntimeReasonCode.STORAGE_FAILED)
-        if self.exists(key):
+        try:
+            stat = self._client.stat_object(self._bucket, key)
+        except Exception as error:
+            if not _is_not_found(error):
+                raise CollectorRuntimeError(RuntimeReasonCode.STORAGE_FAILED) from error
+        else:
+            if not self._existing_matches(key, path, stat):
+                raise CollectorRuntimeError(RuntimeReasonCode.STORAGE_OBJECT_CONFLICT)
             return PublishedSource(object_key=key, created_by_attempt=False)
         try:
             self._client.fput_object(self._bucket, key, str(path), content_type="video/mp4")
@@ -90,6 +100,37 @@ class MinioCollectorSourceStorage:
         if path.is_dir():
             raise CollectorRuntimeError(RuntimeReasonCode.STORAGE_FAILED)
         return path
+
+    def _existing_matches(self, key: str, path: Path, stat) -> bool:
+        if getattr(stat, "size", None) != path.stat().st_size:
+            return False
+        if (getattr(stat, "content_type", None) or "") != "video/mp4":
+            return False
+        local_digest = _file_sha256(path)
+        response = None
+        try:
+            response = self._client.get_object(self._bucket, key)
+            remote_digest = hashlib.sha256()
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                remote_digest.update(chunk)
+            return remote_digest.hexdigest() == local_digest
+        except Exception as error:
+            raise CollectorRuntimeError(RuntimeReasonCode.STORAGE_FAILED) from error
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                    response.release_conn()
+                except Exception:
+                    pass
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _is_not_found(error: Exception) -> bool:

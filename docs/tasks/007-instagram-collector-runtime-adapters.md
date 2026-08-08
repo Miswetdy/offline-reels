@@ -11,8 +11,9 @@ Collector run.
   controlled scroll and two-sample transition confirmation.
 - Conservative account-derived profile lock and runtime roots that cannot be a
   repository, home/drive root, repository child or overlap each other.
-- Minimal, per-attempt in-memory Instagram session CookieJar; its separate
-  yt-dlp HTTP CookieJar copy is cleared after every attempt.
+- Minimal, per-attempt in-memory Instagram session CookieJar; each download
+  creates and clears a fresh yt-dlp-native `YoutubeDLCookieJar` without a
+  cookie file or persisted browser state.
 - Session-first yt-dlp adapter with no cookiefile, browser-cookie import,
   Authorization/Cookie headers or anonymous fallback.
 - ffprobe source validator that accepts only a real `mp4` container reported

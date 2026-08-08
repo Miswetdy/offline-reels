@@ -1,0 +1,94 @@
+name: offline-reels-collector-smoke
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set in the local operator environment}
+      POSTGRES_USER: ${POSTGRES_USER:?set in the local operator environment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in the local operator environment}
+    ports:
+      - "127.0.0.1:${COLLECTOR_SMOKE_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - collector_smoke_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in the local operator environment}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in the local operator environment}
+    ports:
+      - "127.0.0.1:${COLLECTOR_SMOKE_MINIO_PORT:-59100}:9000"
+    volumes:
+      - collector_smoke_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-bootstrap:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$MINIO_BUCKET"
+        mc admin user info local "$$MINIO_ACCESS_KEY" >/dev/null 2>&1 || mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"
+        cat > /tmp/collector-smoke-policy.json <<EOF
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"],
+              "Resource": ["arn:aws:s3:::$$MINIO_BUCKET"]
+            },
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+              "Resource": ["arn:aws:s3:::$$MINIO_BUCKET/*"]
+            }
+          ]
+        }
+        EOF
+        mc admin policy info local collector-smoke-app >/dev/null 2>&1 || mc admin policy create local collector-smoke-app /tmp/collector-smoke-policy.json
+        mc admin policy attach local collector-smoke-app --user "$$MINIO_ACCESS_KEY"
+    environment:
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in the local operator environment}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: production
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  collector_smoke_postgres:
+  collector_smoke_minio:

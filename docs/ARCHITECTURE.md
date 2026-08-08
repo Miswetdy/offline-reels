@@ -155,14 +155,26 @@ Responsibilities:
 - Extract required metadata.
 - Send discovered videos to Backend.
 
-Current status: a network-free fixture Collector core and optional runtime
-adapter implementations exist. The runtime layer is isolated from FastAPI
-startup and contains a bounded Playwright feed adapter, in-memory minimal
-CookieJar provider, session-first yt-dlp adapter, ffprobe validator and
-prefix-bound MinIO source-storage adapter. It is covered only by local synthetic
-and mocked tests: no live Instagram run, account connection, worker or operator
-command exists yet. Startup reconciliation and a normalizer worker remain later
-stages.
+Current status: a network-free fixture Collector core, optional runtime adapters
+and an explicit headed Windows Stage 3B command exist. The command fixes target
+to three, creates a fresh in-memory CookieJar for each session-first download,
+and permits a transition only after source publication and a PostgreSQL commit.
+Each of the first two durable positions may use one retry wheel after its
+bounded confirmation window; there are at most two transition operations and
+four wheel actions, and the third position never scrolls. A bounded test-account
+run has confirmed three session-first downloads, validation/publication/commit
+ordering, two targeted transitions, and the verifier's object and `videos`
+invariants. It is isolated from FastAPI startup. Phone account connection, a
+Linux/container Collector service, reconciliation and normalizer worker remain
+later stages; the preserved smoke state is reserved for Stage 3C's ten-Reel
+test.
+
+The bounded operator records a pre-run `videos.id` fingerprint and a full safe
+snapshot of the `instagram-sources/` key set, then verifies the exact post-run
+delta, object hashes, workspace cleanup and a position-scoped event transcript.
+MinIO root credentials are confined to smoke bootstrap; the host process uses
+only a bucket-scoped application user. Existing objects require exact
+size/content-type/SHA-256 equality before idempotent reuse.
 
 Restrictions:
 

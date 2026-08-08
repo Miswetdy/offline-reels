@@ -147,9 +147,17 @@ uv --directory apps/api run python -m app.scripts.run_instagram_collector_fixtur
 
 The current catalog remains unchanged: only a future `ready` canonical MP4
 (H.264/yuv420p/AAC) may be linked to `videos`. There is no production Instagram
-connection from the application, operator command, scheduler or normalizer
-worker yet. The optional `collector` extra pins Playwright and yt-dlp, but the
-ordinary API dependency set does not install Chromium or invoke those modules.
-The adapters have only been tested locally with synthetic/mocked fixtures; live
-Instagram remains an explicit Stage 3B operator task. See
+connection from the application, scheduler or normalizer worker yet. Stage 3B
+is an explicit, headed Windows operator command for exactly three Reels; a
+bounded test-account run has successfully confirmed three session-first
+downloads, ffprobe validations, MinIO publications, PostgreSQL commits, two
+targeted transitions and read-only post-run verification without changing
+`videos`. It
+uses a fresh in-memory session CookieJar for every download and commits source
+state before each of two controlled advances. It is not invoked by FastAPI.
+The optional `collector` extra pins Playwright and yt-dlp, but the ordinary API
+dependency set does not install Chromium or invoke those modules. Live Instagram
+remains a separately authorized manual action; the next step is Stage 3C, the
+separate Linux/container ten-Reel run. The normalizer worker and mobile login
+remain unimplemented. See
 [ADR 007](docs/adr/007-instagram-collector-pipeline.md).

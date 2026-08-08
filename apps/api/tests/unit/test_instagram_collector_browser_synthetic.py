@@ -14,6 +14,8 @@ def test_local_synthetic_page_selects_central_video_and_confirms_scroll(tmp_path
     fixture.write_text(_fixture_html(), encoding="utf-8")
     unexpected_requests: list[str] = []
     with sync_playwright() as playwright:
+        if not Path(playwright.chromium.executable_path).is_file():
+            pytest.skip("local Playwright Chromium is not installed")
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 360, "height": 600})
 
@@ -30,7 +32,6 @@ def test_local_synthetic_page_selects_central_video_and_confirms_scroll(tmp_path
         feed = PlaywrightReelsFeed(
             page,
             limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.5, maximum_scroll_attempts=2),
-            context=context,
         )
         assert feed.current().shortcode == "LOCAL_ONE"
         feed.pause_current()

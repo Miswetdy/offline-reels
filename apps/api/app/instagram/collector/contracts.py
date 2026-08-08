@@ -1,6 +1,8 @@
 """Typed ports and safe value objects for Collector orchestration."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID
@@ -27,6 +29,27 @@ class PublishedSource:
     created_by_attempt: bool
 
 
+@dataclass(frozen=True)
+class TransitionSamplingDiagnostics:
+    """Aggregate-only observations from one bounded feed transition wait."""
+
+    poll_count: int = 0
+    unchanged_sample_count: int = 0
+    missing_candidate_count: int = 0
+    different_candidate_observed: bool = False
+    stable_sample_count: int = 0
+    stop_reason_code: str | None = None
+
+
+@dataclass(frozen=True)
+class ScrollTargetDiagnostics:
+    """Safe aggregate result of a targeted pointer-wheel preparation."""
+
+    scroll_target_available: bool = False
+    scroll_target_in_viewport: bool = False
+    mouse_move_performed: bool = False
+
+
 class FeedPort(Protocol):
     def current(self) -> ReelCandidate: ...
 
@@ -34,7 +57,17 @@ class FeedPort(Protocol):
 
     def advance(self) -> None: ...
 
-    def wait_for_next(self, previous_shortcode: str) -> ReelCandidate | None: ...
+    def wait_for_next(
+        self,
+        previous_shortcode: str,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> ReelCandidate | None: ...
+
+    @property
+    def transition_diagnostics(self) -> TransitionSamplingDiagnostics: ...
+
+    @property
+    def scroll_target_diagnostics(self) -> ScrollTargetDiagnostics: ...
 
     def close(self) -> None: ...
 
@@ -99,15 +132,23 @@ class CollectorUnitOfWorkPort(Protocol):
 
     def fail_run(self, run_id: UUID, reason_code: str) -> None: ...
 
+    def cancel_run(self, run_id: UUID, reason_code: str) -> CancelRunOutcome: ...
+
     def complete_run(self, run_id: UUID) -> None: ...
 
     def summary(self, run_id: UUID) -> tuple[int, int, int, str]: ...
 
 
 class EventRecorder(Protocol):
-    def record(self, event: str) -> None: ...
+    def record(self, position: int, event: str) -> None: ...
 
 
 class NullEventRecorder:
-    def record(self, event: str) -> None:
-        del event
+    def record(self, position: int, event: str) -> None:
+        del position, event
+
+
+class CancelRunOutcome(StrEnum):
+    CANCELLED = "cancelled"
+    NOT_FOUND = "not_found"
+    ALREADY_TERMINAL = "already_terminal"

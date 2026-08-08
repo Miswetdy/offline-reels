@@ -7,13 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models.instagram import (
+    InstagramAccount,
     InstagramCollectionRun,
     InstagramCollectionRunItem,
     InstagramNormalizationJob,
     InstagramReel,
 )
-from app.instagram.collector.contracts import ReelCandidate, ValidatedSource
+from app.instagram.collector.contracts import CancelRunOutcome, ReelCandidate, ValidatedSource
 from app.instagram.contracts import (
+    AccountStatus,
     CollectionRunStatus,
     CollectionTrigger,
     DownloadAuthMode,
@@ -21,7 +23,11 @@ from app.instagram.contracts import (
     ReelPipelineStatus,
     RunItemOutcome,
 )
-from app.instagram.transitions import REEL_PIPELINE_TRANSITIONS, require_transition
+from app.instagram.transitions import (
+    ACCOUNT_TRANSITIONS,
+    REEL_PIPELINE_TRANSITIONS,
+    require_transition,
+)
 
 
 class CollectorPersistence:
@@ -42,6 +48,52 @@ class CollectorPersistence:
                 )
             )
         return run_id
+
+    def ensure_account(self, account_id: UUID) -> None:
+        with self._sessions.begin() as session:
+            if session.get(InstagramAccount, account_id) is None:
+                session.add(
+                    InstagramAccount(id=account_id, status=AccountStatus.DISCONNECTED.value)
+                )
+
+    def set_account_status(
+        self,
+        account_id: UUID,
+        status: AccountStatus,
+        reason_code: str | None = None,
+    ) -> None:
+        with self._sessions.begin() as session:
+            account = session.get(InstagramAccount, account_id)
+            if account is None:
+                account = InstagramAccount(id=account_id, status=AccountStatus.DISCONNECTED.value)
+                session.add(account)
+                session.flush()
+            current = AccountStatus(account.status)
+            if current is not status:
+                require_transition(ACCOUNT_TRANSITIONS, current, status)
+                account.status = status.value
+            account.reason_code = reason_code
+            now = datetime.now(UTC)
+            if status is AccountStatus.CONNECTED:
+                account.last_connected_at = now
+            elif status is AccountStatus.REAUTH_REQUIRED:
+                account.reauth_required_at = now
+
+    def account_status(self, account_id: UUID) -> AccountStatus:
+        with self._sessions() as session:
+            account = session.get(InstagramAccount, account_id)
+            return AccountStatus.DISCONNECTED if account is None else AccountStatus(account.status)
+
+    def active_run_exists(self, account_id: UUID) -> bool:
+        with self._sessions() as session:
+            return session.scalar(
+                select(InstagramCollectionRun.id).where(
+                    InstagramCollectionRun.account_id == account_id,
+                    InstagramCollectionRun.status.in_(
+                        (CollectionRunStatus.QUEUED.value, CollectionRunStatus.RUNNING.value)
+                    ),
+                )
+            ) is not None
 
     def reel_status(self, shortcode: str) -> str | None:
         with self._sessions() as session:
@@ -166,6 +218,21 @@ class CollectorPersistence:
                 run.status = CollectionRunStatus.FAILED.value
                 run.stop_reason_code = reason_code
                 run.completed_at = datetime.now(UTC)
+
+    def cancel_run(self, run_id: UUID, reason_code: str) -> CancelRunOutcome:
+        with self._sessions.begin() as session:
+            run = session.get(InstagramCollectionRun, run_id)
+            if run is None:
+                return CancelRunOutcome.NOT_FOUND
+            if run.status not in {
+                CollectionRunStatus.QUEUED.value,
+                CollectionRunStatus.RUNNING.value,
+            }:
+                return CancelRunOutcome.ALREADY_TERMINAL
+            run.status = CollectionRunStatus.CANCELLED.value
+            run.stop_reason_code = reason_code
+            run.completed_at = datetime.now(UTC)
+            return CancelRunOutcome.CANCELLED
 
     def complete_run(self, run_id: UUID) -> None:
         with self._sessions.begin() as session:

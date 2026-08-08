@@ -1,5 +1,6 @@
 """Explicit Collector runtime settings, intentionally separate from API settings."""
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,7 @@ class CollectorRuntimeSettings:
     maximum_target_count: int = 10
     cooldown_seconds: float = 0.5
     maximum_scroll_attempts: int = 30
+    operator_deadline_seconds: float = 3600.0
 
     @classmethod
     def from_environment(
@@ -44,6 +46,7 @@ class CollectorRuntimeSettings:
             maximum_target_count=_integer(values, "COLLECTOR_MAXIMUM_TARGET_COUNT", 10),
             cooldown_seconds=_float(values, "COLLECTOR_COOLDOWN_SECONDS", 0.5),
             maximum_scroll_attempts=_integer(values, "COLLECTOR_MAXIMUM_SCROLL_ATTEMPTS", 30),
+            operator_deadline_seconds=_float(values, "COLLECTOR_OPERATOR_DEADLINE_SECONDS", 3600.0),
         )
 
     def require_live(self, *, repository_root: Path) -> CollectorRuntimeSettings:
@@ -55,7 +58,14 @@ class CollectorRuntimeSettings:
         workspace_root = _safe_root(self.workspace_root, repository_root)
         if _contains(profile_root, workspace_root) or _contains(workspace_root, profile_root):
             raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED)
-        if self.transition_polling_seconds <= 0 or self.transition_timeout_seconds <= 0:
+        finite_positive = (
+            self.transition_polling_seconds,
+            self.transition_timeout_seconds,
+            self.operator_deadline_seconds,
+        )
+        if any(not math.isfinite(value) or value <= 0 for value in finite_positive):
+            raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED)
+        if not math.isfinite(self.cooldown_seconds) or self.cooldown_seconds < 0:
             raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED)
         if self.maximum_reel_bytes <= 0 or self.maximum_run_bytes < self.maximum_reel_bytes:
             raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED)

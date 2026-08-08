@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from http.cookiejar import Cookie, CookieJar
+from http.cookiejar import Cookie
 from typing import Protocol
 
 from app.instagram.collector.runtime.errors import CollectorRuntimeError, RuntimeReasonCode
@@ -31,8 +31,22 @@ class SessionCookieJar:
     def __repr__(self) -> str:
         return "SessionCookieJar(redacted)"
 
-    def to_http_cookiejar(self) -> CookieJar:
-        result = CookieJar()
+    def safe_presence(self) -> tuple[bool, bool, int]:
+        """Return only attempt-safe aggregate information, never cookie data."""
+
+        names = {item.name for item in self._cookies}
+        return "sessionid" in names, "csrftoken" in names, len(self._cookies)
+
+    def to_ytdlp_cookiejar(self):
+        """Build a fresh yt-dlp-native jar solely for one downloader attempt."""
+
+        try:
+            from yt_dlp.cookies import YoutubeDLCookieJar
+        except ImportError as error:
+            raise CollectorRuntimeError(
+                RuntimeReasonCode.DIRECT_DOWNLOAD_EXTRACTOR_FAILED
+            ) from error
+        result = YoutubeDLCookieJar()
         for item in self._cookies:
             result.set_cookie(
                 Cookie(
@@ -92,7 +106,7 @@ class SessionCookieProvider:
                 SessionCookie(name, value, domain, path or "/", bool(secure), expires_at)
             )
         if not any(cookie.name == "sessionid" for cookie in accepted):
-            raise CollectorRuntimeError(RuntimeReasonCode.AUTH_REQUIRED)
+            raise CollectorRuntimeError(RuntimeReasonCode.SESSION_COOKIE_MISSING)
         return SessionCookieJar(tuple(accepted))
 
 

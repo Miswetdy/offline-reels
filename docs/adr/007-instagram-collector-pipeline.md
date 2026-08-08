@@ -138,4 +138,29 @@ Reel link. One scroll waits for two stable samples.
 
 These adapters have only passed local file fixtures and fake clients. No live
 Instagram request, login, profile access or real object upload occurred in this
-stage. Stage 3B remains a separately authorized bounded operator run.
+stage.
+
+## Stage 3B bounded operator run
+
+Stage 3B adds an explicit Windows-hosted command, never an API-startup action,
+for exactly three Reels. Headless operation is rejected. Bootstrap lets the
+operator manually complete Instagram login/2FA in headed Chromium; readiness
+and exact `y` are required before collection. Every Reel uses a fresh minimal
+in-memory CookieJar and one session-first yt-dlp attempt. Source publication and
+the PostgreSQL `source_ready`/pending-job/run-item transaction precede cooldown
+and one controlled advance; the third committed Reel never scrolls. Cancellation
+marks the active run cancelled and preserves durable sources. Stage 3C remains
+the separately authorized Linux/container 10-Reel live verification.
+
+The Stage 3B smoke MinIO root identity is bootstrap-only. The Windows runner
+uses a bucket-scoped application identity. Existing deterministic source keys
+are reused only after size, content type, and streaming SHA-256 match; conflicts
+are never overwritten. A safe pre-run baseline and structured position/event
+transcript make post-run verification independent of a post-hoc snapshot.
+Cooperative deadline checks stop before the next irreversible boundary; a
+source already committed at expiry remains durable and is never followed by a
+scroll. A bounded test-account Stage 3B run confirmed three session-first
+source commits and two targeted transitions with read-only post-run verification;
+it did not run normalization or create catalog `videos` rows. Stage 3C is the
+separate Linux/container ten-Reel follow-up, while the smoke state is retained
+for that test.

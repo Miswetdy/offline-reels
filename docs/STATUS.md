@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3A adds optional runtime adapter implementations validated only with local fixtures and mocks; no live Instagram runtime is enabled.
+Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3B is a manually invoked, bounded three-Reel operator composition over Stage 3A adapters. A test-account live run successfully confirmed three session-first downloads, validations, MinIO publications, PostgreSQL commits, two targeted transitions, durable `source_ready` Reels and read-only verification without changing `videos`. It is not an API runtime; Stage 3C remains the separate Linux/container 10-Reel milestone.
 
 ## Completed
 
@@ -10,6 +10,21 @@ Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-libr
 - Defined MVP scope.
 - Created initial architecture.
 - Created project documentation.
+
+## Instagram Collector roadmap
+
+1. Architecture foundation.
+2. Fixture-driven Collector engine.
+3. Production Collector runtime: 3A adapters, 3B bounded three-Reel operator
+   run, then 3C Linux/container ten-Reel verification.
+4. Phone-based Instagram connection.
+5. Normalization queue.
+6. Collector backend API.
+7. Dashboard integration.
+8. Local reserve management.
+9. Viewing, delayed deletion and replenishment.
+10. Reliability and security.
+11. Final acceptance.
 - Connected GitHub repository.
 - Defined Codex workflow.
 - Completed TASK-001: iOS offline video storage spike.
@@ -20,18 +35,23 @@ Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-libr
 
 ## Current focus
 
-Instagram Collector Stage 3A retains the network-free fixture service over
-the stage 1 account, collection-run, Reel pipeline and normalization-job state.
-It proves `pause -> temporary download -> validation -> publication -> one DB
+Instagram Collector Stage 3B retains the network-free fixture service over the
+stage 1 account, collection-run, Reel pipeline and normalization-job state. It
+proves `pause -> temporary download -> validation -> publication -> one DB
 transaction -> advance`, including compensation of an object created by the
 failed attempt. Fixture storage and SQLite are isolated from production settings.
-There is still no browser worker, yt-dlp integration, real source storage,
-scheduler, Collector API or frontend surface. Optional isolated adapters now
-exist for a persistent Playwright feed, minimal in-memory session cookie jar,
-session-first yt-dlp, ffprobe and MinIO source storage, but they have not made a
-live request and no operator command invokes them. The next step is Stage 3B:
-a bounded manually authorized test-account operator run. The validated local
-spike remains separate and is not copied into production.
+The explicit headed operator composition now wires the optional isolated
+Playwright feed, minimal in-memory session CookieJar, session-first yt-dlp,
+ffprobe and MinIO source storage. Its bounded test-account run successfully
+validated three durable source commits and two targeted transitions; the
+post-run verifier also confirmed the exact MinIO/object and `videos` deltas. A
+durable commit gates each transition: positions 1 and 2 have one
+bounded retry wheel after an unconfirmed transition, while position 3 never
+scrolls. Scheduler, Collector API, frontend and normalizer worker are still
+absent; phone login is also not implemented. The next step is Stage 3C: a
+separate Linux/container service and bounded ten-Reel live verification. The
+smoke PostgreSQL/MinIO state is intentionally preserved for that follow-up. The
+validated local spike remains separate and is not copied into production.
 
 Block 4A keeps `/offline` as the Reels-like control mode through the shared
 `VerticalVideoFeed`; `/videos` is now a legacy redirect and no longer carries an

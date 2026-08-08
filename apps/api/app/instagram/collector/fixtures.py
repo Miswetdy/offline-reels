@@ -11,7 +11,9 @@ from app.instagram.collector.contracts import (
     FeedPort,
     PublishedSource,
     ReelCandidate,
+    ScrollTargetDiagnostics,
     SourceStoragePort,
+    TransitionSamplingDiagnostics,
     ValidatedSource,
     ValidatorPort,
 )
@@ -57,6 +59,8 @@ class FixtureFeed(FeedPort):
         self._candidates = candidates
         self._index = 0
         self._transition_timeout = transition_timeout
+        self._transition_diagnostics = TransitionSamplingDiagnostics()
+        self._scroll_target_diagnostics = ScrollTargetDiagnostics()
 
     def current(self) -> ReelCandidate:
         return self._candidates[self._index]
@@ -65,14 +69,46 @@ class FixtureFeed(FeedPort):
         return None
 
     def advance(self) -> None:
+        self._scroll_target_diagnostics = ScrollTargetDiagnostics(True, True, True)
         if self._index < len(self._candidates) - 1:
             self._index += 1
 
-    def wait_for_next(self, previous_shortcode: str) -> ReelCandidate | None:
+    @property
+    def transition_diagnostics(self) -> TransitionSamplingDiagnostics:
+        return self._transition_diagnostics
+
+    @property
+    def scroll_target_diagnostics(self) -> ScrollTargetDiagnostics:
+        return self._scroll_target_diagnostics
+
+    def wait_for_next(self, previous_shortcode: str, should_stop=None) -> ReelCandidate | None:
+        if should_stop is not None and should_stop():
+            self._transition_diagnostics = TransitionSamplingDiagnostics(
+                poll_count=1,
+                stop_reason_code="TOTAL_TIMEOUT_REACHED",
+            )
+            return None
         if self._transition_timeout:
+            self._transition_diagnostics = TransitionSamplingDiagnostics(
+                poll_count=1,
+                unchanged_sample_count=1,
+                stop_reason_code="TRANSITION_TIMEOUT",
+            )
             return None
         candidate = self.current()
-        return candidate if candidate.shortcode != previous_shortcode else None
+        if candidate.shortcode == previous_shortcode:
+            self._transition_diagnostics = TransitionSamplingDiagnostics(
+                poll_count=1,
+                unchanged_sample_count=1,
+                stop_reason_code="TRANSITION_TIMEOUT",
+            )
+            return None
+        self._transition_diagnostics = TransitionSamplingDiagnostics(
+            poll_count=2,
+            different_candidate_observed=True,
+            stable_sample_count=2,
+        )
+        return candidate
 
     def close(self) -> None:
         return None
