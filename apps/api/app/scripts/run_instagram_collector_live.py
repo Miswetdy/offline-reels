@@ -12,6 +12,7 @@ from app.instagram.collector.runtime.operator import (
     wait_for_operator_enter,
     write_safe_result,
 )
+from app.instagram.collector.runtime.paths import collector_repository_root
 from app.instagram.collector.runtime.settings import CollectorRuntimeSettings
 
 
@@ -28,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     runtime = CollectorRuntimeSettings.from_environment()
     app_settings = Settings()
-    repository_root = Path(__file__).resolve().parents[4]
+    repository_root = collector_repository_root(Path(__file__))
 
     def confirm() -> bool:
         print("Collect exactly 3 Reels with session-first download? [y/N]")

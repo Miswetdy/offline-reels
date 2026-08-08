@@ -99,13 +99,18 @@ def _contains(parent: Path, child: Path) -> bool:
 
 def _integer(values: dict[str, str], key: str, default: int) -> int:
     try:
-        return int(values.get(key, str(default)))
-    except ValueError as error:
+        value = int(values.get(key, str(default)))
+    except (TypeError, ValueError) as error:
         raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED) from error
+    # Python integers cannot be NaN/Inf, but bounding their conversion avoids
+    # accepting an attacker-controlled, impractically large numeric setting.
+    if value.bit_length() > 63:
+        raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED)
+    return value
 
 
 def _float(values: dict[str, str], key: str, default: float) -> float:
     try:
         return float(values.get(key, str(default)))
-    except ValueError as error:
+    except (TypeError, ValueError) as error:
         raise CollectorRuntimeError(RuntimeReasonCode.COLLECTOR_DISABLED) from error

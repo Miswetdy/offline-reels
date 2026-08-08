@@ -6,6 +6,7 @@ from pathlib import Path
 from app.core.settings import Settings
 from app.instagram.collector.runtime.errors import CollectorRuntimeError
 from app.instagram.collector.runtime.operator import wait_for_operator_enter
+from app.instagram.collector.runtime.paths import collector_repository_root
 from app.instagram.collector.runtime.settings import CollectorRuntimeSettings
 from app.instagram.collector.runtime.stage3c1 import (
     STAGE_3C1_DESIRED_TOTAL,
@@ -26,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print("Open personal Instagram Reels, centre one Reel, then press Enter.")
     runtime = CollectorRuntimeSettings.from_environment()
-    repository_root = Path(__file__).resolve().parents[4]
+    repository_root = collector_repository_root(Path(__file__))
     try:
         summary, transcript, plan, reason = run_stage3c1(
             runtime=runtime,

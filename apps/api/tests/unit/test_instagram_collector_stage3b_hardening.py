@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from app.instagram.collector.contracts import CancelRunOutcome
 from app.instagram.collector.runtime.errors import CollectorRuntimeError, RuntimeReasonCode
 from app.instagram.collector.runtime.operator import (
@@ -101,7 +103,16 @@ def test_recovery_command_has_typed_nonzero_outcomes(monkeypatch, capsys) -> Non
 
 
 def test_smoke_scripts_use_application_minio_credentials_and_wait_for_readiness() -> None:
-    root = Path(__file__).resolve().parents[4]
+    root = next(
+        (
+            parent
+            for parent in Path(__file__).resolve().parents
+            if (parent / "scripts" / "run-collector-stage3b.ps1").is_file()
+        ),
+        None,
+    )
+    if root is None:
+        pytest.skip("requires the repository-level smoke scripts")
     runner = (root / "scripts" / "run-collector-stage3b.ps1").read_text(encoding="utf-8")
     starter = (root / "scripts" / "start-collector-smoke.ps1").read_text(encoding="utf-8")
     compose = (root / "deploy" / "docker-compose.collector-smoke.yml").read_text(

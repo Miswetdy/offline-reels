@@ -1,0 +1,110 @@
+name: offline-reels-stage3c2-fixture
+
+# Disposable Stage 3C.2 smoke only. This file is never merged with production
+# Compose and its internal network has no route to the public Internet.
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    environment:
+      POSTGRES_DB: stage3c2_fixture
+      POSTGRES_USER: stage3c2_fixture
+      POSTGRES_PASSWORD: stage3c2-disposable-postgres-password
+    volumes:
+      - collector_stage3c2_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [fixture]
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: stage3c2-root
+      MINIO_ROOT_PASSWORD: stage3c2-disposable-root-password
+    volumes:
+      - collector_stage3c2_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [fixture]
+
+  minio-bootstrap:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$MINIO_BUCKET"
+        mc admin user info local "$$MINIO_ACCESS_KEY" >/dev/null 2>&1 || mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"
+        printf '%s' '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket"],"Resource":["arn:aws:s3:::stage3c2-fixture"]},{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::stage3c2-fixture/*"]}]}' >/tmp/policy.json
+        mc admin policy info local stage3c2-collector >/dev/null 2>&1 || mc admin policy create local stage3c2-collector /tmp/policy.json
+        mc admin policy attach local stage3c2-collector --user "$$MINIO_ACCESS_KEY"
+    environment:
+      MINIO_BUCKET: stage3c2-fixture
+      MINIO_ROOT_USER: stage3c2-root
+      MINIO_ROOT_PASSWORD: stage3c2-disposable-root-password
+      MINIO_ACCESS_KEY: stage3c2-collector
+      MINIO_SECRET_KEY: stage3c2-disposable-app-password
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks: [fixture]
+
+  migrate:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: production
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    environment: &app_environment
+      DATABASE_URL: postgresql+psycopg://stage3c2_fixture:stage3c2-disposable-postgres-password@postgres:5432/stage3c2_fixture
+      VIDEO_CURSOR_SECRET: stage3c2-disposable-video-cursor-secret-at-least-32
+      FRONTEND_ORIGIN: http://fixture.invalid
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: stage3c2-fixture
+      MINIO_ACCESS_KEY: stage3c2-collector
+      MINIO_SECRET_KEY: stage3c2-disposable-app-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [fixture]
+
+  collector-fixture:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: collector
+    command: ["fixture", "--target", "3"]
+    environment:
+      <<: *app_environment
+      COLLECTOR_ENABLED: "true"
+      COLLECTOR_PROFILE_ROOT: /collector/profile
+      COLLECTOR_WORKSPACE_ROOT: /collector/workspace
+      COLLECTOR_HEADLESS: "true"
+      COLLECTOR_COOLDOWN_SECONDS: "0"
+      COLLECTOR_FIXTURE_NETWORK: blocked
+    volumes:
+      - collector_stage3c2_profile:/collector/profile
+      - collector_stage3c2_workspace:/collector/workspace
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+    networks: [fixture]
+
+networks:
+  fixture:
+    internal: true
+
+volumes:
+  collector_stage3c2_postgres:
+  collector_stage3c2_minio:
+  collector_stage3c2_profile:
+  collector_stage3c2_workspace:

@@ -1,6 +1,7 @@
 """Network-free adapters used only by the fixture command and tests."""
 
 import hashlib
+import subprocess
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -123,6 +124,70 @@ class FixtureDownloader(DownloaderPort):
             raise FixtureFailure("fixture download failure")
         temporary_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path.write_bytes(f"fixture-source:{candidate.shortcode}".encode())
+
+
+class SyntheticMp4Downloader(DownloaderPort):
+    """Create a deterministic local MP4 with ffmpeg; it never opens a network socket."""
+
+    def __init__(self, executable: str = "ffmpeg") -> None:
+        self._executable = executable
+
+    def download(self, candidate: ReelCandidate, temporary_path: Path) -> None:
+        del candidate
+        temporary_path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            [
+                self._executable,
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x64:rate=24",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=44100",
+                "-t",
+                "0.5",
+                "-shortest",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                "-f",
+                "mp4",
+                str(temporary_path),
+            ],
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+class FixturePlaywrightNetworkGuard:
+    """Install the explicit fixture-only block if a Playwright context is used.
+
+    The container fixture currently uses a synthetic FeedPort and never creates
+    Playwright.  Keeping this guard independently testable prevents a future
+    fixture refactor from accidentally allowing HTTP(S) navigation.
+    """
+
+    @staticmethod
+    def install(context) -> None:
+        def block(route, request) -> None:
+            if request.url.startswith(("http://", "https://")):
+                route.abort("blockedbyclient")
+            else:
+                route.continue_()
+
+        context.route("**/*", block)
 
 
 class FixtureValidator(ValidatorPort):

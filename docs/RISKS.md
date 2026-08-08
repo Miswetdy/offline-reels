@@ -402,6 +402,16 @@ Before public production deployment:
 - The web client compiles `NEXT_PUBLIC_API_BASE_URL` at image-build time. An incorrect public API origin requires a new web image; it cannot be corrected by changing only a running container environment variable.
 - Production secrets initially remain in a VPS-local Compose env file. It is ignored by Git and must be permission-restricted; Docker secrets and off-VPS backups are follow-up hardening work.
 
+## Linux Collector runtime
+
+- Stage 3C.2 proves a synthetic Linux container flow only. Chromium packaging,
+  ffmpeg/ffprobe, PostgreSQL and MinIO have been exercised, but live Instagram
+  session longevity, proxy/network policy and remote operator login remain
+  unverified until Stage 4.
+- Windows Chromium profiles are deliberately not portable to the Linux
+  container. A future mobile-login/remote-browser flow must create Linux state
+  in the dedicated persistent profile mount; it must not import Windows state.
+
 ## Public Tailscale Funnel staging
 
 - Funnel is a public internet endpoint, not an authenticated private preview.

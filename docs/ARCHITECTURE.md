@@ -385,3 +385,18 @@ routes every other request to the Next.js standalone server. The browser API
 base URL can therefore be either a normal origin or an origin with a path
 prefix; endpoint construction preserves the configured prefix. The Service
 Worker's offline media route remains same-origin and does not contact the API.
+
+## Stage 3C.2 Linux Collector packaging
+
+The Collector is a separate Docker target, never a FastAPI import or service.
+Only that target contains Playwright Chromium and yt-dlp; the API image keeps
+its normal dependency surface. The Collector uses a non-root account, `tini`,
+one persistent per-account profile mount and a separate attempt-owned workspace
+mount. It accepts no default live command.
+
+The Stage 3C.2 Compose fixture is deliberately separate from both development
+and production Compose. It uses an `internal: true` network containing only
+PostgreSQL, MinIO, their bootstrap/migration jobs and a one-shot Collector.
+The fixture is a real persistence/storage/ffprobe composition with local
+synthetic MP4s, not a browser or Instagram flow. A future Stage 4 runner may
+add controlled live operation without changing this API/service boundary.

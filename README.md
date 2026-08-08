@@ -166,3 +166,29 @@ passed after a transcript-verifier false-negative fix. Container service work,
 the normalizer worker and mobile login remain
 unimplemented. See
 [ADR 007](docs/adr/007-instagram-collector-pipeline.md).
+
+## Stage 3C.2 Linux Collector fixture
+
+Stage 3C.2 adds a server-ready, separate Linux `collector` Docker target. It
+contains the pinned Collector extra, Playwright-compatible Chromium, `yt-dlp`,
+`ffmpeg`, `ffprobe`, and `tini`, and runs as UID/GID `10001` rather than root.
+The normal API image remains free of Chromium, Playwright, and yt-dlp. Persistent
+profile and disposable attempt-workspace mounts are separate, and the entrypoint
+accepts only an explicit `fixture` command; it never starts a live Collector.
+
+`deploy/docker-compose.collector-stage3c2-fixture.yml` is a separate,
+internal-network-only smoke composition with PostgreSQL, MinIO, migration,
+bootstrap and one fixture Collector job. It creates three valid synthetic MP4s,
+validates them through `ffprobe`, publishes to MinIO and commits the real
+Collector persistence transaction. It makes no Instagram request, never reads
+cookies or a Windows profile, and does not run yt-dlp. The companion cleanup is
+restricted to the exact Compose project:
+
+```powershell
+docker compose --project-name offline-reels-stage3c2-fixture -f deploy/docker-compose.collector-stage3c2-fixture.yml up --build -d
+docker compose --project-name offline-reels-stage3c2-fixture -f deploy/docker-compose.collector-stage3c2-fixture.yml wait collector-fixture
+.\scripts\cleanup-collector-stage3c2.ps1
+```
+
+Live Instagram in a Linux container, mobile login and a remote browser UI are
+explicit Stage 4 work; Windows browser profiles are not copied or converted.

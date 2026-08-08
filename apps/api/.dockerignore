@@ -1,4 +1,14 @@
 .venv
 __pycache__
 .pytest_cache
+.pytest_tmp*
 *.pyc
+.playwright-browsers
+.playwright
+test-results
+results
+profiles
+workspace
+cookies
+sessions
+storage-state.json
