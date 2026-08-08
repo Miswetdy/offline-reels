@@ -1,9 +1,10 @@
 """SQLAlchemy transaction boundary for Collector source commits."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models.instagram import (
@@ -28,6 +29,14 @@ from app.instagram.transitions import (
     REEL_PIPELINE_TRANSITIONS,
     require_transition,
 )
+
+
+@dataclass(frozen=True)
+class DurableReelSnapshot:
+    reel_id: UUID
+    object_key: str
+    sha256: str
+    byte_size: int
 
 
 class CollectorPersistence:
@@ -86,14 +95,17 @@ class CollectorPersistence:
 
     def active_run_exists(self, account_id: UUID) -> bool:
         with self._sessions() as session:
-            return session.scalar(
-                select(InstagramCollectionRun.id).where(
-                    InstagramCollectionRun.account_id == account_id,
-                    InstagramCollectionRun.status.in_(
-                        (CollectionRunStatus.QUEUED.value, CollectionRunStatus.RUNNING.value)
-                    ),
+            return (
+                session.scalar(
+                    select(InstagramCollectionRun.id).where(
+                        InstagramCollectionRun.account_id == account_id,
+                        InstagramCollectionRun.status.in_(
+                            (CollectionRunStatus.QUEUED.value, CollectionRunStatus.RUNNING.value)
+                        ),
+                    )
                 )
-            ) is not None
+                is not None
+            )
 
     def reel_status(self, shortcode: str) -> str | None:
         with self._sessions() as session:
@@ -101,6 +113,77 @@ class CollectorPersistence:
                 InstagramReel.shortcode == shortcode
             )
             return session.scalar(statement)
+
+    def account_durable_count(self, account_id: UUID) -> int:
+        """Count distinct durable Reels acquired by this account's run history."""
+
+        with self._sessions() as session:
+            return self._account_durable_count(session, account_id)
+
+    def account_has_durable_reel(self, account_id: UUID, shortcode: str) -> bool:
+        """Ownership is run-item history, never global Reel presence alone."""
+
+        with self._sessions() as session:
+            return (
+                session.scalar(
+                    select(InstagramReel.id)
+                    .join(
+                        InstagramCollectionRunItem,
+                        InstagramCollectionRunItem.reel_id == InstagramReel.id,
+                    )
+                    .join(
+                        InstagramCollectionRun,
+                        InstagramCollectionRun.id == InstagramCollectionRunItem.run_id,
+                    )
+                    .where(
+                        InstagramCollectionRun.account_id == account_id,
+                        InstagramReel.shortcode == shortcode,
+                        InstagramReel.pipeline_status.in_(self._durable_statuses()),
+                        InstagramReel.source_object_key.is_not(None),
+                        InstagramReel.source_sha256.is_not(None),
+                        InstagramReel.source_byte_size.is_not(None),
+                        InstagramCollectionRunItem.outcome.in_(self._acquisition_outcomes()),
+                    )
+                )
+                is not None
+            )
+
+    def account_durable_baseline(self, account_id: UUID) -> tuple[DurableReelSnapshot, ...]:
+        """Immutable safe metadata used to protect prior account acquisitions."""
+
+        with self._sessions() as session:
+            rows = session.execute(
+                select(
+                    InstagramReel.id,
+                    InstagramReel.source_object_key,
+                    InstagramReel.source_sha256,
+                    InstagramReel.source_byte_size,
+                )
+                .join(
+                    InstagramCollectionRunItem,
+                    InstagramCollectionRunItem.reel_id == InstagramReel.id,
+                )
+                .join(
+                    InstagramCollectionRun,
+                    InstagramCollectionRun.id == InstagramCollectionRunItem.run_id,
+                )
+                .where(
+                    InstagramCollectionRun.account_id == account_id,
+                    InstagramCollectionRunItem.outcome.in_(self._acquisition_outcomes()),
+                    InstagramReel.pipeline_status.in_(self._durable_statuses()),
+                    InstagramReel.source_object_key.is_not(None),
+                    InstagramReel.source_sha256.is_not(None),
+                    InstagramReel.source_byte_size.is_not(None),
+                )
+                .distinct()
+                .order_by(InstagramReel.source_object_key)
+            ).all()
+        return tuple(
+            DurableReelSnapshot(
+                row.id, row.source_object_key, row.source_sha256, row.source_byte_size
+            )
+            for row in rows
+        )
 
     def commit_available(self, run_id: UUID, candidate: ReelCandidate) -> None:
         with self._sessions.begin() as session:
@@ -241,6 +324,19 @@ class CollectorPersistence:
                 run.status = CollectionRunStatus.COMPLETED.value
                 run.completed_at = datetime.now(UTC)
 
+    def complete_if_account_durable_total(self, run_id: UUID, desired_total: int) -> bool:
+        """Atomically recheck account ownership before declaring continuation success."""
+
+        with self._sessions.begin() as session:
+            run = session.get(InstagramCollectionRun, run_id)
+            if run is None or run.status != CollectionRunStatus.RUNNING.value:
+                return False
+            if self._account_durable_count(session, run.account_id) != desired_total:
+                return False
+            run.status = CollectionRunStatus.COMPLETED.value
+            run.completed_at = datetime.now(UTC)
+            return True
+
     def summary(self, run_id: UUID) -> tuple[int, int, int, str]:
         with self._sessions() as session:
             run = session.get(InstagramCollectionRun, run_id)
@@ -256,6 +352,40 @@ class CollectorPersistence:
     @staticmethod
     def _reel(session: Session, shortcode: str) -> InstagramReel | None:
         return session.scalar(select(InstagramReel).where(InstagramReel.shortcode == shortcode))
+
+    @staticmethod
+    def _durable_statuses() -> tuple[str, ...]:
+        return (
+            ReelPipelineStatus.SOURCE_READY.value,
+            ReelPipelineStatus.NORMALIZING.value,
+            ReelPipelineStatus.READY.value,
+        )
+
+    @staticmethod
+    def _acquisition_outcomes() -> tuple[str, ...]:
+        return (RunItemOutcome.SOURCE_COMMITTED.value, RunItemOutcome.ALREADY_AVAILABLE.value)
+
+    def _account_durable_count(self, session: Session, account_id: UUID) -> int:
+        value = session.scalar(
+            select(func.count(distinct(InstagramReel.id)))
+            .select_from(InstagramReel)
+            .join(
+                InstagramCollectionRunItem, InstagramCollectionRunItem.reel_id == InstagramReel.id
+            )
+            .join(
+                InstagramCollectionRun,
+                InstagramCollectionRun.id == InstagramCollectionRunItem.run_id,
+            )
+            .where(
+                InstagramCollectionRun.account_id == account_id,
+                InstagramCollectionRunItem.outcome.in_(self._acquisition_outcomes()),
+                InstagramReel.pipeline_status.in_(self._durable_statuses()),
+                InstagramReel.source_object_key.is_not(None),
+                InstagramReel.source_sha256.is_not(None),
+                InstagramReel.source_byte_size.is_not(None),
+            )
+        )
+        return int(value or 0)
 
     @staticmethod
     def _add_item(

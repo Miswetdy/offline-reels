@@ -176,7 +176,9 @@ class CollectorPostRunVerifier:
                     reel.source_byte_size,
                 )
                 pending_jobs = session.scalar(
-                    select(func.count()).select_from(InstagramNormalizationJob).where(
+                    select(func.count())
+                    .select_from(InstagramNormalizationJob)
+                    .where(
                         InstagramNormalizationJob.reel_id == reel.id,
                         InstagramNormalizationJob.status == NormalizationJobStatus.PENDING.value,
                     )
@@ -289,8 +291,10 @@ def _fingerprint(values) -> str:
 
 
 def _is_digest(value: object) -> bool:
-    return isinstance(value, str) and len(value) == 64 and all(
-        character in "0123456789abcdef" for character in value
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
     )
 
 
@@ -373,5 +377,81 @@ def validate_event_transcript(
             actual[1][-1:] == ["transition_confirmed"]
             and actual[2][-1:] == ["transition_confirmed"]
             and actual[3] == committed_prefix
+        )
+    return status in {"failed", "cancelled"}
+
+
+def validate_stage3c1_transcript(
+    events: list[dict[str, object]], *, status: str, final_position: int | None
+) -> bool:
+    """Validate bounded continuation ordering without retaining browser data."""
+
+    by_position: dict[int, list[str]] = {}
+    for item in events:
+        position, event = item.get("position"), item.get("event")
+        if not isinstance(position, int) or not isinstance(event, str) or position < 1:
+            return False
+        by_position.setdefault(position, []).append(event)
+    if not by_position:
+        return status in {"cancelled", "failed"}
+    if sorted(by_position) != list(range(1, len(by_position) + 1)):
+        return False
+    for position, sequence in by_position.items():
+        if sequence[:2] != ["detect", "pause"]:
+            return False
+        acquisition = sequence[2:]
+        if acquisition[:1] == ["duplicate_skipped"]:
+            variants = (
+                ["duplicate_skipped"],
+                ["duplicate_skipped", "cooldown", "advance", "transition_confirmed"],
+                [
+                    "duplicate_skipped",
+                    "cooldown",
+                    "advance",
+                    "advance_retry",
+                    "transition_confirmed",
+                ],
+            )
+        elif acquisition[:1] == ["db_commit"]:
+            variants = (
+                ["db_commit"],
+                ["db_commit", "cooldown", "advance", "transition_confirmed"],
+                ["db_commit", "cooldown", "advance", "advance_retry", "transition_confirmed"],
+            )
+        else:
+            variants = (
+                ["download", "validation", "publish", "db_commit"],
+                [
+                    "download",
+                    "validation",
+                    "publish",
+                    "db_commit",
+                    "cooldown",
+                    "advance",
+                    "transition_confirmed",
+                ],
+                [
+                    "download",
+                    "validation",
+                    "publish",
+                    "db_commit",
+                    "cooldown",
+                    "advance",
+                    "advance_retry",
+                    "transition_confirmed",
+                ],
+            )
+        if not any(acquisition == variant[: len(acquisition)] for variant in variants):
+            return False
+        if "advance" in acquisition and "cooldown" not in acquisition:
+            return False
+        if position != max(by_position) and sequence[-1:] != ["transition_confirmed"]:
+            return False
+    if status == "completed":
+        if final_position is None or max(by_position) != final_position:
+            return False
+        return not any(
+            event in {"cooldown", "advance", "advance_retry"}
+            for event in by_position[final_position]
         )
     return status in {"failed", "cancelled"}

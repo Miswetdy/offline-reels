@@ -93,6 +93,13 @@ restrictions remain open operational risks. The MinIO `stat -> put` path is not
 a cross-system transaction; until a concurrent runner and reconciler exist, the
 future operator runner remains globally sequential.
 
+Stage 3C.1 limits repeat observations to 30 and records account-owned repeats
+without a download, but a finite feed may still exhaust its observation budget
+before reaching the desired reserve. The operator must inspect the safe result
+and rerun later; the next run recomputes the actual durable total. Live Instagram
+behaviour, account restrictions and browser-profile recovery remain operational
+risks.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

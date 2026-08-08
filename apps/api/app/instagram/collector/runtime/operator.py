@@ -45,6 +45,7 @@ class SafeEventTranscript:
             "advance",
             "advance_retry",
             "transition_confirmed",
+            "duplicate_skipped",
         }
     )
 
@@ -60,7 +61,7 @@ class SafeEventTranscript:
     def record(self, position: int, event: str) -> None:
         if event == "publication":
             event = "publish"
-        if event in self._allowed and len(self.events) < 32:
+        if event in self._allowed and len(self.events) < 256:
             self.events.append({"position": position, "event": event})
 
 
@@ -260,7 +261,7 @@ def write_safe_result(workspace_root: Path, summary_json: str) -> Path:
     """Write only the already-redacted result outside the browser profile."""
 
     payload = json.loads(summary_json)
-    run_id = ((payload.get("summary") or {}).get("run_id") if isinstance(payload, dict) else None)
+    run_id = (payload.get("summary") or {}).get("run_id") if isinstance(payload, dict) else None
     suffix = run_id if isinstance(run_id, str) else "no-run"
     destination = workspace_root.resolve(strict=False) / "results" / f"stage-3b-{suffix}.json"
     destination.parent.mkdir(parents=True, exist_ok=True)

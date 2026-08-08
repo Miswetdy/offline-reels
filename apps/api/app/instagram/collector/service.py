@@ -34,6 +34,7 @@ class CollectorLimits:
     max_run_bytes: int | None = None
     cooldown_seconds: float = 0.0
     deadline_seconds: float | None = None
+    max_observations: int | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,8 @@ class CollectorSummary:
     failed_count: int
     confirmed_advances: int
     stop_reason_code: str | None
+    observations: int = 0
+    duplicate_skipped_count: int = 0
 
 
 class CollectorEngine:
@@ -84,6 +87,8 @@ class CollectorEngine:
         account_id: UUID,
         trigger: CollectionTrigger,
         target_count: int,
+        *,
+        desired_account_total: int | None = None,
     ) -> CollectorSummary:
         if target_count < 1 or target_count > self._limits.max_target:
             raise ValueError("Target is outside the fixture Collector limit.")
@@ -99,6 +104,10 @@ class CollectorEngine:
             raise ValueError("Collector scroll-action limit must be positive.")
         if self._limits.deadline_seconds is not None and self._limits.deadline_seconds <= 0:
             raise ValueError("Collector deadline must be positive.")
+        if self._limits.max_observations is not None and self._limits.max_observations < 1:
+            raise ValueError("Collector observation limit must be positive.")
+        if desired_account_total is not None and desired_account_total < target_count:
+            raise ValueError("Desired account total is invalid.")
         run_id = self._persistence.create_run(account_id, trigger, target_count)
         deadline = (
             None
@@ -110,6 +119,8 @@ class CollectorEngine:
         scroll_actions = 0
         committed_bytes = 0
         seen: set[str] = set()
+        duplicate_skipped_count = 0
+        observations = 0
         reason: str | None = None
         position = 1
         try:
@@ -118,7 +129,19 @@ class CollectorEngine:
                 if self._deadline_expired(deadline):
                     reason = "TOTAL_TIMEOUT_REACHED"
                     break
-                if candidate.shortcode in seen:
+                if (
+                    self._limits.max_observations is not None
+                    and observations >= self._limits.max_observations
+                ):
+                    reason = "OBSERVATION_LIMIT_REACHED"
+                    break
+                observations += 1
+                account_owned = False
+                if desired_account_total is not None:
+                    account_owned = self._persistence.account_has_durable_reel(
+                        account_id, candidate.shortcode
+                    )
+                elif candidate.shortcode in seen:
                     reason = "DUPLICATE_REEL"
                     break
                 seen.add(candidate.shortcode)
@@ -126,7 +149,10 @@ class CollectorEngine:
                 self._feed.pause_current()
                 self._record(position, "pause")
                 status = self._persistence.reel_status(candidate.shortcode)
-                if status in {
+                if account_owned:
+                    duplicate_skipped_count += 1
+                    self._record(position, "duplicate_skipped")
+                elif status in {
                     ReelPipelineStatus.SOURCE_READY.value,
                     ReelPipelineStatus.NORMALIZING.value,
                     ReelPipelineStatus.READY.value,
@@ -233,9 +259,18 @@ class CollectorEngine:
                 committed, available, _failed, _status = self._persistence.summary(run_id)
                 if committed + available >= target_count:
                     try:
-                        self._persistence.complete_run(run_id)
+                        completed = (
+                            self._persistence.complete_if_account_durable_total(
+                                run_id, desired_account_total
+                            )
+                            if desired_account_total is not None
+                            else (self._persistence.complete_run(run_id) is None)
+                        )
+                        if not completed:
+                            reason = "FINAL_DURABLE_TOTAL_MISMATCH"
+                            raise RuntimeError(reason)
                     except Exception:
-                        reason = "DATABASE_WRITE_FAILED"
+                        reason = reason or "DATABASE_WRITE_FAILED"
                         self._safe_fail_run(run_id, reason)
                         return self._summary(
                             run_id,
@@ -243,6 +278,8 @@ class CollectorEngine:
                             confirmed_advances,
                             reason,
                             expected_status="failed",
+                            observations=observations,
+                            duplicate_skipped_count=duplicate_skipped_count,
                         )
                     return self._summary(
                         run_id,
@@ -250,6 +287,8 @@ class CollectorEngine:
                         confirmed_advances,
                         None,
                         expected_status="completed",
+                        observations=observations,
+                        duplicate_skipped_count=duplicate_skipped_count,
                     )
                 if self._deadline_expired(deadline):
                     reason = "TOTAL_TIMEOUT_REACHED"
@@ -298,7 +337,7 @@ class CollectorEngine:
                 except InvalidReelCandidate:
                     reason = "INVALID_REEL_CANDIDATE"
                     break
-                if candidate.shortcode in seen:
+                if desired_account_total is None and candidate.shortcode in seen:
                     reason = "DUPLICATE_REEL"
                     break
                 confirmed_advances += 1
@@ -311,6 +350,8 @@ class CollectorEngine:
                 confirmed_advances,
                 reason,
                 expected_status="failed",
+                observations=observations,
+                duplicate_skipped_count=duplicate_skipped_count,
             )
         except InvalidReelCandidate:
             self._safe_fail_run(run_id, "INVALID_REEL_CANDIDATE")
@@ -320,6 +361,8 @@ class CollectorEngine:
                 confirmed_advances,
                 "INVALID_REEL_CANDIDATE",
                 expected_status="failed",
+                observations=observations,
+                duplicate_skipped_count=duplicate_skipped_count,
             )
         except KeyboardInterrupt:
             self._safe_cancel_run(run_id)
@@ -329,9 +372,22 @@ class CollectorEngine:
                 confirmed_advances,
                 "CANCELLED_BY_USER",
                 expected_status="cancelled",
+                observations=observations,
+                duplicate_skipped_count=duplicate_skipped_count,
             )
         except Exception as error:
             safe_reason = self._safe_exception_code(error) or "COLLECTOR_FAILED"
+            if safe_reason == "BROWSER_CLOSED":
+                self._safe_cancel_run(run_id)
+                return self._summary(
+                    run_id,
+                    target_count,
+                    confirmed_advances,
+                    safe_reason,
+                    expected_status="cancelled",
+                    observations=observations,
+                    duplicate_skipped_count=duplicate_skipped_count,
+                )
             self._safe_fail_run(run_id, safe_reason)
             return self._summary(
                 run_id,
@@ -339,6 +395,8 @@ class CollectorEngine:
                 confirmed_advances,
                 safe_reason,
                 expected_status="failed",
+                observations=observations,
+                duplicate_skipped_count=duplicate_skipped_count,
             )
         finally:
             try:
@@ -354,6 +412,8 @@ class CollectorEngine:
         reason: str | None,
         *,
         expected_status: str | None = None,
+        observations: int = 0,
+        duplicate_skipped_count: int = 0,
     ) -> CollectorSummary:
         try:
             committed, available, failed, status = self._persistence.summary(run_id)
@@ -370,6 +430,8 @@ class CollectorEngine:
             already_available_count=available,
             failed_count=failed,
             confirmed_advances=confirmed_advances,
+            observations=observations,
+            duplicate_skipped_count=duplicate_skipped_count,
             stop_reason_code=reason,
         )
 

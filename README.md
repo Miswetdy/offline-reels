@@ -157,7 +157,12 @@ uses a fresh in-memory session CookieJar for every download and commits source
 state before each of two controlled advances. It is not invoked by FastAPI.
 The optional `collector` extra pins Playwright and yt-dlp, but the ordinary API
 dependency set does not install Chromium or invoke those modules. Live Instagram
-remains a separately authorized manual action; the next step is Stage 3C, the
-separate Linux/container ten-Reel run. The normalizer worker and mobile login
-remain unimplemented. See
+remains a separately authorized manual action. Stage 3C.1 supplies a
+separate headed continuation command, `./scripts/run-collector-stage3c1.ps1`,
+which verifies the preserved account's initial durable total before browser
+startup and continues its account-owned reserve to exactly ten. One controlled
+continuation completed from three to ten; its final no-browser verification
+passed after a transcript-verifier false-negative fix. Container service work,
+the normalizer worker and mobile login remain
+unimplemented. See
 [ADR 007](docs/adr/007-instagram-collector-pipeline.md).

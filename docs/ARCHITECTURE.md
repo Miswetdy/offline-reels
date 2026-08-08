@@ -169,6 +169,18 @@ Linux/container Collector service, reconciliation and normalizer worker remain
 later stages; the preserved smoke state is reserved for Stage 3C's ten-Reel
 test.
 
+Stage 3C.1 additionally provides an explicit continuation operator command for
+the preserved Stage 3B account. Its reserve count is account-owned history:
+distinct durable Reels reached through `source_committed` or
+`already_available` run items, never merely global Reel rows. The command
+calculates `target_count = 10 - initial_total` before browser startup, checks
+the immutable source baseline, treats an unowned global durable Reel as a
+database-only association, and records owned repeats as `duplicate_skipped`.
+Completion transactionally rechecks account total `10`; Stage 3C.1 does not add
+a Collector container, normalizer, API endpoint or mobile login.
+One controlled continuation reached total ten with seven new source commits;
+the post-run verification remains read-only and does not alter `videos`.
+
 The bounded operator records a pre-run `videos.id` fingerprint and a full safe
 snapshot of the `instagram-sources/` key set, then verifies the exact post-run
 delta, object hashes, workspace cleanup and a position-scoped event transcript.

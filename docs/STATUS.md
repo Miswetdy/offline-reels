@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3B is a manually invoked, bounded three-Reel operator composition over Stage 3A adapters. A test-account live run successfully confirmed three session-first downloads, validations, MinIO publications, PostgreSQL commits, two targeted transitions, durable `source_ready` Reels and read-only verification without changing `videos`. It is not an API runtime; Stage 3C remains the separate Linux/container 10-Reel milestone.
+Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3B is a manually invoked, bounded three-Reel operator composition over Stage 3A adapters. A test-account live run successfully confirmed three session-first downloads, validations, MinIO publications, PostgreSQL commits, two targeted transitions, durable `source_ready` Reels and read-only verification without changing `videos`. Stage 3C.1 then continued that same account-owned reserve from three to ten: seven new sources committed, six transitions confirmed, `videos` remained empty and the final read-only verifier passed. It is not an API runtime or a container service.
 
 ## Completed
 
