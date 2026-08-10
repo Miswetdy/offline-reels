@@ -19,8 +19,12 @@ synthetic Chromium sandbox acceptance did not complete and is not evidence of
 Linux deployment readiness; Risk 17 remains open. The staging UI has an
 operator-created one-time link and **Open browser** control; a future protected
 management/dashboard flow will create that session and enter the login flow
-without exposing credentials to the business API. Collector, normalizer and
-`videos` remain untouched; Stage 3C.2 infrastructure remains separate.
+without exposing credentials to the business API. Collector remains untouched;
+Stage 5 now adds a separate browser-free normalizer worker. The preserved
+ten-Reel Collector smoke was manually accepted after migration `0006`: all ten
+sources became ready catalog videos, completed on attempt one and were cleaned
+post-commit; no staging, pending, running or failed jobs remain. Stage 3C.2
+remains separate.
 
 Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3B is a manually invoked, bounded three-Reel operator composition over Stage 3A adapters. A test-account live run successfully confirmed three session-first downloads, validations, MinIO publications, PostgreSQL commits, two targeted transitions, durable `source_ready` Reels and read-only verification without changing `videos`. Stage 3C.1 then continued that same account-owned reserve from three to ten: seven new sources committed, six transitions confirmed, `videos` remained empty and the final read-only verifier passed. Stage 3C.2 now adds a separate non-root Linux Collector image and a disposable internal-network fixture cycle over real PostgreSQL/MinIO; automated and PowerShell manual synthetic acceptance both passed, and the API image remains browser-free. Live Instagram in the container has not been tested.
 
@@ -67,8 +71,10 @@ validated three durable source commits and two targeted transitions; the
 post-run verifier also confirmed the exact MinIO/object and `videos` deltas. A
 durable commit gates each transition: positions 1 and 2 have one
 bounded retry wheel after an unconfirmed transition, while position 3 never
-scrolls. Scheduler, Collector API, frontend and normalizer worker are still
-absent. Stage 4 now supplies a separate mobile login browser boundary but does
+scrolls. Scheduler, Collector API and frontend remain absent. Stage 5 provides
+a separate normalizer worker with PostgreSQL leases, MinIO staging/final
+publication, safe retry/reconciliation and post-commit source cleanup; it does
+not start from FastAPI. Stage 4 now supplies a separate mobile login browser boundary but does
 not invoke a Collector run. Windows/iPhone functional acceptance succeeded, but
 the Windows `login-browser` seccomp exception means hardened Linux deployment
 proof remains open under Risk 17. The preserved Stage 3C PostgreSQL/MinIO smoke

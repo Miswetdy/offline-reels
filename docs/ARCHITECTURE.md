@@ -56,15 +56,24 @@ only that object and keeps the database failure as the primary safe reason. A
 pre-existing object is never compensated. Startup reconciliation and real
 MinIO/browser adapters remain a later runtime stage.
 
-A separate normalizer advances `source_ready` through `normalizing` to `ready`.
-Only `ready` canonical H.264/yuv420p/AAC MP4 can link to the existing `videos`
-catalog, so source VP9/AV1 media is never exposed to the PWA catalog. See
-[ADR 007](adr/007-instagram-collector-pipeline.md).
+A separate browser-free normalizer worker advances `source_ready` through
+`normalizing` to `ready`. It claims one PostgreSQL job with `FOR UPDATE SKIP
+LOCKED`, holds an opaque UUID lease, downloads only the committed source object,
+uses the shared ffprobe/full-decode normalizer, and publishes attempt-owned
+staging before a SHA-256-addressed `videos/` final object. One transaction then
+idempotently links `videos`, marks the Reel ready and completes the job. Source
+deletion occurs only after that commit; a failed deletion is cleanup-pending
+work for reconciliation. Staging is never catalog-visible. Only `ready`
+canonical H.264/yuv420p/AAC MP4 can link to the existing `videos` catalog. See
+[ADR 011](adr/011-instagram-normalization-worker.md).
 
 A retryable normalizer failure returns a Reel from `normalizing` to
 `source_ready`; the failed job retains its safe reason and a later pending job
-is a new attempt. A permanent source failure becomes `failed`, which a later
-collection run may explicitly retry through `downloading`. `ready` is terminal.
+is a new attempt. At most three attempts are allowed. An expired running lease
+is terminal history and is reconciled into one replacement pending job when
+attempts remain; it never deletes durable source/final media. A permanent source
+failure becomes `failed`, which a later collection run may explicitly retry
+through `downloading`. `ready` is terminal.
 
 ---
 

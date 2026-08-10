@@ -21,6 +21,20 @@ COPY alembic.ini ./
 EXPOSE 8000
 CMD ["sh", "-c", "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port 8000"]
 
+# The normalizer is deliberately browser-free. It shares only the production
+# dependency set with API, but has its own non-root runtime target.
+FROM base AS normalizer
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev \
+    && groupadd --gid 10002 normalizer \
+    && useradd --uid 10002 --gid normalizer --create-home --home-dir /home/normalizer normalizer \
+    && install --directory --owner normalizer --group normalizer --mode 0750 /normalizer/workspace
+COPY --chown=normalizer:normalizer app ./app
+COPY --chown=normalizer:normalizer alembic ./alembic
+COPY --chown=normalizer:normalizer alembic.ini ./
+USER normalizer
+CMD ["uv", "run", "--no-sync", "python", "-m", "app.scripts.run_instagram_normalizer_worker"]
+
 # This image is intentionally separate from the API target above.  It is the
 # only image that installs the optional browser/downloader runtime.
 FROM base AS collector

@@ -17,10 +17,10 @@ API_ROOT = Path(__file__).resolve().parents[2]
 
 def test_alembic_has_one_collector_head_after_video_normalization() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0005_instagram_login_sessions"]
-    revision = script.get_revision("0005_instagram_login_sessions")
+    assert script.get_heads() == ["0006_instagram_normalizer_runtime"]
+    revision = script.get_revision("0006_instagram_normalizer_runtime")
     assert revision is not None
-    assert revision.down_revision == "0004_instagram_collector_foundation"
+    assert revision.down_revision == "0005_instagram_login_sessions"
 
 
 def test_collector_model_ddl_carries_source_and_run_integrity_rules() -> None:

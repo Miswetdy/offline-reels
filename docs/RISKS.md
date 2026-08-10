@@ -1,5 +1,34 @@
 # Technical Risks
 
+---
+
+# Risk 18: Normalizer publication is a cross-system saga
+
+## Problem
+
+MinIO final-object publication and PostgreSQL `videos`/Reel/job completion are
+not one distributed transaction. Worker loss can also leave a running lease or
+a source object after a durable success.
+
+## Mitigation
+
+Stage 5 uses immutable SHA-256 final keys, validates final size/hash/media
+before the database transaction, and removes a final object only when the
+current attempt created it and no durable `videos` reference exists. Existing
+objects are verified and never overwritten/deleted. Each job has a bounded lease
+and attempt-owned staging prefix; reconciliation records stale history, retries
+at most three attempts, cleans staging best-effort, and retries only ready-source
+cleanup. Source deletion starts strictly after the ready/completed commit.
+
+## Remaining limitation
+
+Object-store availability and ffmpeg capacity limit throughput. The worker
+defaults to one concurrent process; scaling requires lease/capacity monitoring.
+
+## Status
+
+Mitigated by Stage 5; production operational acceptance remains pending.
+
 This document tracks known technical risks and mitigation plans.
 
 ---

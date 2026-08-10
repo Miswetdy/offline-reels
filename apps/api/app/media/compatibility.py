@@ -15,13 +15,18 @@ def select_normalization_strategy(probe: MediaProbe) -> NormalizationStrategy:
         and probe.pixel_format == CANONICAL_PIXEL_FORMAT
         and all(codec.lower() == CANONICAL_AUDIO_CODEC for codec in probe.audio_codecs)
     ):
+        if "mov" in probe.container_formats or "mp4" in probe.container_formats:
+            return NormalizationStrategy.PASSTHROUGH
         return NormalizationStrategy.REMUX
     return NormalizationStrategy.TRANSCODE
 
 
 def is_canonical_media(probe: MediaProbe) -> bool:
     try:
-        return select_normalization_strategy(probe) is NormalizationStrategy.REMUX
+        return select_normalization_strategy(probe) in {
+            NormalizationStrategy.PASSTHROUGH,
+            NormalizationStrategy.REMUX,
+        }
     except MediaCompatibilityError:
         return False
 

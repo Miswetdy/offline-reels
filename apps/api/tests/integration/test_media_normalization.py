@@ -68,14 +68,14 @@ def create_vp9_fixture(path: Path, *, with_audio: bool = False) -> None:
     run_ffmpeg(*arguments)
 
 
-def test_h264_source_without_audio_is_remuxed_and_verified(tmp_path: Path) -> None:
+def test_h264_mp4_source_without_audio_is_passthrough_and_verified(tmp_path: Path) -> None:
     source = tmp_path / "source-h264.mp4"
     create_h264_fixture(source)
 
     with normalize_video(source) as result:
         output_path = result.output_path
         assert output_path.stat().st_size > 0
-        assert result.strategy is NormalizationStrategy.REMUX
+        assert result.strategy is NormalizationStrategy.PASSTHROUGH
         assert result.probe.video_codec == "h264"
         assert result.probe.pixel_format == "yuv420p"
         assert result.probe.audio_codecs == ()
@@ -104,12 +104,12 @@ def test_vp9_source_is_transcoded_to_canonical_h264(tmp_path: Path) -> None:
     assert not result.output_path.exists()
 
 
-def test_h264_source_with_aac_is_remuxed(tmp_path: Path) -> None:
+def test_h264_aac_mp4_source_is_passthrough(tmp_path: Path) -> None:
     source = tmp_path / "source-h264-aac.mp4"
     create_h264_fixture(source, with_audio=True)
 
     with normalize_video(source) as result:
-        assert result.strategy is NormalizationStrategy.REMUX
+        assert result.strategy is NormalizationStrategy.PASSTHROUGH
         assert result.probe.audio_codecs == ("aac",)
         assert is_canonical_media(result.probe)
 

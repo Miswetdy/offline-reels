@@ -25,6 +25,7 @@ class Video(Base):
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     has_audio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     normalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

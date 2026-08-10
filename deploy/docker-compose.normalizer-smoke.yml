@@ -1,0 +1,162 @@
+# Overlay for the preserved Collector smoke only. It adds no startup side effect:
+# operators invoke this service explicitly with `docker compose run --no-deps`.
+services:
+  # Read-only preflight intentionally uses the ordinary API target. The worker
+  # target itself is built only after the operator has seen these aggregates.
+  normalizer-preflight:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: production
+    entrypoint:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "app.scripts.verify_instagram_normalizer_preflight",
+      ]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://unused:6379/0
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  normalizer:
+    image: offline-reels-normalizer-smoke
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: normalizer
+    entrypoint:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "app.scripts.run_instagram_normalizer_worker",
+      ]
+    command: ["--daemon"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://unused:6379/0
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  normalizer-migrate:
+    image: offline-reels-normalizer-smoke
+    entrypoint: ["uv", "run", "--no-sync", "alembic"]
+    command: ["upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://unused:6379/0
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  normalizer-catalog:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: production
+    entrypoint:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "app.scripts.verify_instagram_normalizer_catalog",
+      ]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://unused:6379/0
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  normalizer-media:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: production
+    entrypoint:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "app.scripts.verify_instagram_normalizer_media",
+      ]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://unused:6379/0
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  normalizer-audit:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: production
+    entrypoint:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "app.scripts.verify_instagram_normalizer_audit",
+      ]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://unused:6379/0
+      FRONTEND_ORIGIN: http://localhost:3000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?set in the local operator environment}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in the local operator environment}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in the local operator environment}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?set in the local operator environment}
+    depends_on:
+      postgres:
+        condition: service_healthy

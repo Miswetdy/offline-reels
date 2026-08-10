@@ -173,7 +173,7 @@ uv --directory apps/api run python -m app.scripts.run_instagram_collector_fixtur
 
 The current catalog remains unchanged: only a future `ready` canonical MP4
 (H.264/yuv420p/AAC) may be linked to `videos`. There is no production Instagram
-connection from the application, scheduler or normalizer worker yet. Stage 3B
+connection from the application or scheduler. Stage 3B
 is an explicit, headed Windows operator command for exactly three Reels; a
 bounded test-account run has successfully confirmed three session-first
 downloads, ffprobe validations, MinIO publications, PostgreSQL commits, two
@@ -188,10 +188,20 @@ separate headed continuation command, `./scripts/run-collector-stage3c1.ps1`,
 which verifies the preserved account's initial durable total before browser
 startup and continues its account-owned reserve to exactly ten. One controlled
 continuation completed from three to ten; its final no-browser verification
-passed after a transcript-verifier false-negative fix. Container service work,
-the normalizer worker and mobile login remain
-unimplemented. See
-[ADR 007](docs/adr/007-instagram-collector-pipeline.md).
+passed after a transcript-verifier false-negative fix. Mobile login remains
+outside Collector operation. See [ADR 011](docs/adr/011-instagram-normalization-worker.md).
+
+## Stage 5 normalization worker
+
+The explicit worker command is `python -m
+app.scripts.run_instagram_normalizer_worker`. It supports `--once`, bounded
+`--limit`, `--daemon`, read-only `--status`/`--verify`, and `--reconcile`.
+It has no Playwright, Chromium or yt-dlp. Production uses the opt-in
+non-root `normalizer` Compose profile; FastAPI/API startup never starts it.
+It validates committed sources, performs ffprobe/full decode, then exposes
+only committed H.264/yuv420p/AAC MP4 through the existing catalog. See
+[TASK-012](docs/tasks/012-instagram-normalization-queue.md) for the preserved
+Collector-smoke manual acceptance procedure.
 
 ## Stage 3C.2 Linux Collector fixture
 

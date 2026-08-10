@@ -140,6 +140,37 @@ services:
       postgres:
         condition: service_healthy
 
+  # Opt-in profile: API startup never creates or starts normalization workers.
+  normalizer:
+    profiles: ["normalizer"]
+    image: offline-reels-normalizer:${IMAGE_TAG:?IMAGE_TAG must be set}
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: normalizer
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.scripts.run_instagram_normalizer_worker", "--daemon"]
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:?APP_ENV must be set}
+      LOG_LEVEL: ${LOG_LEVEL:?LOG_LEVEL must be set}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?FRONTEND_ORIGIN must be set}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:?MINIO_ENDPOINT must be set}
+      MINIO_BUCKET: ${MINIO_BUCKET:?MINIO_BUCKET must be set}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?VIDEO_CURSOR_SECRET must be set}
+    networks:
+      - app_private
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-bootstrap:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+
   postgres:
     image: postgres:17.10-alpine3.23
     restart: unless-stopped

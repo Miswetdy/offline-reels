@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 class NormalizationStrategy(StrEnum):
+    PASSTHROUGH = "passthrough"
     REMUX = "remux"
     TRANSCODE = "transcode"
 

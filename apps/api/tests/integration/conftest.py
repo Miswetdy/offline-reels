@@ -5,6 +5,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
+from app.db.models.instagram import (
+    InstagramCollectionRun,
+    InstagramCollectionRunItem,
+    InstagramNormalizationJob,
+    InstagramReel,
+)
 from app.db.models.video import Video
 from app.db.session import create_session_factory
 from app.storage.minio import MinioVideoStorage
@@ -27,6 +33,10 @@ def isolated_test_data(
     session_factory: sessionmaker, storage: MinioVideoStorage
 ) -> Generator[None]:
     with session_factory() as session:
+        session.execute(delete(InstagramNormalizationJob))
+        session.execute(delete(InstagramCollectionRunItem))
+        session.execute(delete(InstagramCollectionRun))
+        session.execute(delete(InstagramReel))
         object_keys = list(session.scalars(select(Video.object_key)))
         session.execute(delete(Video))
         session.commit()
@@ -34,6 +44,10 @@ def isolated_test_data(
         storage.remove(object_key)
     yield
     with session_factory() as session:
+        session.execute(delete(InstagramNormalizationJob))
+        session.execute(delete(InstagramCollectionRunItem))
+        session.execute(delete(InstagramCollectionRun))
+        session.execute(delete(InstagramReel))
         object_keys = list(session.scalars(select(Video.object_key)))
         session.execute(delete(Video))
         session.commit()

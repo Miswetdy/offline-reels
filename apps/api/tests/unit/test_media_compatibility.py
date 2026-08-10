@@ -33,6 +33,15 @@ def test_canonical_h264_yuv420p_media_is_remuxed(audio_codecs: tuple[str, ...]) 
     assert strategy is NormalizationStrategy.REMUX
 
 
+def test_canonical_mp4_is_passthrough_but_other_container_is_remuxed() -> None:
+    mp4 = make_probe(audio_codecs=("aac",))
+    mp4 = MediaProbe(**{**mp4.__dict__, "container_formats": frozenset({"mp4", "mov"})})
+    other = MediaProbe(**{**mp4.__dict__, "container_formats": frozenset({"matroska"})})
+
+    assert select_normalization_strategy(mp4) is NormalizationStrategy.PASSTHROUGH
+    assert select_normalization_strategy(other) is NormalizationStrategy.REMUX
+
+
 @pytest.mark.parametrize(
     "probe",
     [

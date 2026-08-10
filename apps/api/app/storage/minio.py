@@ -2,6 +2,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from minio import Minio
+from minio.commonconfig import CopySource
 from minio.error import S3Error
 
 from app.core.settings import Settings
@@ -46,6 +47,33 @@ class MinioVideoStorage:
             str(file_path),
             content_type=content_type,
         )
+
+    def download_file(self, object_key: str, file_path: Path) -> None:
+        try:
+            self._client.fget_object(self._bucket, object_key, str(file_path))
+        except S3Error as error:
+            if error.code in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                raise StorageObjectNotFound from None
+            raise
+
+    def copy(self, source_object_key: str, destination_object_key: str) -> None:
+        try:
+            self._client.copy_object(
+                self._bucket,
+                destination_object_key,
+                CopySource(self._bucket, source_object_key),
+            )
+        except S3Error as error:
+            if error.code in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                raise StorageObjectNotFound from None
+            raise
+
+    def list_prefix(self, prefix: str) -> list[str]:
+        return [
+            item.object_name
+            for item in self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+            if item.object_name is not None
+        ]
 
     def open_range(self, object_key: str, offset: int, length: int) -> ObjectResponse:
         try:

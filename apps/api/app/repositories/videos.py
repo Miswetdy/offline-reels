@@ -55,6 +55,7 @@ class VideoRepository:
         file_size_bytes: int | None = None,
         has_audio: bool | None = None,
         normalized_at: datetime | None = None,
+        content_sha256: str | None = None,
     ) -> VideoUpsertResult:
         statement = (
             insert(Video)
@@ -72,6 +73,7 @@ class VideoRepository:
                 file_size_bytes=file_size_bytes,
                 has_audio=has_audio,
                 normalized_at=normalized_at,
+                content_sha256=content_sha256,
             )
             .on_conflict_do_nothing(index_elements=[Video.object_key])
             .returning(Video)

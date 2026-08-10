@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Iterator
@@ -93,12 +94,15 @@ def _normalize_to_output(
     strategy = select_normalization_strategy(source_probe)
     temporary_path = _create_temporary_output(destination.parent)
     try:
-        _run_normalization(
-            source,
-            temporary_path,
-            strategy,
-            timeout_seconds=ffmpeg_timeout_seconds,
-        )
+        if strategy is NormalizationStrategy.PASSTHROUGH:
+            shutil.copyfile(source, temporary_path)
+        else:
+            _run_normalization(
+                source,
+                temporary_path,
+                strategy,
+                timeout_seconds=ffmpeg_timeout_seconds,
+            )
         normalized_probe = probe_media(temporary_path, timeout_seconds=probe_timeout_seconds)
         validate_decode(temporary_path, timeout_seconds=ffmpeg_timeout_seconds)
         if not is_canonical_media(normalized_probe):

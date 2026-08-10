@@ -79,7 +79,7 @@ def create_fixture(path: Path, codec: str) -> None:
 
 @pytest.mark.parametrize(
     ("source_codec", "strategy"),
-    [("h264", "remux"), ("vp9", "transcode")],
+    [("h264", "passthrough"), ("vp9", "transcode")],
 )
 def test_seed_normalizes_media_persists_metadata_and_preserves_stream_contract(
     tmp_path: Path,
