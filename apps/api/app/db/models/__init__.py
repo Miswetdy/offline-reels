@@ -2,6 +2,7 @@ from app.db.models.instagram import (
     InstagramAccount,
     InstagramCollectionRun,
     InstagramCollectionRunItem,
+    InstagramLoginSession,
     InstagramNormalizationJob,
     InstagramReel,
 )
@@ -11,6 +12,7 @@ __all__ = [
     "InstagramAccount",
     "InstagramCollectionRun",
     "InstagramCollectionRunItem",
+    "InstagramLoginSession",
     "InstagramNormalizationJob",
     "InstagramReel",
     "Video",

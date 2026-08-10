@@ -5,6 +5,7 @@ from app.instagram.contracts import (
     CollectionRunStatus,
     CollectionTrigger,
     DownloadAuthMode,
+    LoginSessionStatus,
     NormalizationJobStatus,
     ReasonCode,
     ReelPipelineStatus,
@@ -58,6 +59,9 @@ def test_collector_contract_values_are_explicit_and_stable() -> None:
         "failed",
     }
     assert {mode.value for mode in DownloadAuthMode} == {"session_first"}
+    assert {status.value for status in LoginSessionStatus} == {
+        "pending", "active", "completed", "expired", "cancelled"
+    }
     assert ReasonCode.AUTH_REQUIRED.value == "AUTH_REQUIRED"
 
 

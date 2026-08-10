@@ -127,6 +127,32 @@ The lower visual layout uses shared CSS variables: the floating navigation reser
 
 `.env.example` contains templates only. Do not commit real passwords, tokens, Instagram cookies, sessions, or production data. The client communicates only with the Backend API; external Instagram integration remains outside this bootstrap.
 
+## Stage 4 mobile Instagram connection
+
+Stage 4 adds isolated server-side headed Chromium login. Chrome on iPhone is
+not required: Safari/PWA receives a protected interactive view over HTTPS. The
+user enters credentials, 2FA and CAPTCHA directly in remote Instagram. The
+application business API neither requests nor persists them; the HTTPS
+gateway/VNC transport necessarily relays keyboard and pointer events but does
+not log, inspect or retain their contents. CAPTCHA is never bypassed. Follow
+[TASK-011](docs/tasks/011-instagram-login-stage-4.md). There is no dashboard
+button before protected management API exists. Collector, normalizer and
+`videos` are not started or changed; the saved browser profile is sensitive and
+is retained until an explicit destructive reset. The gateway hides the remote
+display while it verifies the completed login and shows a local “Instagram
+connected” result instead of exposing the authenticated Instagram feed.
+
+### Current deployment limitation
+
+The functional iPhone acceptance was performed with Windows Docker Desktop.
+`login-browser` runs as non-root and drops all Linux capabilities, but the
+current Windows-compatible Compose runtime applies `seccomp=unconfined` to
+that one isolated browser container only. It does not publish VNC, CDP or X11,
+and neither gateway nor database receives that exception. This is not a
+production-hardened Linux deployment. A real Linux server must complete a
+separate restricted-seccomp Chromium-sandbox acceptance before production use.
+Do not copy this sensitive Docker Desktop browser profile to Linux.
+
 ## Instagram Collector foundation
 
 The backend has durable Collector domain contracts, an Alembic schema, a

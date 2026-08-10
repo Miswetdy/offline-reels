@@ -4,6 +4,60 @@ This document tracks known technical risks and mitigation plans.
 
 ---
 
+# Risk 17: Stage 4 Windows runtime is not production-hardened
+
+The Stage 4 browser UX and account connection were accepted on Windows Docker
+Desktop with iPhone Safari. That functional evidence does not prove a hardened
+Linux deployment. The current Windows-compatible Compose configuration gives
+only `login-browser` `seccomp=unconfined`; it remains UID 10002 and drops all
+capabilities, while gateway, PostgreSQL and Tailscale do not receive that
+exception. Raw VNC/CDP/X11 are still internal and `--no-sandbox`, root browser,
+`SYS_ADMIN`, automatic login and automatic CAPTCHA solving remain forbidden.
+
+The Ubuntu 22.04 VirtualBox experiment passed host preflight and static
+container assertions, but did not complete the synthetic Chromium runtime
+check. It is therefore neither a production-readiness proof nor a reason to
+weaken the future Linux sandbox further. The sensitive Windows Docker profile
+was not and must not be copied to Linux.
+
+## Mitigation
+
+- Keep `seccomp=unconfined` scoped to the current Windows `login-browser`
+  container only; never add `--no-sandbox`, a root browser, `SYS_ADMIN`, host
+  VNC/CDP/X11 ports or automated credential/CAPTCHA handling.
+- On a real Linux server, identify the actual sandbox constraint and complete
+  restricted-seccomp Chromium/noVNC/profile checks before enabling public
+  login. Do not infer success from the VirtualBox experiment.
+- Treat remote keyboard/pointer transport as a credential-input trust boundary:
+  it must not log, inspect or retain events. The business API must continue to
+  receive neither credentials nor cookies.
+- Keep the Funnel disabled outside an active operator test and verify public
+  DNS/HTTPS from the phone network before issuing a link.
+
+## Status
+
+Open. Stage 4 is functionally accepted on Windows Docker Desktop but is not
+production-hardened. Deployment hardening remains a prerequisite for a real
+server.
+
+---
+
+# Risk 16: remote-login profile and public HTTPS exposure
+
+The Chromium profile is sensitive authenticated state and a mobile display link
+is a capability. Stage 4 stores only a token hash and compact status; links are
+single-use, time-limited and operator-created. The profile is in a separate
+volume and is never exported. Secure cookies, Host/Origin/WebSocket checks and
+CSP protect the gateway; VNC/CDP/X11 are not published. Credentials are not
+accepted by application forms or persistence, but remote VNC necessarily
+relays keyboard/pointer events and is therefore inside the trusted browser
+infrastructure boundary; it must not log, inspect or retain them. A future
+management API must authenticate link creation. Final acceptance requires a
+Linux host with unprivileged user namespaces: Docker Desktop configurations
+that block `unshare(CLONE_NEWUSER)` cannot safely run the Chromium sandbox.
+
+---
+
 # Risk 1: iOS PWA storage limitations
 
 ## Problem

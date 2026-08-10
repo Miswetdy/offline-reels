@@ -3,11 +3,12 @@ from pathlib import Path
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.schema import CreateTable
+from sqlalchemy.schema import CreateIndex, CreateTable
 
 from app.db.models.instagram import (
     InstagramCollectionRun,
     InstagramCollectionRunItem,
+    InstagramLoginSession,
     InstagramReel,
 )
 
@@ -16,10 +17,10 @@ API_ROOT = Path(__file__).resolve().parents[2]
 
 def test_alembic_has_one_collector_head_after_video_normalization() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0004_instagram_collector_foundation"]
-    revision = script.get_revision("0004_instagram_collector_foundation")
+    assert script.get_heads() == ["0005_instagram_login_sessions"]
+    revision = script.get_revision("0005_instagram_login_sessions")
     assert revision is not None
-    assert revision.down_revision == "0003_video_normalization"
+    assert revision.down_revision == "0004_instagram_collector_foundation"
 
 
 def test_collector_model_ddl_carries_source_and_run_integrity_rules() -> None:
@@ -40,10 +41,31 @@ def test_collector_model_ddl_carries_source_and_run_integrity_rules() -> None:
     assert "ck_collection_runs_target_positive" in run_sql
 
 
+def test_login_session_ddl_and_migration_never_store_browser_secrets() -> None:
+    sql = str(CreateTable(InstagramLoginSession.__table__).compile(dialect=postgresql.dialect()))
+    migration = (
+        (API_ROOT / "alembic" / "versions" / "0005_instagram_login_sessions.py")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
+    active_index = next(
+        index
+        for index in InstagramLoginSession.__table__.indexes
+        if index.name == "uq_instagram_login_sessions_active_account"
+    )
+    index_sql = str(CreateIndex(active_index).compile(dialect=postgresql.dialect()))
+    assert "uq_instagram_login_sessions_active_account" in index_sql
+    assert "launch_token_hash" in sql
+    for forbidden in ("password", "cookie", "sessionid", "csrftoken", "storage_state", "captcha"):
+        assert f'column("{forbidden}"' not in migration
+
+
 def test_migration_defines_only_safe_schema_columns() -> None:
     migration = (
-        API_ROOT / "alembic" / "versions" / "0004_instagram_collector_foundation.py"
-    ).read_text(encoding="utf-8").lower()
+        (API_ROOT / "alembic" / "versions" / "0004_instagram_collector_foundation.py")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
     forbidden_columns = (
         "password",
         "cookie",

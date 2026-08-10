@@ -68,6 +68,29 @@ collection run may explicitly retry through `downloading`. `ready` is terminal.
 
 ---
 
+## Stage 4 mobile login boundary
+
+Stage 4 adds a separate `login-gateway` and non-root headed
+`login-browser`, without changing ordinary API startup. The gateway is the
+only public HTTPS boundary: it validates a one-time hashed grant, Host/Origin,
+cookie and WebSocket before same-origin noVNC transport. An opt-in Tailscale
+Funnel sidecar terminates HTTPS and can reach only the internal gateway; Docker
+publishes no host ports. Raw VNC/CDP/X11 stay unpublished. Credentials, 2FA and CAPTCHA are entered in server Chromium and
+never cross application API/persistence. After safe Reels readiness the account
+becomes `connected`, remote access closes and the dedicated browser profile stays
+persisted. Stage 4 creates no Collector run and changes no Reels, jobs or
+videos. For an already retained profile, and after the user finishes login, the
+gateway performs the fixed server-side Reels verification while the phone sees
+only a local progress/success page; the authenticated feed is not exposed as a
+product screen.
+
+The functional acceptance environment is Windows Docker Desktop. Its current
+Compose runtime keeps `login-browser` non-root with `cap_drop: ALL`, but has a
+Windows-compatibility `seccomp=unconfined` exception for that container only.
+The gateway, PostgreSQL and Tailscale services do not receive it. This is not a
+production-hardened Linux design: a real deployment must separately prove a
+restricted-seccomp Chromium sandbox before public use.
+
 # Components
 
 ## Mobile App / PWA

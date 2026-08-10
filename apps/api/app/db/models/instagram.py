@@ -1,5 +1,7 @@
 """Persistence foundation for the future server-side Instagram Collector."""
 
+# ruff: noqa: E501
+
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -24,6 +26,7 @@ from app.instagram.contracts import (
     CollectionRunStatus,
     CollectionTrigger,
     DownloadAuthMode,
+    LoginSessionStatus,
     NormalizationJobStatus,
     ReelPipelineStatus,
     RunItemOutcome,
@@ -36,6 +39,7 @@ REEL_PIPELINE_STATUSES = tuple(status.value for status in ReelPipelineStatus)
 NORMALIZATION_JOB_STATUSES = tuple(status.value for status in NormalizationJobStatus)
 RUN_ITEM_OUTCOMES = tuple(outcome.value for outcome in RunItemOutcome)
 DOWNLOAD_AUTH_MODES = tuple(mode.value for mode in DownloadAuthMode)
+LOGIN_SESSION_STATUSES = tuple(status.value for status in LoginSessionStatus)
 REASON_CODE_MAX_LENGTH = 64
 
 
@@ -46,9 +50,7 @@ def _enum_check(column: str, values: tuple[str, ...], name: str) -> CheckConstra
 
 class InstagramAccount(Base):
     __tablename__ = "instagram_accounts"
-    __table_args__ = (
-        _enum_check("status", ACCOUNT_STATUSES, "ck_instagram_accounts_status"),
-    )
+    __table_args__ = (_enum_check("status", ACCOUNT_STATUSES, "ck_instagram_accounts_status"),)
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     status: Mapped[str] = mapped_column(
@@ -68,6 +70,40 @@ class InstagramAccount(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class InstagramLoginSession(Base):
+    """One short-lived remote-login grant. Browser state never enters this table."""
+
+    __tablename__ = "instagram_login_sessions"
+    __table_args__ = (
+        _enum_check("status", LOGIN_SESSION_STATUSES, "ck_instagram_login_sessions_status"),
+        CheckConstraint(
+            "length(launch_token_hash) = 64", name="ck_login_session_token_hash_length"
+        ),
+        Index(
+            "uq_instagram_login_sessions_active_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'active')"),
+            sqlite_where=text("status IN ('pending', 'active')"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("instagram_accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    prior_account_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    launch_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    reason_code: Mapped[str | None] = mapped_column(String(REASON_CODE_MAX_LENGTH), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class InstagramReel(Base):

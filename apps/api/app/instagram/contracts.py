@@ -12,6 +12,14 @@ class AccountStatus(StrEnum):
     TEMPORARILY_LIMITED = "temporarily_limited"
 
 
+class LoginSessionStatus(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
 class CollectionRunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -60,6 +68,8 @@ class ReasonCode(StrEnum):
     NORMALIZATION_FAILED = "NORMALIZATION_FAILED"
     STORAGE_FAILED = "STORAGE_FAILED"
     CANCELLED_BY_USER = "CANCELLED_BY_USER"
+    LOGIN_EXPIRED = "LOGIN_EXPIRED"
+    LOGIN_CANCELLED = "LOGIN_CANCELLED"
 
 
 REASON_CODE_MAX_LENGTH = 64

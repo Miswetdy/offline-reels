@@ -339,12 +339,14 @@ source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "minio" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "redis" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -364,6 +366,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = "==1.18.4" },
     { name = "fastapi", specifier = "==0.139.2" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "minio", specifier = "==7.2.20" },
     { name = "playwright", marker = "extra == 'collector'", specifier = "==1.62.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.2" },
@@ -371,6 +374,7 @@ requires-dist = [
     { name = "redis", specifier = "==7.2.0" },
     { name = "sqlalchemy", specifier = "==2.0.51" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.40.0" },
+    { name = "websockets", specifier = "==16.1.1" },
     { name = "yt-dlp", marker = "extra == 'collector'", specifier = "==2026.7.4" },
 ]
 provides-extras = ["collector"]

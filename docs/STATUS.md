@@ -2,6 +2,26 @@
 
 ## Current stage
 
+Stage 4 secure mobile login is implemented in the working tree: one-time
+hashed links, an isolated same-origin gateway, a non-root Chromium image and a
+dedicated persistent account profile for the duration of an active login
+deployment. Windows Docker Desktop manual iPhone Safari acceptance confirmed
+the real remote Instagram login/challenge, profile confirmation and the local
+success-screen UX; the authenticated Instagram feed was not exposed after
+completion. The business API did not request or persist credentials, while the
+remote-browser keyboard/pointer transport remained a deliberate trust
+boundary. Post-acceptance cleanup removed the sensitive test browser profile,
+the temporary Stage 4 database, Funnel state and the local staging secrets.
+The current Windows-compatible runtime keeps `login-browser` non-root with
+`cap_drop: ALL`, but uses `seccomp=unconfined` for that container only. It is
+therefore functionally complete, not production-hardened. The Ubuntu VirtualBox
+synthetic Chromium sandbox acceptance did not complete and is not evidence of
+Linux deployment readiness; Risk 17 remains open. The staging UI has an
+operator-created one-time link and **Open browser** control; a future protected
+management/dashboard flow will create that session and enter the login flow
+without exposing credentials to the business API. Collector, normalizer and
+`videos` remain untouched; Stage 3C.2 infrastructure remains separate.
+
 Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3B is a manually invoked, bounded three-Reel operator composition over Stage 3A adapters. A test-account live run successfully confirmed three session-first downloads, validations, MinIO publications, PostgreSQL commits, two targeted transitions, durable `source_ready` Reels and read-only verification without changing `videos`. Stage 3C.1 then continued that same account-owned reserve from three to ten: seven new sources committed, six transitions confirmed, `videos` remained empty and the final read-only verifier passed. Stage 3C.2 now adds a separate non-root Linux Collector image and a disposable internal-network fixture cycle over real PostgreSQL/MinIO; automated and PowerShell manual synthetic acceptance both passed, and the API image remains browser-free. Live Instagram in the container has not been tested.
 
 ## Completed
@@ -48,10 +68,12 @@ post-run verifier also confirmed the exact MinIO/object and `videos` deltas. A
 durable commit gates each transition: positions 1 and 2 have one
 bounded retry wheel after an unconfirmed transition, while position 3 never
 scrolls. Scheduler, Collector API, frontend and normalizer worker are still
-absent; phone login is also not implemented. The next step is Stage 3C: a
-separate Linux/container service and bounded ten-Reel live verification. The
-smoke PostgreSQL/MinIO state is intentionally preserved for that follow-up. The
-validated local spike remains separate and is not copied into production.
+absent. Stage 4 now supplies a separate mobile login browser boundary but does
+not invoke a Collector run. Windows/iPhone functional acceptance succeeded, but
+the Windows `login-browser` seccomp exception means hardened Linux deployment
+proof remains open under Risk 17. The preserved Stage 3C PostgreSQL/MinIO smoke
+state remains separate, and the validated local spike is not copied into
+production.
 
 Block 4A keeps `/offline` as the Reels-like control mode through the shared
 `VerticalVideoFeed`; `/videos` is now a legacy redirect and no longer carries an
@@ -107,9 +129,12 @@ monitoring, or a concrete VPS configuration.
 
 ## Next step
 
-Run post-iPhone hardening block 4B: repeat installed-PWA iPhone acceptance for
-the dashboard batch download, cancel-and-clear race protection, legacy redirect,
-and clean Reels UI. After that, begin TASK-006 Instagram Collector.
+Next, introduce a protected management API and dashboard connection flow. It
+will create the one-time session from **Подключить Instagram**, show only a
+short preparation screen followed by the real Instagram login/challenge when
+needed, and return through a fixed same-origin home route. No arbitrary
+`return_url`, credential form, Collector run or dashboard-to-Instagram direct
+link is planned. Then continue the post-iPhone hardening and Collector roadmap.
 
 ## Recent decisions
 

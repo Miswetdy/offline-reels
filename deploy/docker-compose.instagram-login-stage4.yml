@@ -1,0 +1,121 @@
+name: offline-reels-instagram-login-stage4
+
+# Stage 4 only. It never starts the API, web UI, Redis, MinIO, Collector or
+# normalizer, and it does not share their Compose project or volumes.
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    environment:
+      POSTGRES_DB: ${LOGIN_POSTGRES_DB:-stage4_login}
+      POSTGRES_USER: ${LOGIN_POSTGRES_USER:-stage4_login}
+      POSTGRES_PASSWORD: ${LOGIN_POSTGRES_PASSWORD:?set LOGIN_POSTGRES_PASSWORD}
+    volumes: [stage4_login_postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [database]
+
+  migrate:
+    build:
+      context: ../apps/api
+      target: production
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    environment: &gateway_environment
+      DATABASE_URL: postgresql+psycopg://${LOGIN_POSTGRES_USER:-stage4_login}:${LOGIN_POSTGRES_PASSWORD}@postgres:5432/${LOGIN_POSTGRES_DB:-stage4_login}
+      VIDEO_CURSOR_SECRET: ${LOGIN_VIDEO_CURSOR_SECRET:?set LOGIN_VIDEO_CURSOR_SECRET}
+      LOGIN_GATEWAY_ORIGIN: ${LOGIN_GATEWAY_ORIGIN:?set LOGIN_GATEWAY_ORIGIN}
+      LOGIN_GATEWAY_SESSION_SECRET: ${LOGIN_GATEWAY_SESSION_SECRET:?set LOGIN_GATEWAY_SESSION_SECRET}
+      LOGIN_BROWSER_CONTROL_SECRET: ${LOGIN_BROWSER_CONTROL_SECRET:?set LOGIN_BROWSER_CONTROL_SECRET}
+      LOGIN_BROWSER_CONTROL_URL: http://login-browser:8081
+      LOGIN_BROWSER_VNC_URL: http://login-browser:6080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [database]
+
+  login-browser:
+    build:
+      context: ../apps/login-browser
+    environment:
+      LOGIN_ACCOUNT_ID: ${LOGIN_ACCOUNT_ID:-00000000-0000-0000-0000-000000000400}
+      LOGIN_BROWSER_CONTROL_SECRET: ${LOGIN_BROWSER_CONTROL_SECRET:?set LOGIN_BROWSER_CONTROL_SECRET}
+    volumes: [stage4_login_profile:/login-profiles]
+    # Windows Docker Desktop compatibility scope only. This exception applies
+    # only to the isolated browser container and must be revalidated with a
+    # restricted seccomp policy on a production Linux host.
+    security_opt:
+      - seccomp=unconfined
+    cap_drop: [ALL]
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [browser_egress]
+
+  login-gateway:
+    build:
+      context: ../apps/api
+      target: production
+    # Request paths are deliberately not access-logged: a launch token is
+    # sensitive and must never enter a container log.
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.instagram.login_gateway:create_login_gateway", "--factory", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+    environment: *gateway_environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [database, browser_egress, edge]
+
+  profile-reset:
+    # A one-shot operator-only job. Keeping it separate means the public
+    # gateway never receives a mount of the sensitive browser profile.
+    build:
+      context: ../apps/api
+      target: production
+    user: "10002:10002"
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.scripts.stage4_profile_reset"]
+    environment: *gateway_environment
+    volumes: [stage4_login_profile:/login-profiles]
+    profiles: ["operator"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [database]
+
+  tailscale-funnel:
+    # Tailscale terminates public HTTPS and proxies only to login-gateway on
+    # the private Compose network. Docker publishes no host ports at all.
+    image: tailscale/tailscale:stable
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY:?set TAILSCALE_AUTHKEY}
+      TS_AUTH_ONCE: "true"
+      TS_ACCEPT_DNS: "false"
+      TS_HOSTNAME: ${TAILSCALE_HOSTNAME:-offline-reels-stage4-login}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - stage4_tailscale_state:/var/lib/tailscale
+      # The official image watches the containing directory, not a single file.
+      - ./tailscale-stage4:/config:ro
+    depends_on:
+      login-gateway:
+        condition: service_started
+    # `edge` is private and supplies the only route to the gateway.  The
+    # additional network is outbound-only from the perspective of Docker: it
+    # gives the Tailscale daemon access to its control plane and DERP relays,
+    # while no service still publishes a host port.
+    networks: [tailscale_egress, edge]
+
+networks:
+  database:
+    internal: true
+  browser_egress: {}
+  edge:
+    internal: true
+  tailscale_egress: {}
+
+volumes:
+  stage4_login_postgres:
+  stage4_login_profile:
+  stage4_tailscale_state:
