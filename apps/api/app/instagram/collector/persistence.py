@@ -58,6 +58,32 @@ class CollectorPersistence:
             )
         return run_id
 
+    def claim_queued_run(self, account_id: UUID) -> InstagramCollectionRun | None:
+        """Claim one API-queued command; runtime startup stays outside FastAPI."""
+        with self._sessions.begin() as session:
+            item = session.scalar(
+                select(InstagramCollectionRun)
+                .where(
+                    InstagramCollectionRun.account_id == account_id,
+                    InstagramCollectionRun.status == CollectionRunStatus.QUEUED.value,
+                    InstagramCollectionRun.cancel_requested_at.is_(None),
+                )
+                .order_by(InstagramCollectionRun.created_at, InstagramCollectionRun.id)
+                .with_for_update(skip_locked=True)
+            )
+            if item is None:
+                return None
+            item.status = CollectionRunStatus.RUNNING.value
+            item.started_at = datetime.now(UTC)
+            session.flush()
+            session.expunge(item)
+            return item
+
+    def cancellation_requested(self, run_id: UUID) -> bool:
+        with self._sessions() as session:
+            item = session.get(InstagramCollectionRun, run_id)
+            return bool(item is None or item.cancel_requested_at is not None)
+
     def ensure_account(self, account_id: UUID) -> None:
         with self._sessions.begin() as session:
             if session.get(InstagramAccount, account_id) is None:

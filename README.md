@@ -228,3 +228,14 @@ docker compose --project-name offline-reels-stage3c2-fixture -f deploy/docker-co
 
 Live Instagram in a Linux container, mobile login and a remote browser UI are
 explicit Stage 4 work; Windows browser profiles are not copied or converted.
+# Protected Instagram management API (Stage 6)
+
+Management endpoints are under `/api` and require a locally paired owner
+device. Run `python -m app.scripts.management create-pairing --account-id ...`
+only on the operator host; its short-lived secret is for local browser exchange
+and must not be pasted into chat, source control or logs. The paired browser
+uses a secure HTTP-only cookie plus Origin, CSRF and idempotency protections.
+
+The API creates login and Collector commands but does not run Playwright,
+Chromium, yt-dlp, ffmpeg, Collector or normalizer code. Automatic collection
+settings are stored only; no scheduler or dashboard UI is included in Stage 6.

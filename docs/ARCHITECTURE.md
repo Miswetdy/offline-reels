@@ -432,3 +432,12 @@ PostgreSQL, MinIO, their bootstrap/migration jobs and a one-shot Collector.
 The fixture is a real persistence/storage/ffprobe composition with local
 synthetic MP4s, not a browser or Instagram flow. A future Stage 4 runner may
 add controlled live operation without changing this API/service boundary.
+# Stage 6 management control plane
+
+The management API is a separately authenticated FastAPI router backed only by
+PostgreSQL. A local operator CLI creates a short-lived one-time pairing
+challenge. A paired device receives a secure HTTP-only cookie; mutations also
+require exact configured Origin/Host, CSRF and idempotency protection. The
+router only emits or reads durable commands. The Stage 4 gateway/browser claims
+login state, a Collector process claims queued runs, and the normalizer claims
+pending jobs. No worker/browser runtime is imported by FastAPI.

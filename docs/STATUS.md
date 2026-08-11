@@ -2,6 +2,15 @@
 
 ## Current stage
 
+Stage 6 protected Collector management API is implemented. It uses one-time
+device pairing and a secure management cookie, creates only PostgreSQL commands
+and states, and leaves login browser, Collector and normalizer as separate
+services. The Stage 4 launch capability is issued once from a fixed HTTPS
+gateway origin and is never persisted in API result state. Auto-collection
+settings are durable but `scheduler_active=false`: no scheduler or dashboard UI
+exists yet. Stage 6 uses disposable infrastructure for mutation testing; the
+preserved ten-Reel Collector smoke remains read-only.
+
 Stage 4 secure mobile login is implemented in the working tree: one-time
 hashed links, an isolated same-origin gateway, a non-root Chromium image and a
 dedicated persistent account profile for the duration of an active login

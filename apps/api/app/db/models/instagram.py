@@ -103,6 +103,7 @@ class InstagramLoginSession(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -203,6 +204,9 @@ class InstagramCollectionRun(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -276,3 +280,110 @@ class InstagramNormalizationJob(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ManagementPairingChallenge(Base):
+    __tablename__ = "management_pairing_challenges"
+    __table_args__ = (
+        CheckConstraint(
+            "length(secret_hash) = 64", name="ck_management_pairing_secret_hash_length"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("instagram_accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ManagementDeviceSession(Base):
+    __tablename__ = "management_device_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "length(session_token_hash) = 64", name="ck_management_session_hash_length"
+        ),
+        CheckConstraint("length(csrf_token_hash) = 64", name="ck_management_csrf_hash_length"),
+        Index("ix_management_device_sessions_expires_at", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("instagram_accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    device_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, default=uuid4)
+    session_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ManagementIdempotencyRecord(Base):
+    __tablename__ = "management_idempotency_records"
+    __table_args__ = (
+        CheckConstraint("length(key_hash) = 64", name="ck_management_idempotency_key_hash_length"),
+        CheckConstraint(
+            "length(request_fingerprint) = 64", name="ck_management_idempotency_fingerprint_length"
+        ),
+        Index(
+            "uq_management_idempotency_scope",
+            "session_id",
+            "operation",
+            "key_hash",
+            unique=True,
+        ),
+        Index("ix_management_idempotency_expires_at", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("management_device_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_status: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_json: Mapped[str] = mapped_column(String(2048), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InstagramCollectionSettings(Base):
+    __tablename__ = "instagram_collection_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "target_reserve >= 1 AND target_reserve <= 10",
+            name="ck_collection_settings_target_range",
+        ),
+    )
+
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("instagram_accounts.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    target_reserve: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ManagementRateLimit(Base):
+    __tablename__ = "management_rate_limits"
+
+    scope_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

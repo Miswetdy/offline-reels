@@ -1,0 +1,63 @@
+name: offline-reels-stage6-smoke
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    environment:
+      POSTGRES_DB: stage6_smoke
+      POSTGRES_USER: stage6_smoke
+      POSTGRES_PASSWORD: ${STAGE6_POSTGRES_PASSWORD:?set only in the local disposable smoke process}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - stage6_smoke_postgres:/var/lib/postgresql/data
+
+  migrate:
+    build:
+      context: ../apps/api
+      target: production
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    environment: &api_environment
+      DATABASE_URL: postgresql+psycopg://stage6_smoke:${STAGE6_POSTGRES_PASSWORD:?set only in the local disposable smoke process}@postgres:5432/stage6_smoke
+      REDIS_URL: redis://unused:6379/0
+      MINIO_ENDPOINT: http://minio.invalid:9000
+      MINIO_BUCKET: stage6-smoke
+      MINIO_ACCESS_KEY: stage6-smoke
+      MINIO_SECRET_KEY: unused-by-stage6-smoke
+      VIDEO_CURSOR_SECRET: ${STAGE6_VIDEO_CURSOR_SECRET:?set only in the local disposable smoke process}
+      FRONTEND_ORIGIN: https://localhost:18443
+      MANAGEMENT_ORIGIN: https://localhost:18443
+      LOGIN_GATEWAY_ORIGIN: https://login.example.invalid
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../apps/api
+      target: production
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *api_environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    ports:
+      - "127.0.0.1:18443:443"
+    volumes:
+      - ./Caddyfile.stage6-smoke:/etc/caddy/Caddyfile:ro
+      - stage6_smoke_caddy_data:/data
+      - stage6_smoke_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  stage6_smoke_postgres:
+  stage6_smoke_caddy_data:
+  stage6_smoke_caddy_config:

@@ -89,6 +89,7 @@ class CollectorEngine:
         target_count: int,
         *,
         desired_account_total: int | None = None,
+        claimed_run_id: UUID | None = None,
     ) -> CollectorSummary:
         if target_count < 1 or target_count > self._limits.max_target:
             raise ValueError("Target is outside the fixture Collector limit.")
@@ -108,7 +109,7 @@ class CollectorEngine:
             raise ValueError("Collector observation limit must be positive.")
         if desired_account_total is not None and desired_account_total < target_count:
             raise ValueError("Desired account total is invalid.")
-        run_id = self._persistence.create_run(account_id, trigger, target_count)
+        run_id = claimed_run_id or self._persistence.create_run(account_id, trigger, target_count)
         deadline = (
             None
             if self._limits.deadline_seconds is None
@@ -124,8 +125,10 @@ class CollectorEngine:
         reason: str | None = None
         position = 1
         try:
+            self._raise_if_cancel_requested(run_id)
             candidate = validate_candidate(self._feed.current())
             while True:
+                self._raise_if_cancel_requested(run_id)
                 if self._deadline_expired(deadline):
                     reason = "TOTAL_TIMEOUT_REACHED"
                     break
@@ -170,6 +173,7 @@ class CollectorEngine:
                     download_attempted = False
                     db_committed = False
                     try:
+                        self._raise_if_cancel_requested(run_id)
                         self._require_deadline(deadline)
                         download_attempted = True
                         self._downloader.download(candidate, temporary)
@@ -186,6 +190,7 @@ class CollectorEngine:
                             reason = "RUN_BYTE_LIMIT_EXCEEDED"
                             raise _CollectorLimitExceeded
                         stage = "publication"
+                        self._raise_if_cancel_requested(run_id)
                         self._require_deadline(deadline)
                         published = self._storage.publish(
                             temporary,
@@ -310,6 +315,7 @@ class CollectorEngine:
                     reason = "TOTAL_TIMEOUT_REACHED"
                     break
                 transition_operations += 1
+                self._raise_if_cancel_requested(run_id)
                 (
                     next_candidate,
                     consumed_scroll_actions,
@@ -454,6 +460,11 @@ class CollectorEngine:
     def _require_deadline(self, deadline: float | None) -> None:
         if self._deadline_expired(deadline):
             raise _CollectorDeadlineExceeded
+
+    def _raise_if_cancel_requested(self, run_id: UUID) -> None:
+        probe = getattr(self._persistence, "cancellation_requested", None)
+        if callable(probe) and probe(run_id):
+            raise KeyboardInterrupt
 
     def _wait_for_next(self, shortcode: str, deadline: float | None):
         try:

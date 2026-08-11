@@ -1,0 +1,9 @@
+https://localhost {
+    tls internal
+    reverse_proxy /api/* api:8000 {
+        header_up Host localhost:18443
+    }
+    reverse_proxy /health/* api:8000 {
+        header_up Host localhost:18443
+    }
+}

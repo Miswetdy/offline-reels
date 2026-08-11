@@ -507,3 +507,27 @@ Before public production deployment:
 - Funnel terminates TLS before local Caddy. Public iPhone testing must still
   verify service-worker scope, CORS, and Range streaming over the final
   `*.ts.net` hostname.
+# Risk 18: Management device/session loss
+
+## Problem
+
+A paired owner device can be lost while its management cookie is still valid.
+
+## Mitigation
+
+Sessions expire, can be revoked individually, and the local operator CLI can
+revoke all sessions for an account. Pairing challenges are short-lived,
+single-use and hashed at rest. Mutations need Host/Origin, CSRF and DB-backed
+idempotency checks; no static frontend admin secret exists.
+
+## Remaining limitation
+
+Rate limiting uses PostgreSQL fixed windows keyed by a non-reversible scope
+hash, so API workers share the same pairing and session-mutation boundary
+without retaining IP or user-agent data.
+
+## Status
+
+Open; acceptable for the single-owner MVP.
+
+---

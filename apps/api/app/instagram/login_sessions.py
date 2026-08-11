@@ -52,62 +52,74 @@ class LoginSessionService:
         *,
         allow_connected_profile_check: bool = False,
     ) -> CreatedLoginSession:
+        try:
+            with self._sessions.begin() as db:
+                return self.create_in_transaction(
+                    db,
+                    account_id,
+                    ttl,
+                    allow_connected_profile_check=allow_connected_profile_check,
+                )
+        except IntegrityError as error:
+            raise LoginSessionError("An active login session already exists.") from error
+
+    def create_in_transaction(
+        self,
+        db: Session,
+        account_id: UUID,
+        ttl: timedelta = DEFAULT_LOGIN_TTL,
+        *,
+        allow_connected_profile_check: bool = False,
+    ) -> CreatedLoginSession:
+        """Create using a caller-owned transaction for management idempotency."""
         if ttl <= timedelta() or ttl > DEFAULT_LOGIN_TTL:
             raise LoginSessionError("Invalid login-session lifetime.")
         token = secrets.token_urlsafe(32)
         now = self._now()
         session_id = uuid4()
-        try:
-            with self._sessions.begin() as db:
-                # Expiry is a durable state transition, not merely a display
-                # concern.  Resolve stale rows before the partial unique index
-                # checks the next one-time session for this account.
-                active_sessions = db.scalars(
-                    select(InstagramLoginSession)
-                    .where(
-                        InstagramLoginSession.account_id == account_id,
-                        InstagramLoginSession.status.in_(
-                            (LoginSessionStatus.PENDING.value, LoginSessionStatus.ACTIVE.value)
-                        ),
-                    )
-                    .with_for_update()
-                ).all()
-                for active_session in active_sessions:
-                    self._expire_locked(db, active_session)
-                if any(
-                    active_session.status
-                    in {LoginSessionStatus.PENDING.value, LoginSessionStatus.ACTIVE.value}
-                    for active_session in active_sessions
-                ):
-                    raise LoginSessionError("An active login session already exists.")
-                account = db.get(InstagramAccount, account_id)
-                if account is None:
-                    account = InstagramAccount(
-                        id=account_id, status=AccountStatus.DISCONNECTED.value
-                    )
-                    db.add(account)
-                    db.flush()
-                prior = AccountStatus(account.status)
-                allowed = {AccountStatus.DISCONNECTED, AccountStatus.REAUTH_REQUIRED}
-                if allow_connected_profile_check:
-                    allowed.add(AccountStatus.CONNECTED)
-                if prior not in allowed:
-                    raise LoginSessionError("Account cannot start a login session now.")
-                if prior is not AccountStatus.CONNECTED:
-                    require_transition(ACCOUNT_TRANSITIONS, prior, AccountStatus.CONNECTING)
-                    account.status = AccountStatus.CONNECTING.value
-                db.add(
-                    InstagramLoginSession(
-                        id=session_id,
-                        account_id=account_id,
-                        status=LoginSessionStatus.PENDING.value,
-                        prior_account_status=prior.value,
-                        launch_token_hash=hash_launch_token(token),
-                        expires_at=now + ttl,
-                    )
-                )
-        except IntegrityError as error:
-            raise LoginSessionError("An active login session already exists.") from error
+        # Expiry is a durable state transition, not merely a display concern.
+        active_sessions = db.scalars(
+            select(InstagramLoginSession)
+            .where(
+                InstagramLoginSession.account_id == account_id,
+                InstagramLoginSession.status.in_(
+                    (LoginSessionStatus.PENDING.value, LoginSessionStatus.ACTIVE.value)
+                ),
+            )
+            .with_for_update()
+        ).all()
+        for active_session in active_sessions:
+            self._expire_locked(db, active_session)
+        if any(
+            active_session.status
+            in {LoginSessionStatus.PENDING.value, LoginSessionStatus.ACTIVE.value}
+            for active_session in active_sessions
+        ):
+            raise LoginSessionError("An active login session already exists.")
+        account = db.get(InstagramAccount, account_id)
+        if account is None:
+            account = InstagramAccount(id=account_id, status=AccountStatus.DISCONNECTED.value)
+            db.add(account)
+            db.flush()
+        prior = AccountStatus(account.status)
+        allowed = {AccountStatus.DISCONNECTED, AccountStatus.REAUTH_REQUIRED}
+        if allow_connected_profile_check:
+            allowed.add(AccountStatus.CONNECTED)
+        if prior not in allowed:
+            raise LoginSessionError("Account cannot start a login session now.")
+        if prior is not AccountStatus.CONNECTED:
+            require_transition(ACCOUNT_TRANSITIONS, prior, AccountStatus.CONNECTING)
+            account.status = AccountStatus.CONNECTING.value
+        db.add(
+            InstagramLoginSession(
+                id=session_id,
+                account_id=account_id,
+                status=LoginSessionStatus.PENDING.value,
+                prior_account_status=prior.value,
+                launch_token_hash=hash_launch_token(token),
+                expires_at=now + ttl,
+            )
+        )
         return CreatedLoginSession(session_id, account_id, now + ttl, token)
 
     def activate(self, session_id: UUID, token: str) -> LoginSessionStatus:
@@ -126,6 +138,7 @@ class LoginSessionService:
                 raise LoginSessionError("Login link is unavailable.")
             item.status = LoginSessionStatus.ACTIVE.value
             item.consumed_at = self._now()
+            item.claimed_at = self._now()
             return LoginSessionStatus.ACTIVE
 
     def status(self, session_id: UUID) -> LoginSessionStatus | None:
@@ -150,24 +163,27 @@ class LoginSessionService:
 
     def cancel(self, session_id: UUID) -> LoginSessionStatus:
         with self._sessions.begin() as db:
-            item = db.scalar(
-                select(InstagramLoginSession)
-                .where(InstagramLoginSession.id == session_id)
-                .with_for_update()
-            )
-            if item is None:
-                raise LoginSessionError("Login session was not found.")
-            self._expire_locked(db, item)
-            if item.status not in {
-                LoginSessionStatus.PENDING.value,
-                LoginSessionStatus.ACTIVE.value,
-            }:
-                return LoginSessionStatus(item.status)
-            item.status = LoginSessionStatus.CANCELLED.value
-            item.reason_code = ReasonCode.LOGIN_CANCELLED.value
-            item.closed_at = self._now()
-            self._restore_account(db, item)
-            return LoginSessionStatus.CANCELLED
+            return self.cancel_in_transaction(db, session_id)
+
+    def cancel_in_transaction(self, db: Session, session_id: UUID) -> LoginSessionStatus:
+        item = db.scalar(
+            select(InstagramLoginSession)
+            .where(InstagramLoginSession.id == session_id)
+            .with_for_update()
+        )
+        if item is None:
+            raise LoginSessionError("Login session was not found.")
+        self._expire_locked(db, item)
+        if item.status not in {
+            LoginSessionStatus.PENDING.value,
+            LoginSessionStatus.ACTIVE.value,
+        }:
+            return LoginSessionStatus(item.status)
+        item.status = LoginSessionStatus.CANCELLED.value
+        item.reason_code = ReasonCode.LOGIN_CANCELLED.value
+        item.closed_at = self._now()
+        self._restore_account(db, item)
+        return LoginSessionStatus.CANCELLED
 
     def complete(self, session_id: UUID) -> LoginSessionStatus:
         with self._sessions.begin() as db:
