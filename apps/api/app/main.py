@@ -33,6 +33,11 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("X-Request-ID", request.state.request_id)
+        if request.url.path.startswith(("/api/management/", "/api/instagram/")):
+            # Management and login-control DTOs can contain short-lived
+            # capabilities.  They are never eligible for intermediary or SW
+            # caching, including safe status polling responses.
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     app.add_middleware(

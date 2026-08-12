@@ -156,12 +156,23 @@ describe("VerticalVideoFeed Reels-like controls", () => {
   });
 
   it("keeps sound enabled and exposes Play when audible startup is blocked, then resumes from a user tap", async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play")
-      .mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    let rejectStartupPlayback: (reason?: unknown) => void = () => undefined;
+    const startupPlayback = new Promise<void>((_resolve, reject) => {
+      rejectStartupPlayback = reject;
+    });
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValueOnce(startupPlayback);
     render(<VerticalVideoFeed items={items} controlsMode="reels" />);
     const first = playerFor("First video");
+    await act(async () => {
+      await Promise.resolve();
+    });
     fireEvent.loadedMetadata(first);
-    await act(async () => Promise.resolve());
+    expect(play).toHaveBeenCalledWith();
+    await act(async () => {
+      rejectStartupPlayback(new DOMException("blocked", "NotAllowedError"));
+      await startupPlayback.catch(() => undefined);
+      await Promise.resolve();
+    });
 
     expect(first.muted).toBe(false);
     expect(screen.getByTestId("reels-controls-one")).toHaveClass("opacity-100");

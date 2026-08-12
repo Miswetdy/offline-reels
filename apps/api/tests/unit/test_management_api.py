@@ -99,6 +99,31 @@ def test_pairing_is_hashed_single_use_and_status_requires_cookie() -> None:
         )
 
 
+def test_current_session_issues_a_fresh_no_store_csrf_capability() -> None:
+    client, _, secret = _client()
+    csrf = _exchange(client, secret)
+
+    current = client.get("/api/management/session")
+
+    assert current.status_code == 200
+    assert current.headers["cache-control"] == "no-store"
+    refreshed = current.json()["csrf_token"]
+    assert isinstance(refreshed, str) and refreshed != csrf
+    # The old browser capability cannot mutate after an application restart.
+    stale = client.post(
+        "/api/instagram/collection-runs",
+        json={"target": 2},
+        headers=_mutation_headers(csrf),
+    )
+    assert stale.status_code == 403
+    fresh = client.post(
+        "/api/instagram/collection-runs",
+        json={"target": 2},
+        headers=_mutation_headers(refreshed),
+    )
+    assert fresh.status_code == 409
+
+
 def test_origin_csrf_and_idempotent_collection_commands() -> None:
     client, sessions, secret = _client()
     csrf = _exchange(client, secret)
@@ -147,6 +172,7 @@ def test_login_launch_is_one_time_and_cancel_is_idempotent() -> None:
     assert created.status_code == 201
     assert created.headers["cache-control"] == "no-store"
     assert "launch_url" in created.json()
+    assert created.json()["launch_url"].startswith(f"{ORIGIN}/connect/")
     launch_token = created.json()["launch_url"].split("#", maxsplit=1)[1]
     with sessions() as db:
         row = db.scalar(select(ManagementIdempotencyRecord))

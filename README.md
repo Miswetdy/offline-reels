@@ -228,7 +228,7 @@ docker compose --project-name offline-reels-stage3c2-fixture -f deploy/docker-co
 
 Live Instagram in a Linux container, mobile login and a remote browser UI are
 explicit Stage 4 work; Windows browser profiles are not copied or converted.
-# Protected Instagram management API (Stage 6)
+# Protected Instagram management API and dashboard (Stages 6–7)
 
 Management endpoints are under `/api` and require a locally paired owner
 device. Run `python -m app.scripts.management create-pairing --account-id ...`
@@ -237,5 +237,25 @@ and must not be pasted into chat, source control or logs. The paired browser
 uses a secure HTTP-only cookie plus Origin, CSRF and idempotency protections.
 
 The API creates login and Collector commands but does not run Playwright,
-Chromium, yt-dlp, ffmpeg, Collector or normalizer code. Automatic collection
-settings are stored only; no scheduler or dashboard UI is included in Stage 6.
+Chromium, yt-dlp, ffmpeg, Collector or normalizer code. The `/` dashboard uses
+only the protected same-origin management API for pairing, Instagram state and
+collection commands; the existing video catalog and sequential device queue
+remain unchanged. Management/launch responses are `no-store` and excluded from
+Serwist caching. The pairing code is operator-assisted, input-only and never
+stored in the client; the management cookie stays HttpOnly and CSRF stays
+ephemeral in memory. The dashboard never renders IDs, shortcodes, object keys,
+codecs, byte sizes or raw backend errors. `scheduler_active=false`, therefore
+the UI correctly says **Автопополнение будет доступно позже** rather than
+promising automatic work. See [TASK-014](docs/tasks/014-pwa-instagram-dashboard-stage-7.md)
+and the [fixture acceptance worksheet](docs/acceptance/stage-7-dashboard.md).
+
+### Stage 7 acceptance status
+
+The disposable synthetic mobile fixture and the synthetic iPhone Stage 7 PWA
+acceptance passed. Stage 4 real remote login passed separately. The combined
+Stage 4 retained-profile → Collector → normalizer → PWA flow is **not accepted
+on Windows Docker Desktop**: an isolated non-root Chromium preflight, including
+direct private CDP, closed before browser readiness because of Docker Desktop
+sandbox incompatibility. It must be repeated on Linux staging or a real server.
+The project did not use `--no-sandbox`, a root browser, privileged containers
+or `SYS_ADMIN` to bypass that failure.

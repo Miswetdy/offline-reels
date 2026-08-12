@@ -72,6 +72,7 @@ def run_stage_3b(
     repository_root: Path,
     confirm: Callable[[], bool],
     wait_ready: Callable[[float], bool],
+    account_id: UUID | None = None,
 ) -> tuple[CollectorSummary | None, SafeEventTranscript, str | None]:
     """Run exactly three Reels after explicit human readiness and confirmation."""
 
@@ -81,9 +82,17 @@ def run_stage_3b(
     sessions = create_session_factory(app_settings)
     persistence = CollectorPersistence(sessions)
     assert runtime.workspace_root is not None
-    account_id = load_or_create_account_id(runtime.workspace_root)
+    account_id = account_id or load_or_create_account_id(runtime.workspace_root)
     persistence.ensure_account(account_id)
-    if persistence.active_run_exists(account_id):
+    # The management API writes a bounded command as ``queued``. Claim it
+    # before opening Chromium so an operator-launched Stage 3B process updates
+    # the exact run the PWA is polling. With no queued command this preserves
+    # the existing explicit Stage 3B behaviour of creating its own run.
+    claim = getattr(persistence, "claim_queued_run", lambda _account_id: None)(account_id)
+    if claim is not None and claim.target_count != STAGE_3B_TARGET:
+        persistence.fail_run(claim.id, "UNSUPPORTED_TARGET")
+        return None, SafeEventTranscript(), RuntimeReasonCode.COLLECTOR_DISABLED.value
+    if claim is None and persistence.active_run_exists(account_id):
         raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_RUN_EXISTS)
     current_status = persistence.account_status(account_id)
     if current_status is not AccountStatus.CONNECTED:
@@ -100,11 +109,16 @@ def run_stage_3b(
             allow_login_bootstrap=True,
         )
         if not wait_ready(runtime.operator_deadline_seconds):
+            _fail_claimed_run(
+                persistence, claim, RuntimeReasonCode.OPERATOR_TIMEOUT.value
+            )
             return None, transcript, RuntimeReasonCode.OPERATOR_TIMEOUT.value
         # current() rechecks auth/checkpoint and validates a central Reel.
         feed.current()
         persistence.set_account_status(account_id, AccountStatus.CONNECTED)
         if not confirm():
+            if claim is not None:
+                persistence.cancel_run(claim.id, "USER_CANCELLED")
             return None, transcript, "USER_CANCELLED"
         minio_client = create_collector_minio_client(app_settings)
         transcript.baseline = capture_run_baseline(
@@ -139,7 +153,12 @@ def run_stage_3b(
             ),
             recorder=transcript,
         )
-        summary = engine.collect(account_id, CollectionTrigger.MANUAL, STAGE_3B_TARGET)
+        summary = engine.collect(
+            account_id,
+            CollectionTrigger.MANUAL,
+            STAGE_3B_TARGET,
+            claimed_run_id=claim.id if claim is not None else None,
+        )
         transcript.download_diagnostics = downloader.attempt_diagnostics
         transcript.transition_diagnostics = engine.transition_diagnostics
         if summary.stop_reason_code is not None:
@@ -177,14 +196,29 @@ def run_stage_3b(
     except CollectorRuntimeError as error:
         if feed is not None:
             transcript.feed_diagnostics = feed.diagnostics
+        _fail_claimed_run(persistence, claim, error.code.value)
         _set_safe_account_state(persistence, account_id, error.code)
         return None, transcript, error.code.value
+    except Exception:
+        # A control-plane run must never remain active when setup failed before
+        # CollectorEngine can record its own terminal state.
+        _fail_claimed_run(persistence, claim, "COLLECTOR_FAILED")
+        raise
     finally:
         try:
             if feed is not None:
                 feed.close()
         except Exception:
             pass
+
+
+def _fail_claimed_run(
+    persistence: CollectorPersistence,
+    claim: object | None,
+    reason_code: str,
+) -> None:
+    if claim is not None:
+        persistence.fail_run(claim.id, reason_code)
 
 
 def _set_safe_account_state(
@@ -237,8 +271,6 @@ def safe_summary_json(
         "events": transcript.events,
         "stop_reason_code": effective_reason,
     }
-    if transcript.account_id is not None:
-        payload["account_id"] = str(transcript.account_id)
     if transcript.baseline is not None:
         payload["baseline"] = transcript.baseline.to_safe_dict()
     if transcript.feed_diagnostics is not None:

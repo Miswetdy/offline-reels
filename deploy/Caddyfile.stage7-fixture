@@ -1,0 +1,25 @@
+https://localhost {
+    tls internal
+    @service_worker path /serwist/sw.js
+    header @service_worker Cache-Control "no-store, max-age=0, must-revalidate"
+    # Management endpoints are natively namespaced under /api.  The existing
+    # video API is not, so only its fixture-facing proxy path is stripped.
+    handle /api/videos* {
+        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+    handle /api/* {
+        reverse_proxy api:8000 {
+            header_down Cache-Control "no-store"
+        }
+    }
+    handle /health/* {
+        reverse_proxy api:8000
+    }
+    handle /connect/* {
+        reverse_proxy login-gateway:8080
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

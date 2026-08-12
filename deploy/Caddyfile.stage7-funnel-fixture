@@ -1,0 +1,32 @@
+# Tailscale Funnel terminates public HTTPS. This disposable Stage 7 fixture
+# keeps Caddy HTTP-only on the Windows loopback and exposes no database,
+# storage, browser, or worker-control port.
+:80 {
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    @service_worker path /serwist/sw.js
+    header @service_worker Cache-Control "no-store, max-age=0, must-revalidate"
+
+    handle /api/videos* {
+        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+    handle /api/* {
+        reverse_proxy api:8000 {
+            header_down Cache-Control "no-store"
+        }
+    }
+    handle /health/* {
+        reverse_proxy api:8000
+    }
+    handle /connect/* {
+        reverse_proxy login-gateway:8080
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

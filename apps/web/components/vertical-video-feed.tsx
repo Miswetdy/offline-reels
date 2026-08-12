@@ -108,6 +108,7 @@ export function VerticalVideoFeed({
   const [reelsControlsItemId, setReelsControlsItemId] = useState<string | null>(null);
   const [playbackUi, setPlaybackUi] = useState<PlaybackUiState>({ itemId: null, paused: false });
   const [progress, setProgress] = useState<ProgressState>({ itemId: null, value: 0 });
+  const [mediaReadinessVersion, setMediaReadinessVersion] = useState(0);
 
   const feedRef = useRef<HTMLElement>(null);
   const itemRefs = useRef(new Map<string, HTMLElement>());
@@ -117,6 +118,10 @@ export function VerticalVideoFeed({
   const activeItemIdRef = useRef<string | null>(null);
   const playbackGenerationRef = useRef(0);
   const startPreparationsRef = useRef(new Map<HTMLVideoElement, StartPreparation>());
+  const readyMediaRef = useRef(new Set<HTMLVideoElement>());
+  const activePlaybackSignatureRef = useRef<string | null>(null);
+  const activePlaybackCycleRef = useRef(0);
+  const startedPlaybackCycleRef = useRef(new Map<HTMLVideoElement, number>());
   const reelsGestureRef = useRef<ReelsGesture | null>(null);
   const centerHoldPauseRef = useRef<CenterHoldPause | null>(null);
   const reelsGestureTokenRef = useRef(0);
@@ -479,6 +484,7 @@ export function VerticalVideoFeed({
 
   const clearVideoSource = useCallback((video: HTMLVideoElement) => {
     cancelStartPreparation(video);
+    readyMediaRef.current.delete(video);
     if (video.hasAttribute("src")) {
       video.pause();
       video.removeAttribute("src");
@@ -787,6 +793,7 @@ export function VerticalVideoFeed({
       if (video && video.getAttribute("src") !== item.mediaUrl) {
         committedDeparturesRef.current.delete(item.id);
         cancelStartPreparation(video);
+        readyMediaRef.current.delete(video);
         video.src = item.mediaUrl;
         video.load();
       }
@@ -796,6 +803,12 @@ export function VerticalVideoFeed({
   useEffect(() => {
     const activeVideo = effectiveActiveItemId ? videoRefs.current.get(effectiveActiveItemId) : undefined;
     const generation = ++playbackGenerationRef.current;
+    const activeSignature = effectiveActiveItemId === null ? null : `${effectiveActiveItemId}\u0000${effectiveActiveMediaUrl ?? ""}`;
+    if (activePlaybackSignatureRef.current !== activeSignature) {
+      activePlaybackSignatureRef.current = activeSignature;
+      activePlaybackCycleRef.current += 1;
+    }
+    const activePlaybackCycle = activePlaybackCycleRef.current;
     videoRefs.current.forEach((video, itemId) => {
       if (itemId !== effectiveActiveItemId) video.pause();
     });
@@ -829,14 +842,27 @@ export function VerticalVideoFeed({
     );
     let startupPlayAttempted = false;
     const startActivePlayback = () => {
-      if (!isCurrentActiveVideo() || startupPlayAttempted) return;
+      if (
+        !isCurrentActiveVideo()
+        || startupPlayAttempted
+        || startedPlaybackCycleRef.current.get(activeVideo) === activePlaybackCycle
+      ) return;
       startupPlayAttempted = true;
+      startedPlaybackCycleRef.current.set(activeVideo, activePlaybackCycle);
       void activeVideo.play().then(
         () => {
           if (!isCurrentActiveVideo() && !isSameActiveVideo()) activeVideo.pause();
         },
         (error: unknown) => {
-          if (isCurrentActiveVideo()) {
+          // loadedmetadata can refresh this effect's generation while the
+          // same physical active video remains in place. Do not discard an
+          // audible-autoplay rejection in that narrow window: iOS still
+          // needs the explicit Play control. A user-initiated resume owns its
+          // own generation and must not be overwritten by an older attempt.
+          if (
+            isCurrentActiveVideo()
+            || (isSameActiveVideo() && reelsResumeRequestRef.current === null)
+          ) {
             setPlaybackErrors((errors) => ({ ...errors, [effectiveActiveItemId]: "autoplay" }));
             // iOS can reject an audible startup before the first user gesture.
             // Do not silently fall back to muted playback: leave the requested
@@ -875,7 +901,7 @@ export function VerticalVideoFeed({
 
     const startAfterLoadedMetadata = playActiveVideo;
     let waitingForMetadata = false;
-    if (activeVideo.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    if (activeVideo.readyState >= HTMLMediaElement.HAVE_METADATA || readyMediaRef.current.has(activeVideo)) {
       playActiveVideo();
     } else {
       waitingForMetadata = true;
@@ -885,7 +911,7 @@ export function VerticalVideoFeed({
       if (generation === playbackGenerationRef.current) playbackGenerationRef.current += 1;
       if (waitingForMetadata) activeVideo.removeEventListener("loadedmetadata", startAfterLoadedMetadata);
     };
-  }, [controlsMode, effectiveActiveItemId, effectiveActiveMediaUrl, prepareVideoForStart]);
+  }, [controlsMode, effectiveActiveItemId, effectiveActiveMediaUrl, mediaReadinessVersion, prepareVideoForStart]);
 
   const setItemRef = useCallback((itemId: string, element: HTMLElement | null) => {
     const version = (itemRefVersions.current.get(itemId) ?? 0) + 1;
@@ -1019,7 +1045,13 @@ export function VerticalVideoFeed({
               }}
               onDurationChange={(event) => updateActiveProgress(item.id, event.currentTarget)}
               onLoadedMetadata={(event) => {
+                readyMediaRef.current.add(event.currentTarget);
+                setMediaReadinessVersion((version) => version + 1);
                 updateActiveProgress(item.id, event.currentTarget);
+              }}
+              onCanPlay={(event) => {
+                readyMediaRef.current.add(event.currentTarget);
+                setMediaReadinessVersion((version) => version + 1);
               }}
               onError={(event) => {
                 markMediaFailed(item.id, event.currentTarget);

@@ -384,9 +384,20 @@ def exchange_pairing(
 def current_session(
     response: Response,
     session: Annotated[ManagementDeviceSession, Depends(require_management_session)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
 ) -> dict[str, Any]:
+    # The management cookie is HttpOnly, so a freshly opened PWA needs a new
+    # CSRF capability before it can make protected mutations.  Only its hash
+    # is durable; the plaintext is sent once over the already authenticated,
+    # same-origin HTTPS request and is never logged or persisted by the API.
+    csrf = secrets.token_urlsafe(24)
+    with sessions.begin() as db:
+        current = db.get(ManagementDeviceSession, session.id, with_for_update=True)
+        if current is None or current.revoked_at is not None or _is_expired(current.expires_at):
+            raise ManagementError(401, "session_expired", "Сессия управления недоступна.")
+        current.csrf_token_hash = hash_secret(csrf)
     response.headers["Cache-Control"] = "no-store"
-    return {"session": _safe_session(session)}
+    return {"session": _safe_session(session), "csrf_token": csrf}
 
 
 @router.delete("/management/session")
@@ -530,7 +541,11 @@ def create_login_session(
     result = dict(result)
     token = result.pop("_launch_token", None)
     if token is not None and not replay:
-        gateway = str(request.app.state.settings.login_gateway_origin).rstrip("/")
+        # The browser accepts a launch only on the paired management origin.
+        # Deployment routes this fixed path to the isolated Stage 4 gateway;
+        # a separate gateway origin or caller-controlled return URL is never
+        # a capability-bearing navigation target.
+        gateway = _origin(request.app.state.settings)
         result["launch_url"] = f"{gateway}/connect/{result['login_session']['id']}#{token}"
     response.status_code = status_code
     return result

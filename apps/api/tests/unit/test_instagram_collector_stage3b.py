@@ -92,6 +92,36 @@ def test_three_session_first_attempts_commit_before_two_scrolls(setup) -> None:
     assert all(jar.cleared for jar in provider.jars)
 
 
+def test_claimed_management_run_is_completed_in_place(setup) -> None:
+    sessions, account_id, _root = setup
+    persistence = CollectorPersistence(sessions)
+    with sessions.begin() as session:
+        session.add(
+            InstagramCollectionRun(
+                account_id=account_id,
+                trigger=CollectionTrigger.MANUAL.value,
+                status="queued",
+                target_count=3,
+            )
+        )
+    claimed = persistence.claim_queued_run(account_id)
+    assert claimed is not None
+
+    summary = _collector(setup, _WritingDownloader()).collect(
+        account_id,
+        CollectionTrigger.MANUAL,
+        3,
+        claimed_run_id=claimed.id,
+    )
+
+    assert summary.run_id == claimed.id
+    assert summary.status == "completed"
+    with sessions() as session:
+        runs = session.scalars(select(InstagramCollectionRun)).all()
+    assert len(runs) == 1
+    assert runs[0].status == "completed"
+
+
 def test_safe_direct_download_failure_stops_before_validation_storage_commit_and_scroll(
     setup,
 ) -> None:

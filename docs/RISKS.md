@@ -38,10 +38,11 @@ This document tracks known technical risks and mitigation plans.
 The Stage 4 browser UX and account connection were accepted on Windows Docker
 Desktop with iPhone Safari. That functional evidence does not prove a hardened
 Linux deployment. The current Windows-compatible Compose configuration gives
-only `login-browser` `seccomp=unconfined`; it remains UID 10002 and drops all
-capabilities, while gateway, PostgreSQL and Tailscale do not receive that
-exception. Raw VNC/CDP/X11 are still internal and `--no-sandbox`, root browser,
-`SYS_ADMIN`, automatic login and automatic CAPTCHA solving remain forbidden.
+`seccomp=unconfined` only to `login-browser`, which remains UID 10002; gateway,
+Collector, PostgreSQL and Tailscale do not receive that exception. Raw
+VNC/CDP/X11 are still internal and `--no-sandbox`, root browser, privileged
+containers, `SYS_ADMIN`, automatic login and automatic CAPTCHA solving remain
+forbidden.
 
 The Ubuntu 22.04 VirtualBox experiment passed host preflight and static
 container assertions, but did not complete the synthetic Chromium runtime
@@ -52,8 +53,9 @@ was not and must not be copied to Linux.
 ## Mitigation
 
 - Keep `seccomp=unconfined` scoped to the current Windows `login-browser`
-  container only; never add `--no-sandbox`, a root browser, `SYS_ADMIN`, host
-  VNC/CDP/X11 ports or automated credential/CAPTCHA handling.
+  only; never add `--no-sandbox`, a root browser, privileged container,
+  `SYS_ADMIN`, host VNC/CDP/X11 ports or automated
+  credential/CAPTCHA handling.
 - On a real Linux server, identify the actual sandbox constraint and complete
   restricted-seccomp Chromium/noVNC/profile checks before enabling public
   login. Do not infer success from the VirtualBox experiment.
@@ -65,8 +67,12 @@ was not and must not be copied to Linux.
 
 ## Status
 
-Open. Stage 4 is functionally accepted on Windows Docker Desktop but is not
-production-hardened. Deployment hardening remains a prerequisite for a real
+Open. Stage 4 real remote login is functionally accepted on Windows Docker
+Desktop but is not production-hardened. The full retained-profile → Collector
+→ normalizer → PWA chain is not accepted there: isolated non-root Chromium,
+including direct private CDP, closed before browser readiness under Docker
+Desktop. Repeat it on Linux staging or a real server; no sandbox-bypass
+workaround was applied. Deployment hardening remains a prerequisite for a real
 server.
 
 ---
@@ -529,5 +535,36 @@ without retaining IP or user-agent data.
 ## Status
 
 Open; acceptable for the single-owner MVP.
+
+---
+# Risk 19: Stage 7 end-to-end environment acceptance
+
+## Problem
+
+The automated fixture proves the browser-connected chain across the separate
+fixture gateway, Collector, normalizer and paginated catalog. It cannot prove
+iPhone Safari/PWA Cache Storage, iOS gesture constraints, or deployment TLS
+behavior. A same-origin `/connect` proxy deployment is still required for the
+launch-URL restriction to be exercised on the real device.
+
+## Mitigation
+
+Stage 7 keeps management responses network-only/no-store, constrains launch
+navigation to HTTPS same-origin `/connect/{id}`, and uses cancellable bounded
+polling with stale-response guards. The mobile-viewport fixture covers the
+synthetic flow, cancellation, reauthentication/revoke, offline behavior,
+pagination/deduplication, technical-data redaction and no-cache headers. The
+manual worksheet remains required before any real iPhone test.
+
+## Status
+
+Partially mitigated: automated disposable fixture acceptance passed and its
+resources were removed; synthetic iPhone Stage 7 PWA acceptance also passed.
+Stage 4 real remote login passed separately. The complete retained Stage 4
+profile → Collector → normalizer → PWA flow is not accepted on Windows Docker
+Desktop because the isolated non-root Chromium/CDP preflight closed before
+browser readiness. It requires repeat acceptance on Linux staging or a real
+server. No `--no-sandbox`, root browser, privileged container or `SYS_ADMIN`
+workaround was applied. Stage 4 Risk 17 remains independently open.
 
 ---

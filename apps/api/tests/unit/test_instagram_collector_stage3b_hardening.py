@@ -59,6 +59,60 @@ def test_completed_run_with_failed_verification_returns_nonzero(
     assert payload["stop_reason_code"] == "POST_RUN_VERIFICATION_FAILED"
 
 
+def test_verified_completed_run_survives_optional_result_write_failure(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    transcript = SafeEventTranscript()
+    transcript.verification = {"verified": True}
+    summary = CollectorSummary(uuid4(), "completed", 3, 3, 0, 0, 2, None)
+    runtime = SimpleNamespace(workspace_root=tmp_path)
+    monkeypatch.setattr(
+        run_instagram_collector_live.CollectorRuntimeSettings,
+        "from_environment",
+        lambda: runtime,
+    )
+    monkeypatch.setattr(run_instagram_collector_live, "Settings", lambda: object())
+    monkeypatch.setattr(
+        run_instagram_collector_live,
+        "run_stage_3b",
+        lambda **kwargs: (summary, transcript, None),
+    )
+    monkeypatch.setattr(
+        run_instagram_collector_live,
+        "write_safe_result",
+        lambda *_args: (_ for _ in ()).throw(OSError("volume unavailable")),
+    )
+    assert run_instagram_collector_live.main([]) == 0
+    assert "volume unavailable" not in capsys.readouterr().out
+
+
+def test_explicit_confirmed_cli_forwards_fixed_account_without_console_input(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    account_id = uuid4()
+    seen: dict[str, object] = {}
+    runtime = SimpleNamespace(workspace_root=tmp_path)
+    monkeypatch.setattr(
+        run_instagram_collector_live.CollectorRuntimeSettings,
+        "from_environment",
+        lambda: runtime,
+    )
+    monkeypatch.setattr(run_instagram_collector_live, "Settings", lambda: object())
+
+    def fake_run(**kwargs):
+        seen.update(kwargs)
+        return None, SafeEventTranscript(), "USER_CANCELLED"
+
+    monkeypatch.setattr(run_instagram_collector_live, "run_stage_3b", fake_run)
+    assert (
+        run_instagram_collector_live.main(["--confirmed", "--account-id", str(account_id)])
+        == 1
+    )
+    assert seen["account_id"] == account_id
+    assert seen["wait_ready"](0) is True
+    assert "Open the test Instagram" not in capsys.readouterr().out
+
+
 def test_safe_summary_serializes_only_aggregate_transition_diagnostics() -> None:
     transcript = SafeEventTranscript()
     transcript.transition_diagnostics = [
@@ -80,6 +134,13 @@ def test_safe_summary_serializes_only_aggregate_transition_diagnostics() -> None
     assert payload["transition_diagnostics"] == transcript.transition_diagnostics
     rendered = json.dumps(payload)
     assert "https://" not in rendered and "cookie" not in rendered.lower()
+
+
+def test_safe_summary_omits_account_identifier() -> None:
+    transcript = SafeEventTranscript()
+    transcript.account_id = uuid4()
+    payload = json.loads(safe_summary_json(None, transcript, "COLLECTOR_FAILED"))
+    assert "account_id" not in payload
 
 
 def test_recovery_command_has_typed_nonzero_outcomes(monkeypatch, capsys) -> None:
@@ -223,3 +284,68 @@ def test_readiness_failure_before_confirmation_has_safe_diagnostics_and_no_run(
     payload = safe_summary_json(summary, transcript, reason)
     assert "ACTIVE_REEL_NOT_FOUND" in payload
     assert "https://" not in payload and "cookie" not in payload.lower()
+
+
+def test_claimed_management_run_is_failed_when_feed_setup_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    account_id = uuid4()
+    claim = SimpleNamespace(id=uuid4(), target_count=3)
+    failed: list[tuple[object, str]] = []
+
+    class Runtime:
+        headless = False
+        maximum_target_count = 3
+        workspace_root = tmp_path
+        operator_deadline_seconds = 1.0
+
+        def require_live(self, *, repository_root: Path):
+            del repository_root
+            return self
+
+    class Persistence:
+        def __init__(self, sessions) -> None:
+            del sessions
+
+        def ensure_account(self, identifier) -> None:
+            assert identifier == account_id
+
+        def claim_queued_run(self, identifier):
+            assert identifier == account_id
+            return claim
+
+        def account_status(self, identifier):
+            assert identifier == account_id
+            return AccountStatus.CONNECTED
+
+        def set_account_status(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        def fail_run(self, run_id, reason_code: str) -> None:
+            failed.append((run_id, reason_code))
+
+    monkeypatch.setattr(
+        "app.instagram.collector.runtime.operator.create_session_factory", lambda _: object()
+    )
+    monkeypatch.setattr(
+        "app.instagram.collector.runtime.operator.CollectorPersistence", Persistence
+    )
+    monkeypatch.setattr(
+        "app.instagram.collector.runtime.operator.PlaywrightReelsFeed.open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND)
+        ),
+    )
+
+    summary, _transcript, reason = run_stage_3b(
+        runtime=Runtime(),
+        app_settings=object(),
+        repository_root=tmp_path,
+        confirm=lambda: True,
+        wait_ready=lambda _: True,
+        account_id=account_id,
+    )
+
+    assert summary is None
+    assert reason == RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND.value
+    assert failed == [(claim.id, RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND.value)]

@@ -2,14 +2,23 @@
 
 ## Current stage
 
-Stage 6 protected Collector management API is implemented. It uses one-time
-device pairing and a secure management cookie, creates only PostgreSQL commands
-and states, and leaves login browser, Collector and normalizer as separate
-services. The Stage 4 launch capability is issued once from a fixed HTTPS
-gateway origin and is never persisted in API result state. Auto-collection
-settings are durable but `scheduler_active=false`: no scheduler or dashboard UI
-exists yet. Stage 6 uses disposable infrastructure for mutation testing; the
-preserved ten-Reel Collector smoke remains read-only.
+Stage 7 connects the canonical PWA dashboard to the protected Stage 6
+management API while preserving the existing offline library, sequential queue
+and `/offline` player. Device pairing remains operator-assisted: the dashboard
+accepts a one-time code but never stores or displays it. The management cookie
+is HttpOnly; an in-memory CSRF capability is refreshed from the protected
+same-origin session endpoint after a PWA restart and is cleared on revoke/401.
+Instagram login accepts only the fixed HTTPS same-origin Stage 4 `/connect/…`
+route, collection/normalization/local-download progress uses confirmed counters
+only, and IDs, media details and raw backend errors stay hidden. Management and
+login capability responses are never cached; `/` and `/offline` retain their
+offline shell behavior. Auto-collection is deliberately unavailable because
+`scheduler_active=false`. The combined disposable Stage 7 mobile-viewport E2E
+fixture has passed against synthetic PostgreSQL/MinIO, fixture gateway,
+Collector and normalizer services; its exact Compose resources were removed
+after acceptance. A real iPhone Stage 7 acceptance remains pending and needs
+separate explicit approval; Stage 4 Risk 17 remains open. No live Instagram,
+Funnel or PWA was launched during implementation.
 
 Stage 4 secure mobile login is implemented in the working tree: one-time
 hashed links, an isolated same-origin gateway, a non-root Chromium image and a
@@ -36,6 +45,15 @@ post-commit; no staging, pending, running or failed jobs remain. Stage 3C.2
 remains separate.
 
 Post-iPhone hardening block 4A is implemented: `/` is the canonical offline-library dashboard, `/offline` is the clean Reels surface, and `/videos` is a legacy redirect. Instagram Collector Stage 3B is a manually invoked, bounded three-Reel operator composition over Stage 3A adapters. A test-account live run successfully confirmed three session-first downloads, validations, MinIO publications, PostgreSQL commits, two targeted transitions, durable `source_ready` Reels and read-only verification without changing `videos`. Stage 3C.1 then continued that same account-owned reserve from three to ten: seven new sources committed, six transitions confirmed, `videos` remained empty and the final read-only verifier passed. Stage 3C.2 now adds a separate non-root Linux Collector image and a disposable internal-network fixture cycle over real PostgreSQL/MinIO; automated and PowerShell manual synthetic acceptance both passed, and the API image remains browser-free. Live Instagram in the container has not been tested.
+
+The disposable synthetic mobile fixture and the synthetic iPhone Stage 7 PWA
+acceptance passed. Stage 4 real remote login also passed independently. The
+combined retained Stage 4 profile → Collector → normalizer → PWA chain is not
+accepted on Windows Docker Desktop: isolated non-root Chromium preflight,
+including direct private CDP, closed before browser readiness because of a
+Docker Desktop sandbox incompatibility. It must be re-accepted on Linux staging
+or a real server. No `--no-sandbox`, root browser, privileged container or
+`SYS_ADMIN` workaround was applied. Risk 17 remains open.
 
 ## Completed
 
@@ -144,12 +162,11 @@ monitoring, or a concrete VPS configuration.
 
 ## Next step
 
-Next, introduce a protected management API and dashboard connection flow. It
-will create the one-time session from **Подключить Instagram**, show only a
-short preparation screen followed by the real Instagram login/challenge when
-needed, and return through a fixed same-origin home route. No arbitrary
-`return_url`, credential form, Collector run or dashboard-to-Instagram direct
-link is planned. Then continue the post-iPhone hardening and Collector roadmap.
+Next, repeat the unaccepted real Stage 4 profile → Collector → normalizer → PWA
+chain on Linux staging or a real server. The synthetic fixture/iPhone Stage 7
+acceptance and the separate Stage 4 remote-login acceptance are complete. No
+arbitrary `return_url`, credential form or dashboard-to-Instagram direct link
+is planned.
 
 ## Recent decisions
 

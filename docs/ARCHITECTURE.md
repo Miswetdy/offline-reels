@@ -220,6 +220,16 @@ MinIO root credentials are confined to smoke bootstrap; the host process uses
 only a bucket-scoped application user. Existing objects require exact
 size/content-type/SHA-256 equality before idempotent reuse.
 
+Stage 7 can queue one bounded management run, which the explicit Collector
+operator claims and completes or fails as the exact run being polled by the
+dashboard. Terminal-state protection prevents a setup failure from leaving a
+management command active; any optional local operator result is already
+redacted before writing. The real retained-profile Collector runtime remains
+outside accepted Windows Docker Desktop scope: an isolated Chromium preflight
+closed before browser readiness, so the end-to-end profile → Collector chain
+must be re-accepted on Linux staging or a real server. No browser-sandbox
+bypass was introduced for that experiment.
+
 Restrictions:
 
 - Instagram automation must be isolated from the rest of the system.
@@ -441,3 +451,21 @@ require exact configured Origin/Host, CSRF and idempotency protection. The
 router only emits or reads durable commands. The Stage 4 gateway/browser claims
 login state, a Collector process claims queued runs, and the normalizer claims
 pending jobs. No worker/browser runtime is imported by FastAPI.
+
+# Stage 7 PWA dashboard integration
+
+The browser dashboard is a same-origin client of the Stage 6 control plane;
+the separately configurable catalog/video API remains the existing media
+boundary. The management cookie is HttpOnly and CSRF is an ephemeral in-memory
+capability refreshed by the protected session endpoint after reload. Pairing,
+login launch, session and control-plane responses are no-store and excluded
+from Serwist runtime/precache policy.
+
+The dashboard owns a cancellable UI pipeline only: `collection command → safe
+run polling → normalization readiness → complete cursor catalog → existing
+offline queue → /offline`. It cannot invoke Collector, normalizer or remote
+browser code. A cancellation never removes durable server Reels and local
+clear continues to use the existing cache/IndexedDB `cancelAndClear` path.
+The Stage 4 launch is constrained to a fixed same-origin HTTPS `/connect/{id}`
+route; no return URL is accepted. Offline shell and local playback do not rely
+on a management session.

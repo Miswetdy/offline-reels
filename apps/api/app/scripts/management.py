@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create-pairing")
     create.add_argument("--account-id", required=True, type=UUID)
-    create.add_argument("--ttl-minutes", required=False, default=10, choices=range(1, 31))
+    create.add_argument("--ttl-minutes", required=False, type=int, default=10, choices=range(1, 31))
     revoke = commands.add_parser("revoke-all")
     revoke.add_argument("--account-id", required=True, type=UUID)
     arguments = parser.parse_args(argv)

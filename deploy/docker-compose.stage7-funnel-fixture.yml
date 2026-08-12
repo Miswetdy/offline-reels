@@ -1,0 +1,9 @@
+# Compose override for real-iPhone Stage 7 fixture acceptance. Run with
+# docker-compose.stage7-fixture.yml and a unique project name. Tailscale
+# Funnel is outside Compose and is pointed only at this loopback Caddy port.
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:${STAGE7_PORT}:80"
+    volumes: !override
+      - ./Caddyfile.stage7-funnel-fixture:/etc/caddy/Caddyfile:ro
