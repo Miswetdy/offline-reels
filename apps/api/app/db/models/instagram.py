@@ -381,6 +381,41 @@ class InstagramCollectionSettings(Base):
     )
 
 
+class ManagementReserveDevice(Base):
+    """Last safe local-reserve snapshot for one account-owned browser device.
+
+    This is intentionally not a mirror of IndexedDB or Cache Storage.  The
+    browser remains authoritative for completed media; the control plane keeps
+    only the values needed for an account-level, privacy-safe operator status.
+    """
+
+    __tablename__ = "management_reserve_devices"
+    __table_args__ = (
+        Index("uq_management_reserve_devices_account_device", "account_id", "device_uuid", unique=True),
+        CheckConstraint("local_completed_count >= 0", name="ck_reserve_device_completed_nonnegative"),
+        CheckConstraint("desired_count >= 1 AND desired_count <= 100", name="ck_reserve_device_desired_range"),
+        CheckConstraint("low_watermark >= 0 AND low_watermark < desired_count", name="ck_reserve_device_watermark_range"),
+        CheckConstraint("quota_threshold >= 50 AND quota_threshold <= 95", name="ck_reserve_device_quota_range"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    # This UUID is generated once by the PWA and is neither a credential nor a
+    # management-session identifier.
+    device_uuid: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    auto_refill_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    local_completed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    desired_count: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    low_watermark: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    quota_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ManagementRateLimit(Base):
     __tablename__ = "management_rate_limits"
 

@@ -15,6 +15,7 @@ export const serviceWorkerCachingPolicy = {
  */
 export function isNeverCacheManagementPath(pathname: string): boolean {
   return pathname === "/api/management/session"
+    || pathname.startsWith("/api/reserve/")
     || pathname.startsWith("/api/management/")
     || pathname === "/api/instagram/status"
     || pathname.startsWith("/api/instagram/login-sessions")

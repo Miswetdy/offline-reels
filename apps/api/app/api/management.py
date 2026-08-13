@@ -33,6 +33,7 @@ from app.db.models.instagram import (
     ManagementIdempotencyRecord,
     ManagementPairingChallenge,
     ManagementRateLimit,
+    ManagementReserveDevice,
 )
 from app.instagram.contracts import (
     AccountStatus,
@@ -67,6 +68,23 @@ class TargetRequest(BaseModel):
 class SettingsRequest(BaseModel):
     enabled: bool
     target_reserve: int = Field(ge=1, le=10)
+
+
+class ReserveSettingsRequest(BaseModel):
+    device_uuid: UUID
+    auto_refill_enabled: bool
+    desired_count: int = Field(ge=1, le=100)
+    low_watermark: int = Field(ge=0, le=99)
+    quota_threshold: int = Field(ge=50, le=95)
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.low_watermark >= self.desired_count:
+            raise ValueError("low_watermark must be below desired_count")
+
+
+class ReserveReportRequest(ReserveSettingsRequest):
+    local_completed_count: int = Field(ge=0, le=1000)
+    reported_at: datetime
 
 
 def hash_secret(value: str) -> str:
@@ -765,6 +783,156 @@ def update_collection_settings(
     )
     response.status_code = status_code
     return result
+
+
+def _serialize_reserve_device(item: ManagementReserveDevice) -> dict[str, Any]:
+    return {
+        "auto_refill_enabled": item.auto_refill_enabled,
+        "local_completed_count": item.local_completed_count,
+        "desired_count": item.desired_count,
+        "low_watermark": item.low_watermark,
+        "quota_threshold": item.quota_threshold,
+        "reported_at": item.reported_at.isoformat(),
+    }
+
+
+def _upsert_reserve_device_locked(
+    db: Session, account_id: UUID, payload: ReserveReportRequest
+) -> ManagementReserveDevice:
+    # Locking the account serializes first-report creation for the account and
+    # avoids a unique-insert race across concurrent PWA tabs/device sessions.
+    account = db.get(InstagramAccount, account_id, with_for_update=True)
+    if account is None:
+        raise ManagementError(401, "unauthorized", "Сессия управления недоступна.")
+    item = db.scalar(
+        select(ManagementReserveDevice)
+        .where(
+            ManagementReserveDevice.account_id == account_id,
+            ManagementReserveDevice.device_uuid == payload.device_uuid,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        item = ManagementReserveDevice(
+            account_id=account_id,
+            device_uuid=payload.device_uuid,
+            auto_refill_enabled=payload.auto_refill_enabled,
+            local_completed_count=payload.local_completed_count,
+            desired_count=payload.desired_count,
+            low_watermark=payload.low_watermark,
+            quota_threshold=payload.quota_threshold,
+            reported_at=payload.reported_at,
+        )
+        db.add(item)
+        db.flush()
+        return item
+    # A late tab must not overwrite a newer successful reconciliation report.
+    current_reported_at = item.reported_at
+    if current_reported_at.tzinfo is None:
+        current_reported_at = current_reported_at.replace(tzinfo=UTC)
+    incoming_reported_at = payload.reported_at
+    if incoming_reported_at.tzinfo is None:
+        incoming_reported_at = incoming_reported_at.replace(tzinfo=UTC)
+    if incoming_reported_at >= current_reported_at:
+        item.auto_refill_enabled = payload.auto_refill_enabled
+        item.local_completed_count = payload.local_completed_count
+        item.desired_count = payload.desired_count
+        item.low_watermark = payload.low_watermark
+        item.quota_threshold = payload.quota_threshold
+        item.reported_at = incoming_reported_at
+    return item
+
+
+@router.get("/reserve/settings")
+def reserve_settings(
+    device_uuid: UUID,
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_management_session)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+) -> dict[str, Any]:
+    with sessions() as db:
+        item = db.scalar(
+            select(ManagementReserveDevice).where(
+                ManagementReserveDevice.account_id == session.account_id,
+                ManagementReserveDevice.device_uuid == device_uuid,
+            )
+        )
+        result = _serialize_reserve_device(item) if item else None
+    response.headers["Cache-Control"] = "no-store"
+    return {"reserve": result}
+
+
+@router.put("/reserve/settings")
+def update_reserve_settings(
+    payload: ReserveSettingsRequest,
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_mutation)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    report = ReserveReportRequest(
+        **payload.model_dump(), local_completed_count=0, reported_at=_now()
+    )
+
+    def action(db: Session) -> tuple[int, dict[str, Any]]:
+        item = _upsert_reserve_device_locked(db, session.account_id, report)
+        return 200, {"reserve": _serialize_reserve_device(item)}
+
+    status_code, result, _ = _idempotent(
+        sessions, session, "update_reserve_settings", idempotency_key, payload, action
+    )
+    response.status_code = status_code
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post("/reserve/reports")
+def report_reserve(
+    payload: ReserveReportRequest,
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_mutation)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    def action(db: Session) -> tuple[int, dict[str, Any]]:
+        item = _upsert_reserve_device_locked(db, session.account_id, payload)
+        return 200, {"reserve": _serialize_reserve_device(item)}
+
+    status_code, result, _ = _idempotent(
+        sessions, session, "report_reserve", idempotency_key, payload, action
+    )
+    response.status_code = status_code
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.get("/reserve/status")
+def reserve_status(
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_management_session)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+) -> dict[str, Any]:
+    with sessions() as db:
+        totals = db.execute(
+            select(
+                func.count(ManagementReserveDevice.id),
+                func.coalesce(func.sum(ManagementReserveDevice.local_completed_count), 0),
+                func.coalesce(func.max(ManagementReserveDevice.desired_count), 0),
+            ).where(ManagementReserveDevice.account_id == session.account_id)
+        ).one()
+        active_collection = db.scalar(
+            select(InstagramCollectionRun.id).where(
+                InstagramCollectionRun.account_id == session.account_id,
+                InstagramCollectionRun.status.in_(("queued", "running")),
+            )
+        ) is not None
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "reported_devices": int(totals[0] or 0),
+        "local_completed_count": int(totals[1] or 0),
+        "desired_count": int(totals[2] or 0),
+        "collection_active": active_collection,
+    }
 
 
 def install_management_error_handler(app) -> None:

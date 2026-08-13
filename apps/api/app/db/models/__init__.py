@@ -10,6 +10,7 @@ from app.db.models.instagram import (
     ManagementIdempotencyRecord,
     ManagementPairingChallenge,
     ManagementRateLimit,
+    ManagementReserveDevice,
 )
 from app.db.models.video import Video
 
@@ -25,5 +26,6 @@ __all__ = [
     "ManagementIdempotencyRecord",
     "ManagementPairingChallenge",
     "ManagementRateLimit",
+    "ManagementReserveDevice",
     "Video",
 ]

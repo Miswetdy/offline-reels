@@ -40,6 +40,7 @@ from app.db.models.instagram import (
     ManagementIdempotencyRecord,
     ManagementPairingChallenge,
     ManagementRateLimit,
+    ManagementReserveDevice,
 )
 from app.db.session import create_session_factory
 from app.instagram.contracts import AccountStatus
@@ -63,6 +64,7 @@ def clean_management_rows(sessions: sessionmaker[Session]) -> None:
         db.execute(delete(ManagementDeviceSession))
         db.execute(delete(ManagementPairingChallenge))
         db.execute(delete(ManagementRateLimit))
+        db.execute(delete(ManagementReserveDevice))
         db.execute(delete(InstagramCollectionSettings))
         db.execute(delete(InstagramLoginSession))
         db.execute(delete(InstagramCollectionRun))
@@ -105,6 +107,26 @@ def _pair(sessions: sessionmaker[Session], *, connected: bool = False) -> tuple[
     )
     assert response.status_code == 200
     return account_id, secret, client.cookies.get(SESSION_COOKIE), response.json()["csrf_token"]
+
+
+def _pair_existing_account(sessions: sessionmaker[Session], account_id: str) -> tuple[str, str]:
+    secret = "pairing-postgres-existing-account-" + uuid4().hex
+    with sessions.begin() as db:
+        db.add(
+            ManagementPairingChallenge(
+                account_id=UUID(account_id),
+                secret_hash=hash_secret(secret),
+                expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            )
+        )
+    client = _new_client()
+    response = client.post(
+        "/api/management/pairing/exchange",
+        headers={"Origin": ORIGIN},
+        json={"pairing_secret": secret},
+    )
+    assert response.status_code == 200
+    return client.cookies.get(SESSION_COOKIE), response.json()["csrf_token"]
 
 
 def _mutation(cookie: str, csrf: str, key: str, target: int = 2) -> tuple[int, dict]:
@@ -277,3 +299,87 @@ def test_concurrent_settings_updates_are_bounded_and_idempotent(sessions: sessio
         rows = list(pool.map(lambda _: update("settings-same-key", 7), range(2)))
     assert [row[0] for row in rows] == [200, 200]
     assert update("settings-same-key", 8)[0] == 409
+
+
+def test_concurrent_reserve_settings_and_reports_keep_one_fresh_device_row(
+    sessions: sessionmaker[Session],
+) -> None:
+    account_id, _, first_cookie, first_csrf = _pair(sessions)
+    second_cookie, second_csrf = _pair_existing_account(sessions, account_id)
+    device_uuid = str(uuid4())
+    now = datetime.now(UTC)
+    newest_at = now + timedelta(minutes=2)
+    oldest_at = now + timedelta(minutes=1)
+
+    def mutation(
+        method: str, path: str, cookie: str, csrf: str, key: str, payload: dict
+    ) -> tuple[int, dict]:
+        client = _new_client()
+        response = client.request(
+            method,
+            path,
+            json=payload,
+            headers={
+                "Cookie": f"{SESSION_COOKIE}={cookie}",
+                "Origin": ORIGIN,
+                "X-CSRF-Token": csrf,
+                "Idempotency-Key": key,
+            },
+        )
+        return response.status_code, response.json()
+
+    settings_payload = {
+        "device_uuid": device_uuid,
+        "auto_refill_enabled": True,
+        "desired_count": 20,
+        "low_watermark": 8,
+        "quota_threshold": 80,
+    }
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        settings_results = list(
+            pool.map(
+                lambda item: mutation(
+                    "PUT", "/api/reserve/settings", item[0], item[1], item[2], settings_payload
+                ),
+                (
+                    (first_cookie, first_csrf, "reserve-settings-first"),
+                    (second_cookie, second_csrf, "reserve-settings-second"),
+                ),
+            )
+        )
+    assert [status for status, _ in settings_results] == [200, 200]
+
+    def report(cookie: str, csrf: str, key: str, completed: int, reported_at: datetime) -> tuple[int, dict]:
+        return mutation(
+            "POST",
+            "/api/reserve/reports",
+            cookie,
+            csrf,
+            key,
+            {**settings_payload, "local_completed_count": completed, "reported_at": reported_at.isoformat()},
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reports = list(
+            pool.map(
+                lambda item: report(*item),
+                (
+                    (first_cookie, first_csrf, "reserve-report-oldest", 3, oldest_at),
+                    (second_cookie, second_csrf, "reserve-report-newest", 7, newest_at),
+                ),
+            )
+        )
+    assert [status for status, _ in reports] == [200, 200]
+    replay = report(second_cookie, second_csrf, "reserve-report-newest", 7, newest_at)
+    assert replay == reports[1]
+
+    stale = report(first_cookie, first_csrf, "reserve-report-stale", 1, now)
+    assert stale[0] == 200
+    with sessions() as db:
+        rows = db.scalars(select(ManagementReserveDevice)).all()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.account_id == UUID(account_id)
+        assert str(row.device_uuid) == device_uuid
+        assert row.local_completed_count == 7
+        assert row.reported_at == newest_at

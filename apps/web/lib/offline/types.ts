@@ -43,6 +43,23 @@ export type OfflineVideoPatch = Partial<Omit<OfflineVideoRecord, "id" | "updated
 
 export type CachedVideoMetadata = Pick<OfflineVideoRecord, "cacheKey" | "contentType" | "byteSize">;
 
+export const LOCAL_RESERVE_ID = "primary";
+
+export type ReserveCycleIntent = "none" | "manual" | "auto";
+
+/** Durable, non-secret settings for this browser installation only. */
+export type LocalReserveRecord = {
+  id: typeof LOCAL_RESERVE_ID;
+  deviceId: string;
+  autoRefillEnabled: boolean;
+  desiredCount: number;
+  lowWatermark: number;
+  maxStoragePercent: number;
+  lastSuccessfulReconciliationAt: string | null;
+  pendingCycle: ReserveCycleIntent;
+  updatedAt: string;
+};
+
 export type CachedVideoValidation =
   | { valid: true; byteSize: number }
   | {

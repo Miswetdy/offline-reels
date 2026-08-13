@@ -124,6 +124,29 @@ def test_current_session_issues_a_fresh_no_store_csrf_capability() -> None:
     assert fresh.status_code == 409
 
 
+def test_reserve_report_is_csrf_protected_idempotent_and_safe() -> None:
+    client, sessions, secret = _client()
+    csrf = _exchange(client, secret)
+    payload = {
+        "device_uuid": "11111111-1111-4111-8111-111111111111",
+        "auto_refill_enabled": True, "local_completed_count": 3,
+        "desired_count": 20, "low_watermark": 8, "quota_threshold": 80,
+        "reported_at": "2026-08-12T00:00:00Z",
+    }
+    headers = _mutation_headers(csrf, "reserve-report-key-01")
+    first = client.post("/api/reserve/reports", json=payload, headers=headers)
+    second = client.post("/api/reserve/reports", json=payload, headers=headers)
+    assert first.status_code == second.status_code == 200
+    assert first.headers["cache-control"] == "no-store"
+    assert first.json() == second.json()
+    assert "device_uuid" not in first.text
+    aggregate = client.get("/api/reserve/status")
+    assert aggregate.status_code == 200
+    assert aggregate.json()["local_completed_count"] == 3
+    with sessions() as db:
+        assert db.scalar(select(ManagementIdempotencyRecord)) is not None
+
+
 def test_origin_csrf_and_idempotent_collection_commands() -> None:
     client, sessions, secret = _client()
     csrf = _exchange(client, secret)

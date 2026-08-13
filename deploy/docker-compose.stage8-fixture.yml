@@ -1,0 +1,77 @@
+# Run only through scripts/run-stage8-fixture.ps1.  This fixture has no
+# relationship to compose.yaml, retained Collector smoke, Instagram sessions,
+# browser profiles, or production volumes.
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    environment: { POSTGRES_DB: stage8, POSTGRES_USER: stage8, POSTGRES_PASSWORD: "${STAGE8_POSTGRES_PASSWORD:?required}" }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"], interval: 2s, timeout: 2s, retries: 30 }
+    volumes: [stage8_postgres:/var/lib/postgresql/data]
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: ["server", "/data"]
+    environment: { MINIO_ROOT_USER: stage8root, MINIO_ROOT_PASSWORD: "${STAGE8_MINIO_PASSWORD:?required}" }
+    healthcheck: { test: ["CMD-SHELL", "mc ready local"], interval: 2s, timeout: 2s, retries: 30 }
+    volumes: [stage8_minio:/data]
+  redis:
+    image: redis:7.4.7-alpine3.21
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 2s, timeout: 2s, retries: 30 }
+  migrate:
+    build: { context: ../apps/api, target: production }
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    environment: &api_env
+      DATABASE_URL: postgresql+psycopg://stage8:${STAGE8_POSTGRES_PASSWORD}@postgres:5432/stage8
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: stage8
+      MINIO_ACCESS_KEY: stage8root
+      MINIO_SECRET_KEY: ${STAGE8_MINIO_PASSWORD}
+      VIDEO_CURSOR_SECRET: ${STAGE8_VIDEO_CURSOR_SECRET:?required}
+      FRONTEND_ORIGIN: "${STAGE8_PUBLIC_ORIGIN:?required}"
+      MANAGEMENT_ORIGIN: "${STAGE8_PUBLIC_ORIGIN:?required}"
+      LOGIN_GATEWAY_ORIGIN: "${STAGE8_PUBLIC_ORIGIN:?required}"
+      STAGE8_FIXTURE_PAIRING_SECRET: ${STAGE8_FIXTURE_PAIRING_SECRET:?required}
+    depends_on: { postgres: { condition: service_healthy } }
+  bootstrap:
+    build: { context: ../apps/api, target: production }
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.scripts.stage8_fixture_runtime"]
+    environment: { <<: *api_env, STAGE8_FIXTURE_MODE: bootstrap }
+    depends_on: { migrate: { condition: service_completed_successfully } }
+  api:
+    build: { context: ../apps/api, target: production }
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *api_env
+    depends_on: { bootstrap: { condition: service_completed_successfully }, minio: { condition: service_healthy }, redis: { condition: service_healthy } }
+  login-gateway:
+    build: { context: ../apps/api, target: production }
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.scripts.stage8_fixture_runtime:gateway", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+    environment: *api_env
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+  collector-fixture:
+    build: { context: ../apps/api, target: production }
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.scripts.stage8_fixture_runtime"]
+    environment: { <<: *api_env, STAGE8_FIXTURE_MODE: collector, STAGE8_FIXTURE_COLLECTOR_DELAY: "0.4" }
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+  normalizer-fixture:
+    build: { context: ../apps/api, target: production }
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.scripts.stage8_fixture_runtime"]
+    environment: { <<: *api_env, STAGE8_FIXTURE_MODE: normalizer }
+    depends_on: { bootstrap: { condition: service_completed_successfully }, minio: { condition: service_healthy } }
+  web:
+    build:
+      context: ../apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: "${STAGE8_PUBLIC_ORIGIN:?required}/api"
+        NEXT_PUBLIC_STAGE8_FIXTURE_MODE: "true"
+    depends_on: { api: { condition: service_started } }
+  caddy:
+    image: caddy:2.10.2-alpine
+    ports: ["127.0.0.1:${STAGE8_PORT}:443"]
+    environment:
+      STAGE8_CADDY_FUNNEL_HOST: "${STAGE8_CADDY_FUNNEL_HOST:-stage8-funnel.invalid}"
+    volumes: ["./Caddyfile.stage8-fixture:/etc/caddy/Caddyfile:ro"]
+    depends_on: { web: { condition: service_started }, login-gateway: { condition: service_started } }
+volumes:
+  stage8_postgres: {}
+  stage8_minio: {}

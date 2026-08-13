@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { AppBottomNavigation } from "./app-bottom-navigation";
 import { useManagementControl } from "../hooks/use-management-control";
 import { useOfflineDownloads } from "../hooks/use-offline-downloads";
+import { useLocalReserve } from "../hooks/use-local-reserve";
 import { ManagementApiError, getCollectionRun } from "../lib/api/management";
 import { getEntireVideoCatalog } from "../lib/api/videos";
-import { getStorageEstimate, type LocalStorageEstimate } from "../lib/offline/storage";
+import { getStorageEstimate, isStage8FixtureBuild, setStage8FixtureQuotaReached, type LocalStorageEstimate } from "../lib/offline/storage";
 
 export type StorageUsagePresentation = { label: string; percent: number | null };
 
@@ -75,6 +76,7 @@ export function LibraryDashboard() {
   const router = useRouter();
   const management = useManagementControl();
   const { snapshot, enqueueCatalogAndStart, cancelBatch, cancelAndClear } = useOfflineDownloads();
+  const reserve = useLocalReserve();
   const [estimate, setEstimate] = useState<LocalStorageEstimate>(UNAVAILABLE_ESTIMATE);
   const [pairingCode, setPairingCode] = useState("");
   const [pairingErrorCode, setPairingErrorCode] = useState<string | undefined>();
@@ -258,6 +260,7 @@ export function LibraryDashboard() {
   const localPercent = batch ? localProgressPercent(batch.displayedBytes, batch.totalBytes) : null;
   const active = pipeline ?? (batch?.state === "active" ? { stage: "downloading" as const, runId: null, target: 0, percent: null, generation: -1 } : null);
   const canStart = management.isOnline && management.state === "paired" && management.status?.connection_status === "connected" && !active && !management.busyElsewhere;
+  const reserveLabel: Record<string, string> = { reconciling: "Проверяем сохранённые ролики", evaluating: "Проверяем сохранённые ролики", requesting_sources: "Получаем новые Reels", waiting_for_collection: "Получаем новые Reels", waiting_for_normalization: "Подготавливаем видео", downloading: "Загружаем на устройство", satisfied: "Запас готов", quota_reached: "Недостаточно места", offline: "Нет подключения", paused_by_user: "Автопополнение приостановлено", cancelled: "Автопополнение приостановлено", safe_error: "Автопополнение приостановлено", idle: "Запас готов" };
   // Only a pairing submission may render a pairing alert. Management polling,
   // reconnect, and a deliberate revoke must never leak an unrelated error into
   // the unpaired onboarding form.
@@ -309,7 +312,7 @@ export function LibraryDashboard() {
         ) : null}
 
         {actionError === "pipeline" ? <p role="alert" className="text-sm text-red-800">Не удалось завершить загрузку Reels. Попробуйте ещё раз.</p> : null}
-        {management.isOnline && (actionError === "connection" || management.state === "temporary_error") ? <p role="alert" className="text-sm text-red-800">Временная безопасная ошибка. Попробуйте позже.</p> : null}
+        {management.isOnline && (actionError === "connection" || management.state === "temporary_error") ? <div role="alert" className="space-y-2 text-sm text-red-800"><p>Временная безопасная ошибка. Попробуйте позже.</p>{management.state === "temporary_error" ? <button className="min-h-11 rounded-xl border border-red-200 px-4 py-2 font-medium text-slate-900" type="button" onClick={() => void management.refresh()}>Повторить</button> : null}</div> : null}
         {actionError === "clear" ? <p role="alert" className="text-sm text-red-800">Не удалось полностью очистить библиотеку. Попробуйте ещё раз.</p> : null}
         {management.busyElsewhere ? <p role="status" className="text-sm text-slate-600">Операция выполняется в другой вкладке.</p> : null}
 
@@ -319,9 +322,33 @@ export function LibraryDashboard() {
           <div className="h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="Заполненность хранилища" aria-valuemin={0} aria-valuemax={100} aria-valuenow={storage.percent ?? undefined}><div className="h-full rounded-full bg-slate-900" style={{ width: `${storageWidth}%` }} /></div>
         </section>
 
-        <button className="min-h-12 w-full rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" type="button" disabled={!canStart} onClick={() => void startPipeline()}>Загрузить Reels</button>
+        <button className="min-h-12 w-full rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" type="button" disabled={!canStart} onClick={() => void reserve.start()}>Загрузить Reels</button>
         <button className="min-h-11 w-full rounded-xl border border-red-300 px-5 py-3 font-medium text-red-800 disabled:opacity-50" type="button" disabled={snapshot?.clearing === true} onClick={clearLibrary}>Очистить библиотеку</button>
       </section>
+        <section aria-labelledby="reserve-heading" className="space-y-3">
+          <h2 id="reserve-heading" className="text-xl font-semibold">Локальный запас</h2>
+          {management.isOnline ? <p role="status" aria-live="polite">{reserve.snapshot ? reserveLabel[reserve.snapshot.state] : "Проверяем сохранённые ролики"}</p> : null}
+          <p className="text-sm text-slate-600">Сохранено роликов: {reserve.snapshot?.localCompletedCount ?? snapshot?.completedCount ?? 0}</p>
+          <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input type="checkbox" checked={reserve.snapshot?.settings?.autoRefillEnabled ?? false} onChange={(event) => {
+            if (event.target.checked) {
+              void reserve.updateSettings({ autoRefillEnabled: true });
+            } else {
+              // Turning the setting off is a user-visible pause.  Persist the
+              // preference and abort any foreground cycle without clearing
+              // completed local media; enabling it later resumes safely.
+              reserve.pause();
+              void reserve.updateSettings({ autoRefillEnabled: false });
+            }
+          }} />Автоматически пополнять</label>
+          <label className="block text-sm font-medium" htmlFor="reserve-count">Желаемое количество роликов</label>
+          <select id="reserve-count" className="min-h-11 w-full rounded-xl border border-slate-300 px-3" value={reserve.snapshot?.settings?.desiredCount ?? 20} onChange={(event) => { const desiredCount = Number(event.target.value); void reserve.updateSettings({ desiredCount, lowWatermark: Math.max(1, Math.floor(desiredCount * 0.4)) }); }}>
+            {[3, 10, 20, 30, 40, 50].map((count) => <option key={count} value={count}>{count}</option>)}
+          </select>
+          {reserve.snapshot?.state === "downloading" || reserve.snapshot?.state === "waiting_for_collection" || reserve.snapshot?.state === "waiting_for_normalization" || reserve.snapshot?.state === "requesting_sources" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void reserve.cancel()}>Безопасно отменить</button> : null}
+          {reserve.snapshot?.state === "paused_by_user" || reserve.snapshot?.state === "cancelled" || reserve.snapshot?.state === "safe_error" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void reserve.start()}>Возобновить</button> : null}
+          {isStage8FixtureBuild && reserve.snapshot?.state !== "quota_reached" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium" type="button" onClick={() => { setStage8FixtureQuotaReached(true); void reserve.start(); }}>Проверить нехватку места</button> : null}
+          {isStage8FixtureBuild && reserve.snapshot?.state === "quota_reached" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium" type="button" onClick={() => { setStage8FixtureQuotaReached(false); void reserve.start(); }}>Вернуть место</button> : null}
+        </section>
       <AppBottomNavigation activeRoute="home" />
     </main>
   );

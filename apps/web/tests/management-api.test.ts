@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ManagementApiError,
+  MANAGEMENT_REQUEST_TIMEOUT_MS,
   clearManagementCredentials,
   createCollectionRun,
   exchangePairing,
@@ -20,6 +21,7 @@ function json(body: unknown, status = 200) {
 afterEach(() => {
   clearManagementCredentials();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("Stage 6 management browser client", () => {
@@ -55,6 +57,18 @@ describe("Stage 6 management browser client", () => {
 
     expect(await refreshManagementSession()).toBe(true);
     expect(hasManagementCsrf()).toBe(true);
+  });
+
+  it("bounds a stalled management request instead of leaving the dashboard checking forever", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new DOMException("Timed out", "AbortError")), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = refreshManagementSession();
+    const outcome = pending.then(() => null, (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(MANAGEMENT_REQUEST_TIMEOUT_MS);
+    await expect(outcome).resolves.toMatchObject({ code: "temporary" });
   });
 
   it("uses a caller-owned idempotency key on retries and clears credentials after 401 or revoke", async () => {

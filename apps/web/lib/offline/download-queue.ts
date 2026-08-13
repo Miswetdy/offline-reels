@@ -2,6 +2,7 @@ import type { Video } from "../api/videos";
 import { toOfflineStorageError } from "./errors";
 import { downloadVideoForOffline, type DownloadProgress } from "./downloader";
 import { clearOfflineLibrary } from "./library-management";
+import { deleteCachedVideo } from "./media-cache";
 import { reconcileOfflineLibrary } from "./reconciliation";
 import {
   calculateCompletedLibrarySize,
@@ -117,6 +118,7 @@ export class OfflineDownloadQueue {
   private controlTail: Promise<void> = Promise.resolve();
   private clearing = false;
   private batchVideoIds: Set<string> | null = null;
+  private readonly cancelledActiveVideoIds = new Set<string>();
 
   constructor(partialDependencies: Partial<DownloadQueueDependencies> = {}) {
     this.dependencies = { ...DEFAULT_DEPENDENCIES, ...partialDependencies };
@@ -210,6 +212,39 @@ export class OfflineDownloadQueue {
       return candidates.length;
     });
     if (queued > 0) void this.start().catch(() => undefined);
+    return queued;
+  }
+
+  async enqueueReserveAndStart(videos: Video[], limit: number): Promise<number> {
+    if (!Number.isInteger(limit) || limit < 1) return 0;
+    await this.initialize();
+    const queued = await this.runControlled(async () => {
+      const uniqueVideos = new Map(videos.map((video) => [normalizeVideoId(video.id), video]));
+      const candidates: Video[] = [];
+      for (const video of uniqueVideos.values()) {
+        if (candidates.length >= limit) break;
+        const existing = await this.dependencies.getOfflineVideo(video.id);
+        if (existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") continue;
+        if (existing?.status === "failed") {
+          if (await this.retryUnlocked(video.id)) candidates.push(video);
+          continue;
+        }
+        if (await this.enqueueUnlocked(video)) candidates.push(video);
+      }
+      this.batchVideoIds = new Set(candidates.map((video) => video.id));
+      this.snapshot = {
+        ...this.snapshot,
+        batchProgress: candidates.length === 0 ? null : {
+          totalBytes: candidates.reduce((total, video) => total + video.byte_size, 0),
+          completedBytes: 0,
+          displayedBytes: 0,
+          state: "active",
+        },
+      };
+      this.emit();
+      return candidates.length;
+    });
+    if (queued > 0) await this.start();
     return queued;
   }
 
@@ -310,6 +345,10 @@ export class OfflineDownloadQueue {
             this.emit();
           },
         });
+        if (this.cancelledActiveVideoIds.delete(next.id)) {
+          await deleteCachedVideo(next.id).catch(() => undefined);
+          await this.dependencies.deleteOfflineVideo(next.id);
+        }
       } catch (error) {
         const normalized = toOfflineStorageError(error);
         const shouldPause = normalized.code === "storage_quota_exceeded" || normalized.code === "download_aborted";
@@ -319,6 +358,7 @@ export class OfflineDownloadQueue {
           currentErrorCode: normalized.code,
         };
       } finally {
+        this.cancelledActiveVideoIds.delete(next.id);
         if (this.activeController === controller) this.activeController = null;
         this.snapshot = { ...this.snapshot, activeVideoId: null, currentProgress: null };
         await this.refreshRecords();
@@ -345,6 +385,9 @@ export class OfflineDownloadQueue {
 
   async cancelBatch(): Promise<void> {
     await this.runControlled(async () => {
+      if (this.snapshot.activeVideoId && this.batchVideoIds?.has(this.snapshot.activeVideoId)) {
+        this.cancelledActiveVideoIds.add(this.snapshot.activeVideoId);
+      }
       this.snapshot = { ...this.snapshot, paused: true };
       this.activeController?.abort();
       this.emit();

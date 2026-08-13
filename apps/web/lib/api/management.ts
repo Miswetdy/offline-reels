@@ -41,6 +41,26 @@ export type NormalizationStatus = {
   ready_count: number;
 };
 
+export type ReserveSettings = {
+  device_uuid: string;
+  auto_refill_enabled: boolean;
+  desired_count: number;
+  low_watermark: number;
+  quota_threshold: number;
+};
+
+export type ReserveReport = ReserveSettings & {
+  local_completed_count: number;
+  reported_at: string;
+};
+
+export type ReserveAggregateStatus = {
+  reported_devices: number;
+  local_completed_count: number;
+  desired_count: number;
+  collection_active: boolean;
+};
+
 export type ManagementErrorCode =
   | "unpaired"
   | "pairing_invalid"
@@ -58,6 +78,7 @@ export class ManagementApiError extends Error {
 }
 
 let csrfToken: string | null = null;
+export const MANAGEMENT_REQUEST_TIMEOUT_MS = 15_000;
 
 function managementUrl(path: string): string {
   if (typeof window === "undefined") throw new ManagementApiError("temporary");
@@ -101,6 +122,15 @@ async function request<T>(
     if (!headers.has("Idempotency-Key")) throw new ManagementApiError("temporary");
   }
 
+  // iOS can keep a fetch alive across a PWA/service-worker update even after
+  // the old proxy connection is gone. Bound every management request so a
+  // visible dashboard never remains in its checking state indefinitely.
+  const deadline = new AbortController();
+  const abortFromCaller = () => deadline.abort();
+  if (init.signal?.aborted) deadline.abort();
+  else init.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timer = window.setTimeout(() => deadline.abort(), MANAGEMENT_REQUEST_TIMEOUT_MS);
+
   let response: Response;
   try {
     response = await fetch(managementUrl(path), {
@@ -108,9 +138,13 @@ async function request<T>(
       headers,
       cache: "no-store",
       credentials: "same-origin",
+      signal: deadline.signal,
     });
   } catch {
     throw new ManagementApiError("temporary");
+  } finally {
+    window.clearTimeout(timer);
+    init.signal?.removeEventListener("abort", abortFromCaller);
   }
 
   let payload: unknown = null;
@@ -204,6 +238,30 @@ export function cancelCollectionRun(runId: string, key = mutationKey()): Promise
 
 export function getNormalizationStatus(signal?: AbortSignal): Promise<NormalizationStatus> {
   return request("/api/instagram/normalization-status", { signal });
+}
+
+export function getReserveSettings(deviceId: string, signal?: AbortSignal): Promise<{ reserve: Omit<ReserveReport, "device_uuid"> | null }> {
+  return request(`/api/reserve/settings?device_uuid=${encodeURIComponent(deviceId)}`, { signal });
+}
+
+export function updateReserveSettings(settings: ReserveSettings, key = mutationKey()): Promise<{ reserve: Omit<ReserveReport, "device_uuid"> }> {
+  return request("/api/reserve/settings", {
+    method: "PUT",
+    headers: { "Idempotency-Key": key },
+    body: JSON.stringify(settings),
+  }, { mutation: true });
+}
+
+export function reportReserve(report: ReserveReport, key = mutationKey()): Promise<{ reserve: Omit<ReserveReport, "device_uuid"> }> {
+  return request("/api/reserve/reports", {
+    method: "POST",
+    headers: { "Idempotency-Key": key },
+    body: JSON.stringify(report),
+  }, { mutation: true });
+}
+
+export function getReserveStatus(signal?: AbortSignal): Promise<ReserveAggregateStatus> {
+  return request("/api/reserve/status", { signal });
 }
 
 export async function revokeManagementSession(key = mutationKey()): Promise<void> {

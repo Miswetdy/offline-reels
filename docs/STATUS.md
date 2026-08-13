@@ -1,5 +1,28 @@
 # Status
 
+## Stage 8 local reserve management
+
+The PWA now has a foreground reserve controller that reconciles local media,
+uses durable device-only reserve settings, requests bounded collection only when
+the full ready catalog is short, and fills only missing Reels sequentially.
+Migration `0008` stores redacted account-owned device reports; IndexedDB plus
+Cache Storage remains the local truth. Closed-iOS background execution is not
+claimed. The disposable Chromium iPhone-viewport E2E now passes: bounded
+collection, reload deduplication, offline `/offline`, quota pause/resume,
+cancel preservation, safe UI redaction and no-store management/reserve checks.
+Its random Compose project, volumes, images and artifacts were removed after
+acceptance. Manual iPhone acceptance is also complete through a temporary
+Tailscale Funnel and a fully isolated synthetic fixture: Safari and the
+Home-Screen installation correctly kept separate device-local libraries,
+each filled from the same ready catalog without an extra collection run.
+The check covered pairing, synthetic login, target fill, offline `/offline`,
+reload/Home-Screen no-op, network return, pause/resume, quota simulation, UI
+redaction, and server-side cancellation. During acceptance, cancel was
+hardened to cancel the cycle-owned server run, management fetches gained a
+15-second deadline, and the fixture received an explicitly build-time-only
+quota control. Funnel and all fixture containers, volumes, networks, images,
+and test artifacts were removed afterwards.
+
 ## Current stage
 
 Stage 7 connects the canonical PWA dashboard to the protected Stage 6

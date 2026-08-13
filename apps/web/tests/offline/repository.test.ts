@@ -54,7 +54,7 @@ describe("offline IndexedDB repository", () => {
   it("creates schema v1 with the required store and indexes", async () => {
     const database = await openOfflineDatabase();
     expect(database.name).toBe(OFFLINE_DATABASE_NAME);
-    expect(database.version).toBe(1);
+    expect(database.version).toBe(2);
     expect([...database.objectStoreNames]).toContain(OFFLINE_VIDEO_STORE);
     const transaction = database.transaction(OFFLINE_VIDEO_STORE);
     expect([...transaction.store.indexNames].sort()).toEqual(

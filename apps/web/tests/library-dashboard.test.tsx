@@ -14,7 +14,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock("../hooks/use-management-control", () => ({ useManagementControl: mocks.management }));
 vi.mock("../hooks/use-offline-downloads", () => ({ useOfflineDownloads: mocks.downloads }));
-vi.mock("../lib/offline/storage", () => ({ getStorageEstimate: mocks.estimate }));
+vi.mock("../lib/offline/storage", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../lib/offline/storage")>(),
+  getStorageEstimate: mocks.estimate,
+}));
 
 import { LibraryDashboard } from "../components/library-dashboard";
 import { ManagementApiError, type ManagementErrorCode } from "../lib/api/management";
@@ -201,13 +204,16 @@ describe("LibraryDashboard Stage 7", () => {
     fireEvent.click(screen.getByRole("button", { name: "Подключить Instagram" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Временная безопасная ошибка. Попробуйте позже."));
 
-    mocks.management.mockReturnValue(paired({ startCollection: vi.fn().mockRejectedValue(rawError) }));
-    view.rerender(<LibraryDashboard />);
-    fireEvent.click(screen.getByRole("button", { name: "Загрузить Reels" }));
-    await waitFor(() => expect(screen.getByText("Не удалось завершить загрузку Reels. Попробуйте ещё раз.")).toBeInTheDocument());
-
     fireEvent.click(screen.getByRole("button", { name: "Очистить библиотеку" }));
     await waitFor(() => expect(screen.getByText("Не удалось полностью очистить библиотеку. Попробуйте ещё раз.")).toBeInTheDocument());
     expectNoTechnicalUi();
+  });
+
+  it("offers a safe retry for a transient management refresh failure", async () => {
+    const control = paired({ state: "temporary_error", refresh: vi.fn().mockResolvedValue(null) });
+    mocks.management.mockReturnValue(control);
+    render(<LibraryDashboard />);
+    fireEvent.click(screen.getByRole("button", { name: "Повторить" }));
+    await waitFor(() => expect(control.refresh).toHaveBeenCalledOnce());
   });
 });

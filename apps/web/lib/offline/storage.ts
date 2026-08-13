@@ -1,5 +1,8 @@
 export const STORAGE_SAFETY_MULTIPLIER = 1.2;
 export const MINIMUM_STORAGE_RESERVE_BYTES = 50 * 1024 * 1024;
+export const isStage8FixtureBuild = process.env.NEXT_PUBLIC_STAGE8_FIXTURE_MODE === "true";
+
+const STAGE8_FIXTURE_QUOTA_KEY = "offline-reels-stage8-fixture-quota-reached";
 
 export type LocalStorageEstimate = {
   usage: number | null;
@@ -15,7 +18,24 @@ function getStorageManager(): StorageManager | undefined {
   return navigator.storage;
 }
 
+/** Test-only switch compiled into the disposable Stage 8 fixture image.
+ * It simulates a browser quota result in this tab without changing device
+ * storage, Cache Storage, or any production build. */
+function fixtureQuotaReached(): boolean {
+  return isStage8FixtureBuild && typeof sessionStorage !== "undefined"
+    && sessionStorage.getItem(STAGE8_FIXTURE_QUOTA_KEY) === "true";
+}
+
+export function setStage8FixtureQuotaReached(enabled: boolean): void {
+  if (!isStage8FixtureBuild || typeof sessionStorage === "undefined") return;
+  if (enabled) sessionStorage.setItem(STAGE8_FIXTURE_QUOTA_KEY, "true");
+  else sessionStorage.removeItem(STAGE8_FIXTURE_QUOTA_KEY);
+}
+
 export async function getStorageEstimate(): Promise<LocalStorageEstimate> {
+  if (fixtureQuotaReached()) {
+    return { usage: 95, quota: 100, available: 5, isAvailable: true };
+  }
   const storage = getStorageManager();
   if (!storage?.estimate) {
     return { usage: null, quota: null, available: null, isAvailable: false };

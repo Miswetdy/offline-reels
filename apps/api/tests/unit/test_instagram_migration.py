@@ -19,7 +19,7 @@ API_ROOT = Path(__file__).resolve().parents[2]
 
 def test_alembic_has_one_collector_head_after_video_normalization() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0007_management_control_plane"]
+    assert script.get_heads() == ["0008_reserve_device_reports"]
     revision = script.get_revision("0007_management_control_plane")
     assert revision is not None
     assert revision.down_revision == "0006_instagram_normalizer_runtime"

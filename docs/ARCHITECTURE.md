@@ -1,5 +1,16 @@
 # Architecture
 
+## Stage 8 local reserve
+
+The PWA owns a browser-global single-flight reserve controller above the
+existing reconciliation and sequential queue. Its UUID/settings live in a
+separate IndexedDB store, while completed metadata plus Cache Storage remains
+the source of truth. Foreground, `pageshow`, and network return coalesce one
+bounded cycle: reconcile, evaluate quota, read every catalog page, optionally
+request one bounded management run, wait with backoff/deadline for collection
+and normalization, then download missing media. No Service Worker background
+sync or closed-iOS execution is required.
+
 ## Overview
 
 Offline Reels is a personal application that allows users to prepare a personalized Instagram Reels feed in advance and watch it without an internet connection.

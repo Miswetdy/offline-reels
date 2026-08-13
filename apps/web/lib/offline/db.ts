@@ -1,11 +1,12 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
 import { OfflineStorageError, toOfflineStorageError } from "./errors";
-import type { OfflineVideoRecord, OfflineVideoStatus } from "./types";
+import type { LocalReserveRecord, OfflineVideoRecord, OfflineVideoStatus } from "./types";
 
 export const OFFLINE_DATABASE_NAME = "offline-reels";
-export const OFFLINE_DATABASE_VERSION = 1;
+export const OFFLINE_DATABASE_VERSION = 2;
 export const OFFLINE_VIDEO_STORE = "offlineVideos";
+export const LOCAL_RESERVE_STORE = "localReserve";
 
 export interface OfflineReelsDatabase extends DBSchema {
   offlineVideos: {
@@ -16,6 +17,10 @@ export interface OfflineReelsDatabase extends DBSchema {
       completedDownloadedAt: [OfflineVideoStatus, string];
       lastWatchedAt: string;
     };
+  };
+  localReserve: {
+    key: string;
+    value: LocalReserveRecord;
   };
 }
 
@@ -36,6 +41,9 @@ export async function openOfflineDatabase(): Promise<IDBPDatabase<OfflineReelsDa
           store.createIndex("statusUpdatedAt", ["status", "updatedAt"]);
           store.createIndex("completedDownloadedAt", ["status", "downloadedAt"]);
           store.createIndex("lastWatchedAt", "lastWatchedAt");
+        }
+        if (oldVersion < 2) {
+          database.createObjectStore(LOCAL_RESERVE_STORE, { keyPath: "id" });
         }
       },
     });
