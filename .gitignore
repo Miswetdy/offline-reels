@@ -42,6 +42,7 @@ test-results/
 *.log
 *.tmp
 *ffprobe*.json
+.stage9-iphone-fixture.json
 
 # Local media and databases
 /media/

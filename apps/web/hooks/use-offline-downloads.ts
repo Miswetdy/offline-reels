@@ -15,12 +15,17 @@ export function useOfflineDownloads() {
       if (!disposed) setSnapshot(queue.getSnapshot());
     };
     const unsubscribe = queue.subscribe(update);
+    const refreshExternalLifecycleMutation = () => {
+      void queue.refreshFromStorage().catch(() => undefined);
+    };
     update();
     void queue.initialize().then(update, update);
+    window.addEventListener("offline-reels-library-changed", refreshExternalLifecycleMutation);
 
     return () => {
       disposed = true;
       unsubscribe();
+      window.removeEventListener("offline-reels-library-changed", refreshExternalLifecycleMutation);
     };
   }, []);
 

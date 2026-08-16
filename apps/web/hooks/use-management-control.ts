@@ -101,7 +101,9 @@ export function useManagementControl(): ManagementControl {
 
   const refresh = useCallback(async (): Promise<ManagementStatus | null> => {
     if (!isOnline || !visibleRef.current) return null;
-    if (refreshingRef.current) return refreshingRef.current;
+    // A pairing exchange can deliberately abort an older anonymous status
+    // poll. Do not reuse that stale promise after its controller was aborted.
+    if (refreshingRef.current && !requestRef.current?.signal.aborted) return refreshingRef.current;
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     const controller = new AbortController();
@@ -138,8 +140,10 @@ export function useManagementControl(): ManagementControl {
         }
         return null;
       } finally {
-        if (requestRef.current === controller) requestRef.current = null;
-        refreshingRef.current = null;
+        if (requestRef.current === controller) {
+          requestRef.current = null;
+          refreshingRef.current = null;
+        }
       }
     })();
     refreshingRef.current = work;
@@ -182,6 +186,9 @@ export function useManagementControl(): ManagementControl {
     setError(null);
     try {
       await runMutation(() => exchangePairing(code));
+      // An initial anonymous refresh can still be in flight when the pairing
+      // cookie arrives. Abort it so this refresh observes the new session.
+      abortRequest();
       const next = await refresh();
       if (!next) throw new ManagementApiError("temporary");
     } catch (caught) {
@@ -192,7 +199,7 @@ export function useManagementControl(): ManagementControl {
       setError(nextError);
       throw nextError;
     }
-  }, [refresh, runMutation]);
+  }, [abortRequest, refresh, runMutation]);
 
   const disconnectDevice = useCallback(async () => {
     setError(null);

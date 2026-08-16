@@ -34,14 +34,18 @@ from app.core.settings import get_settings
 from app.db.models.instagram import (
     InstagramAccount,
     InstagramCollectionRun,
+    InstagramCollectionRunItem,
     InstagramCollectionSettings,
     InstagramLoginSession,
+    InstagramReel,
+    InstagramReelView,
     ManagementDeviceSession,
     ManagementIdempotencyRecord,
     ManagementPairingChallenge,
     ManagementRateLimit,
     ManagementReserveDevice,
 )
+from app.db.models.video import Video
 from app.db.session import create_session_factory
 from app.instagram.contracts import AccountStatus
 from app.main import create_app
@@ -60,6 +64,7 @@ def sessions() -> sessionmaker[Session]:
 def clean_management_rows(sessions: sessionmaker[Session]) -> None:
     """Keep the disposable database deterministic without touching saved smoke data."""
     with sessions.begin() as db:
+        db.execute(delete(InstagramReelView))
         db.execute(delete(ManagementIdempotencyRecord))
         db.execute(delete(ManagementDeviceSession))
         db.execute(delete(ManagementPairingChallenge))
@@ -69,6 +74,37 @@ def clean_management_rows(sessions: sessionmaker[Session]) -> None:
         db.execute(delete(InstagramLoginSession))
         db.execute(delete(InstagramCollectionRun))
         db.execute(delete(InstagramAccount))
+
+
+def _seed_account_owned_ready_video(sessions: sessionmaker[Session], account_id: UUID) -> Video:
+    with sessions.begin() as db:
+        video = Video(
+            title="Viewed fixture video",
+            object_key=f"videos/{uuid4()}.mp4",
+            content_type="video/mp4",
+            byte_size=10,
+        )
+        db.add(video)
+        db.flush()
+        reel = InstagramReel(
+            shortcode=f"VIEW_{uuid4().hex[:16]}",
+            canonical_url=f"https://www.instagram.com/reel/{uuid4().hex}/",
+            pipeline_status="ready",
+            source_object_key=f"instagram-sources/{uuid4()}.mp4",
+            source_sha256="a" * 64,
+            source_byte_size=10,
+            video_id=video.id,
+        )
+        db.add(reel)
+        db.flush()
+        run = InstagramCollectionRun(account_id=account_id, trigger="manual", status="completed", target_count=1)
+        db.add(run)
+        db.flush()
+        db.add(InstagramCollectionRunItem(
+            run_id=run.id, reel_id=reel.id, position=1, outcome="source_committed",
+            download_auth_mode="session_first",
+        ))
+    return video
 
 
 def _new_client() -> TestClient:
@@ -383,3 +419,90 @@ def test_concurrent_reserve_settings_and_reports_keep_one_fresh_device_row(
         assert str(row.device_uuid) == device_uuid
         assert row.local_completed_count == 7
         assert row.reported_at == newest_at
+
+
+def test_concurrent_view_sync_preserves_one_first_view_per_account(
+    sessions: sessionmaker[Session],
+) -> None:
+    account_id, _, cookie, csrf = _pair(sessions)
+    video = _seed_account_owned_ready_video(sessions, UUID(account_id))
+    payload = {
+        "device_uuid": str(uuid4()),
+        "events": [{"video_id": str(video.id)}],
+    }
+    barrier = Barrier(2)
+
+    def sync(key: str) -> tuple[int, dict]:
+        barrier.wait()
+        client = _new_client()
+        response = client.post(
+            "/api/instagram/views/sync",
+            json=payload,
+            headers={
+                "Cookie": f"{SESSION_COOKIE}={cookie}",
+                "Origin": ORIGIN,
+                "X-CSRF-Token": csrf,
+                "Idempotency-Key": key,
+            },
+        )
+        return response.status_code, response.json()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(sync, ("view-concurrent-key-01", "view-concurrent-key-02")))
+    assert [status for status, _ in results] == [200, 200]
+    assert all(body == {"confirmed_video_ids": [str(video.id)]} for _, body in results)
+    with sessions() as db:
+        rows = db.scalars(select(InstagramReelView)).all()
+        assert len(rows) == 1
+        assert rows[0].account_id == UUID(account_id)
+        assert rows[0].viewed_at.tzinfo is not None
+
+
+def test_view_history_excludes_only_the_viewing_account_catalog(
+    sessions: sessionmaker[Session],
+) -> None:
+    first_account_id, _, first_cookie, first_csrf = _pair(sessions)
+    second_account_id, _, second_cookie, _ = _pair(sessions)
+    video = _seed_account_owned_ready_video(sessions, UUID(first_account_id))
+
+    with sessions.begin() as db:
+        reel = db.scalar(select(InstagramReel).where(InstagramReel.video_id == video.id))
+        assert reel is not None
+        second_run = InstagramCollectionRun(
+            account_id=UUID(second_account_id), trigger="manual", status="completed", target_count=1
+        )
+        db.add(second_run)
+        db.flush()
+        db.add(InstagramCollectionRunItem(
+            run_id=second_run.id,
+            reel_id=reel.id,
+            position=1,
+            outcome="already_available",
+            download_auth_mode=None,
+        ))
+
+    sync = _new_client().post(
+        "/api/instagram/views/sync",
+        json={"device_uuid": str(uuid4()), "events": [{"video_id": str(video.id)}]},
+        headers={
+            "Cookie": f"{SESSION_COOKIE}={first_cookie}",
+            "Origin": ORIGIN,
+            "X-CSRF-Token": first_csrf,
+            "Idempotency-Key": "view-history-account-isolation",
+        },
+    )
+    assert sync.status_code == 200
+
+    first_catalog = _new_client().get(
+        "/api/instagram/catalog", headers={"Cookie": f"{SESSION_COOKIE}={first_cookie}"}
+    )
+    second_catalog = _new_client().get(
+        "/api/instagram/catalog", headers={"Cookie": f"{SESSION_COOKIE}={second_cookie}"}
+    )
+    assert first_catalog.status_code == second_catalog.status_code == 200
+    assert first_catalog.json()["items"] == []
+    assert {item["id"] for item in second_catalog.json()["items"]} == {str(video.id)}
+    with sessions() as db:
+        rows = db.scalars(select(InstagramReelView)).all()
+        assert len(rows) == 1
+        assert rows[0].account_id == UUID(first_account_id)

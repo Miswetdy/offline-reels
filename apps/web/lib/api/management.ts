@@ -61,6 +61,8 @@ export type ReserveAggregateStatus = {
   collection_active: boolean;
 };
 
+export type ViewedReelSync = { device_uuid: string; events: Array<{ video_id: string }> };
+
 export type ManagementErrorCode =
   | "unpaired"
   | "pairing_invalid"
@@ -262,6 +264,22 @@ export function reportReserve(report: ReserveReport, key = mutationKey()): Promi
 
 export function getReserveStatus(signal?: AbortSignal): Promise<ReserveAggregateStatus> {
   return request("/api/reserve/status", { signal });
+}
+
+export function syncViewedReels(payload: ViewedReelSync, key = mutationKey()): Promise<{ confirmed_video_ids: string[] }> {
+  return request("/api/instagram/views/sync", {
+    method: "POST",
+    headers: { "Idempotency-Key": key },
+    body: JSON.stringify(payload),
+  }, { mutation: true });
+}
+
+export function getConfirmedViewedReels(signal?: AbortSignal): Promise<{ confirmed_video_ids: string[] }> {
+  return request("/api/instagram/views?limit=200", { signal });
+}
+
+export function getAccountCatalog(signal?: AbortSignal): Promise<{ items: Array<{ id: string; title: string; content_type: "video/mp4"; byte_size: number; created_at: string }> }> {
+  return request("/api/instagram/catalog?limit=200", { signal });
 }
 
 export async function revokeManagementSession(key = mutationKey()): Promise<void> {

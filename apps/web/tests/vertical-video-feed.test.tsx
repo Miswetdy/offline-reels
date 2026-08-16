@@ -237,6 +237,56 @@ describe("VerticalVideoFeed", () => {
     await waitFor(() => expect(feed).toHaveAttribute("data-committed-item-id", "two"));
   });
 
+  it("reports one explicit prior-to-current callback only for a committed card transition", async () => {
+    const onCommittedItemChange = vi.fn();
+    render(<VerticalVideoFeed items={items} onCommittedItemChange={onCommittedItemChange} />);
+    const feed = await screen.findByLabelText("Video feed");
+    const first = screen.getByLabelText("First video");
+    const second = screen.getByLabelText("Second video");
+    setRect(feed, 0, 100);
+    setRect(first, -100, 100);
+    setRect(second, 0, 100);
+
+    observerFor(first).trigger([
+      { target: first, ratio: 0 },
+      { target: second, ratio: 0.999 },
+    ]);
+
+    await waitFor(() => expect(onCommittedItemChange).toHaveBeenCalledWith(items[0], items[1]));
+    expect(onCommittedItemChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a viewed-eligible transition only for a bounded user swipe from A to B", async () => {
+    const onUserSwipeCommitted = vi.fn();
+    render(<VerticalVideoFeed items={items} controlsMode="reels" onUserSwipeCommitted={onUserSwipeCommitted} />);
+    const feed = await screen.findByLabelText("Video feed");
+    const first = screen.getByLabelText("First video");
+    const second = screen.getByLabelText("Second video");
+    setRect(feed, 0, 100);
+    setRect(first, 0, 100);
+    setRect(second, -100, 100);
+
+    // A transition without a pointer swipe is never viewed-eligible.
+    setRect(first, -100, 100);
+    setRect(second, 0, 100);
+    observerFor(first).trigger([{ target: first, ratio: 0 }, { target: second, ratio: 1 }]);
+    expect(onUserSwipeCommitted).not.toHaveBeenCalled();
+
+    // Return programmatically, then perform a vertical pointer swipe and the
+    // matching full-screen commit; only this A -> B transition qualifies.
+    setRect(first, 0, 100);
+    setRect(second, -100, 100);
+    observerFor(first).trigger([{ target: first, ratio: 1 }, { target: second, ratio: 0 }]);
+    const surface = screen.getByTestId("reels-gesture-one");
+    fireEvent.pointerDown(surface, { isPrimary: true, button: 0, pointerId: 9, clientX: 50, clientY: 80 });
+    fireEvent.pointerMove(surface, { pointerId: 9, clientX: 50, clientY: 20 });
+    setRect(first, -100, 100);
+    setRect(second, 0, 100);
+    observerFor(first).trigger([{ target: first, ratio: 0 }, { target: second, ratio: 1 }]);
+    await waitFor(() => expect(onUserSwipeCommitted).toHaveBeenCalledWith(items[0], items[1]));
+    expect(onUserSwipeCommitted).toHaveBeenCalledTimes(1);
+  });
+
   it("starts exactly one background reset when A zero is observed before B becomes committed", async () => {
     render(<VerticalVideoFeed items={items} />);
     const firstSection = await screen.findByLabelText("First video");

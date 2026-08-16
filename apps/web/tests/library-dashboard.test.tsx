@@ -85,13 +85,24 @@ describe("LibraryDashboard Stage 7", () => {
     await waitFor(() => expect(input).toHaveValue(""));
   });
 
-  it("renders the connected card, disabled scheduler notice, storage controls, and fixed navigation", async () => {
+  it("renders the connected card, manual download, storage controls, and fixed navigation", async () => {
     render(<LibraryDashboard />);
     expect(screen.getByText("Instagram подключён")).toBeInTheDocument();
-    expect(screen.getByText("Автопополнение будет доступно позже")).toBeInTheDocument();
+    expect(screen.queryByText("Автопополнение будет доступно позже")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Автоматически пополнять")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Желаемое количество роликов")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Загрузить Reels" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Очистить библиотеку" })).toBeEnabled();
     expect(screen.getByRole("link", { name: "Главная" })).toHaveAttribute("href", "/");
+  });
+
+  it("uses the live download queue as the local-reserve source of truth", () => {
+    mocks.downloads.mockReturnValue({
+      snapshot: { ...offlineSnapshot, completedCount: 3 },
+      enqueueCatalogAndStart: vi.fn(), cancelBatch: vi.fn(), cancelAndClear: vi.fn(),
+    });
+    render(<LibraryDashboard />);
+    expect(document.body.textContent).toContain("3");
   });
 
   it("disables management actions while offline while retaining local library cleanup", () => {

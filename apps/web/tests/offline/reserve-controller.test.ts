@@ -11,18 +11,74 @@ const settings = { id: "primary" as const, deviceId: "11111111-1111-4111-8111-11
 beforeEach(async () => { await resetOfflineDatabase(); });
 
 describe("Stage 8 local reserve controller", () => {
-  it("coalesces starts and skips collection when catalog is sufficient", async () => {
+  it("keeps automatic reserve requests inactive in production", async () => {
     const queue = { getSnapshot: () => ({ records: [], currentErrorCode: null }), enqueueReserveAndStart: vi.fn().mockResolvedValue(2), cancelBatch: vi.fn() };
     const catalog = vi.fn().mockResolvedValue([video(VIDEO_ID_ONE), video(VIDEO_ID_TWO)]);
     const controller = new LocalReserveController({ queue: queue as never, reconcile: vi.fn(), getCatalog: catalog, getStatus: vi.fn(), startCollection: vi.fn(), getRun: vi.fn(), normalization: vi.fn(), getSettings: vi.fn().mockResolvedValue(settings), updateSettings: vi.fn().mockResolvedValue(settings), setIntent: vi.fn(), estimate: vi.fn().mockResolvedValue({ usage: 1, quota: 100 }), report: vi.fn(), isOnline: () => true, isActive: () => true });
     await Promise.all([controller.request("auto"), controller.request("auto")]);
-    expect(catalog).toHaveBeenCalledTimes(1);
-    expect(queue.enqueueReserveAndStart).toHaveBeenCalledWith(expect.any(Array), 2);
+    expect(catalog).not.toHaveBeenCalled();
+    expect(queue.enqueueReserveAndStart).not.toHaveBeenCalled();
   });
 
-  it("pauses safely offline", async () => {
+  it("does not refill after a viewed deletion while the gate is disabled", async () => {
+    const expandedSettings = { ...settings, desiredCount: 3, lowWatermark: 1 };
+    const queue = {
+      initialize: vi.fn(),
+      getSnapshot: () => ({ records: [{ id: VIDEO_ID_ONE, status: "completed", viewedAt: null }], currentErrorCode: null }),
+      enqueueReserveAndStart: vi.fn().mockResolvedValue(2),
+      cancelBatch: vi.fn(),
+    };
+    const controller = new LocalReserveController({
+      queue: queue as never, reconcile: vi.fn(),
+      getCatalog: vi.fn().mockResolvedValue([video(VIDEO_ID_ONE), video(VIDEO_ID_TWO), video("video-three")]),
+      getStatus: vi.fn(), startCollection: vi.fn(), getRun: vi.fn(), normalization: vi.fn(),
+      getSettings: vi.fn().mockResolvedValue(expandedSettings), updateSettings: vi.fn().mockResolvedValue(expandedSettings),
+      setIntent: vi.fn(), estimate: vi.fn().mockResolvedValue({ usage: 1, quota: 100 }), report: vi.fn(),
+      isOnline: () => true, isActive: () => true,
+    });
+
+    await controller.request("viewed_deletion");
+
+    expect(queue.enqueueReserveAndStart).not.toHaveBeenCalled();
+  });
+
+  it("does not refresh or collect for a viewed deletion while the gate is disabled", async () => {
+    const expandedSettings = { ...settings, desiredCount: 3, lowWatermark: 1 };
+    let records = [
+      { id: VIDEO_ID_ONE, status: "completed", viewedAt: null as string | null },
+      { id: VIDEO_ID_TWO, status: "completed", viewedAt: null as string | null },
+      { id: "viewed-video", status: "completed", viewedAt: null as string | null },
+    ];
+    const refreshFromStorage = vi.fn(async () => {
+      records = [
+        { id: VIDEO_ID_ONE, status: "completed", viewedAt: null },
+        { id: VIDEO_ID_TWO, status: "completed", viewedAt: null },
+        { id: "viewed-video", status: "deleted", viewedAt: "2026-08-13T12:00:00.000Z" },
+      ];
+    });
+    const queue = {
+      initialize: vi.fn(), refreshFromStorage,
+      getSnapshot: () => ({ records, currentErrorCode: null }),
+      enqueueReserveAndStart: vi.fn().mockResolvedValue(1), cancelBatch: vi.fn(),
+    };
+    const controller = new LocalReserveController({
+      queue: queue as never, reconcile: vi.fn(),
+      getCatalog: vi.fn().mockResolvedValue([video(VIDEO_ID_ONE), video(VIDEO_ID_TWO), video("replacement-video")]),
+      getStatus: vi.fn(), startCollection: vi.fn(), getRun: vi.fn(), normalization: vi.fn(),
+      getSettings: vi.fn().mockResolvedValue(expandedSettings), updateSettings: vi.fn().mockResolvedValue(expandedSettings),
+      setIntent: vi.fn(), estimate: vi.fn().mockResolvedValue({ usage: 1, quota: 100 }), report: vi.fn(),
+      isOnline: () => true, isActive: () => true,
+    });
+
+    await controller.request("viewed_deletion");
+
+    expect(refreshFromStorage).not.toHaveBeenCalled();
+    expect(queue.enqueueReserveAndStart).not.toHaveBeenCalled();
+  });
+
+  it("manual download still reports offline safely", async () => {
     const controller = new LocalReserveController({ isOnline: () => false });
-    await controller.request("auto");
+    await controller.request("manual");
     expect(controller.getSnapshot().state).toBe("offline");
   });
 

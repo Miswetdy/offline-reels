@@ -25,16 +25,19 @@ from app.core.settings import Settings
 from app.db.models.instagram import (
     InstagramAccount,
     InstagramCollectionRun,
+    InstagramCollectionRunItem,
     InstagramCollectionSettings,
     InstagramLoginSession,
     InstagramNormalizationJob,
     InstagramReel,
+    InstagramReelView,
     ManagementDeviceSession,
     ManagementIdempotencyRecord,
     ManagementPairingChallenge,
     ManagementRateLimit,
     ManagementReserveDevice,
 )
+from app.db.models.video import Video
 from app.instagram.contracts import (
     AccountStatus,
     CollectionRunStatus,
@@ -85,6 +88,25 @@ class ReserveSettingsRequest(BaseModel):
 class ReserveReportRequest(ReserveSettingsRequest):
     local_completed_count: int = Field(ge=0, le=1000)
     reported_at: datetime
+
+
+MAX_VIEW_SYNC_BATCH = 50
+MAX_VIEW_RECONCILIATION_IDS = 200
+
+
+class ViewedReelEvent(BaseModel):
+    """A safe canonical-video identifier; no URL or object key is accepted."""
+
+    video_id: UUID
+
+
+class ViewedReelSyncRequest(BaseModel):
+    device_uuid: UUID
+    events: list[ViewedReelEvent] = Field(min_length=1, max_length=MAX_VIEW_SYNC_BATCH)
+
+    def model_post_init(self, __context: Any) -> None:
+        if len({event.video_id for event in self.events}) != len(self.events):
+            raise ValueError("events must have unique video IDs")
 
 
 def hash_secret(value: str) -> str:
@@ -736,6 +758,163 @@ def normalization_status(
                 or 0
             ),
         }
+
+
+def _account_owned_reels_by_video_locked(
+    db: Session, account_id: UUID, video_ids: set[UUID]
+) -> dict[UUID, InstagramReel]:
+    """Return only ready Reels that this account previously collected.
+
+    A canonical video may be used by many accounts, so ownership comes from
+    the collection-run item rather than the global ``videos`` catalog.
+    """
+    if not video_ids:
+        return {}
+    rows = db.scalars(
+        select(InstagramReel)
+        .join(InstagramCollectionRunItem, InstagramCollectionRunItem.reel_id == InstagramReel.id)
+        .join(
+            InstagramCollectionRun,
+            InstagramCollectionRun.id == InstagramCollectionRunItem.run_id,
+        )
+        .where(
+            InstagramCollectionRun.account_id == account_id,
+            InstagramReel.pipeline_status == ReelPipelineStatus.READY.value,
+            InstagramReel.video_id.in_(video_ids),
+        )
+        .with_for_update()
+    )
+    return {row.video_id: row for row in rows if row.video_id is not None}
+
+
+@router.post("/instagram/views/sync")
+def sync_viewed_reels(
+    payload: ViewedReelSyncRequest,
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_mutation)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    """Durably accept a bounded PWA outbox batch using server time only."""
+    def action(db: Session) -> tuple[int, dict[str, Any]]:
+        requested = {event.video_id for event in payload.events}
+        owned = _account_owned_reels_by_video_locked(db, session.account_id, requested)
+        if set(owned) != requested:
+            # Do not reveal cross-account catalog membership.
+            raise ManagementError(400, "invalid_view_event", "Некорректное событие просмотра.")
+        confirmed: list[str] = []
+        for video_id in requested:
+            reel = owned[video_id]
+            existing = db.scalar(
+                select(InstagramReelView)
+                .where(
+                    InstagramReelView.account_id == session.account_id,
+                    InstagramReelView.reel_id == reel.id,
+                )
+                .with_for_update()
+            )
+            if existing is None:
+                # The account row lock above serializes first inserts for the
+                # usual path. A savepoint also makes this correct if an older
+                # deployment has duplicate run-item routes to the same reel.
+                try:
+                    with db.begin_nested():
+                        db.add(InstagramReelView(
+                            account_id=session.account_id,
+                            reel_id=reel.id,
+                            device_uuid=payload.device_uuid,
+                            viewed_at=_now(),
+                        ))
+                        db.flush()
+                except IntegrityError:
+                    pass
+            confirmed.append(str(video_id))
+        return 200, {"confirmed_video_ids": sorted(confirmed)}
+
+    status_code, result, _ = _idempotent(
+        sessions, session, "sync_viewed_reels", idempotency_key, payload, action
+    )
+    response.status_code = status_code
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.get("/instagram/views/status")
+def viewed_reels_status(
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_management_session)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+) -> dict[str, int]:
+    with sessions() as db:
+        count = int(db.scalar(
+            select(func.count()).select_from(InstagramReelView).where(
+                InstagramReelView.account_id == session.account_id
+            )
+        ) or 0)
+    response.headers["Cache-Control"] = "no-store"
+    return {"confirmed_count": count}
+
+
+@router.get("/instagram/views")
+def confirmed_viewed_reels(
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_management_session)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+    limit: int = 200,
+) -> dict[str, list[str]]:
+    limit = min(max(1, limit), MAX_VIEW_RECONCILIATION_IDS)
+    with sessions() as db:
+        rows = db.scalars(
+            select(InstagramReel.video_id)
+            .join(InstagramReelView, InstagramReelView.reel_id == InstagramReel.id)
+            .where(InstagramReelView.account_id == session.account_id)
+            .order_by(InstagramReelView.viewed_at.desc(), InstagramReelView.id.desc())
+            .limit(limit)
+        )
+        ids = [str(video_id) for video_id in rows if video_id is not None]
+    response.headers["Cache-Control"] = "no-store"
+    return {"confirmed_video_ids": ids}
+
+
+@router.get("/instagram/catalog")
+def account_catalog(
+    response: Response,
+    session: Annotated[ManagementDeviceSession, Depends(require_management_session)],
+    sessions: Annotated[sessionmaker[Session], Depends(get_sessions)],
+    limit: int = 200,
+) -> dict[str, list[dict[str, Any]]]:
+    """Account-scoped ready catalog, excluding its confirmed view history."""
+    limit = min(max(1, limit), 200)
+    with sessions() as db:
+        rows = db.execute(
+            select(Video)
+            .join(InstagramReel, InstagramReel.video_id == Video.id)
+            .join(
+                InstagramCollectionRunItem,
+                InstagramCollectionRunItem.reel_id == InstagramReel.id,
+            )
+            .join(
+                InstagramCollectionRun,
+                InstagramCollectionRun.id == InstagramCollectionRunItem.run_id,
+            )
+            .outerjoin(
+                InstagramReelView,
+                (InstagramReelView.reel_id == InstagramReel.id)
+                & (InstagramReelView.account_id == session.account_id),
+            )
+            .where(
+                InstagramCollectionRun.account_id == session.account_id,
+                InstagramReel.pipeline_status == ReelPipelineStatus.READY.value,
+                InstagramReelView.id.is_(None),
+            )
+            .order_by(Video.created_at.desc(), Video.id.desc())
+            .limit(limit)
+        ).scalars().unique().all()
+    response.headers["Cache-Control"] = "no-store"
+    return {"items": [{
+        "id": str(video.id), "title": video.title, "content_type": video.content_type,
+        "byte_size": video.byte_size, "created_at": video.created_at.isoformat(),
+    } for video in rows]}
 
 
 @router.get("/instagram/collection-settings")

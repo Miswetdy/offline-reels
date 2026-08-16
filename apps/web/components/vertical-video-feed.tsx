@@ -40,6 +40,10 @@ type VerticalVideoFeedProps = {
   renderActions?: (item: VerticalVideoFeedItem) => ReactNode;
   showMetadata?: boolean;
   onActiveItemChange?: (item: VerticalVideoFeedItem | null) => void;
+  /** Fires only after a bounded pointer/touch swipe commits A -> B full-screen. */
+  onUserSwipeCommitted?: (previous: VerticalVideoFeedItem, current: VerticalVideoFeedItem) => void;
+  /** Internal transition signal. It must never be wired to the viewed lifecycle. */
+  onCommittedItemChange?: (previous: VerticalVideoFeedItem, current: VerticalVideoFeedItem) => void;
 };
 
 type MediaMode = "previous" | "active" | "next" | "inactive";
@@ -97,6 +101,8 @@ export function VerticalVideoFeed({
   renderActions,
   showMetadata = true,
   onActiveItemChange,
+  onUserSwipeCommitted,
+  onCommittedItemChange,
 }: VerticalVideoFeedProps) {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [committedItemId, setCommittedItemId] = useState<string | null>(() => items[0]?.id ?? null);
@@ -133,6 +139,7 @@ export function VerticalVideoFeed({
   const committedDeparturesRef = useRef(new Map<string, CommittedDeparture>());
   const prepareCommittedDepartureRef = useRef<(itemId: string, allowActivationFallback?: boolean) => void>(() => undefined);
   const commitFullscreenItemRef = useRef<(itemId: string) => void>(() => undefined);
+  const pendingSwipeTransitionRef = useRef<{ sourceItemId: string; token: number; expiresAt: number } | null>(null);
   const activeItemStillExists = activeItemId !== null && items.some((item) => item.id === activeItemId);
   const fallbackActiveItemId = items[Math.min(lastActiveIndex, items.length - 1)]?.id ?? null;
   const effectiveActiveItemId = activeItemStillExists ? activeItemId : fallbackActiveItemId;
@@ -464,13 +471,21 @@ export function VerticalVideoFeed({
     committedDeparturesRef.current.delete(itemId);
     const generation = ++committedGenerationRef.current;
     if (previousCommittedItemId !== null && previousCommittedItemId !== itemId) {
+      const previous = items.find((item) => item.id === previousCommittedItemId);
+      const current = items.find((item) => item.id === itemId);
+      const gesture = pendingSwipeTransitionRef.current;
+      pendingSwipeTransitionRef.current = null;
+      if (previous && current) onCommittedItemChange?.(previous, current);
+      if (previous && current && gesture?.sourceItemId === previous.id && gesture.expiresAt >= Date.now()) {
+        onUserSwipeCommitted?.(previous, current);
+      }
       committedDeparturesRef.current.set(previousCommittedItemId, { generation, state: "required" });
       // Commit and initial background preparation are one operation. This
       // closes the A=0 → B=full callback-order race: cached geometry/ratio is
       // inspected immediately instead of waiting for another A callback.
       prepareCommittedDeparture(previousCommittedItemId);
     }
-  }, [prepareCommittedDeparture]);
+  }, [items, onCommittedItemChange, onUserSwipeCommitted, prepareCommittedDeparture]);
 
   useLayoutEffect(() => {
     prepareCommittedDepartureRef.current = prepareCommittedDeparture;
@@ -642,6 +657,7 @@ export function VerticalVideoFeed({
       wasPlaying: false,
       originalPlaybackRate: video.playbackRate,
     };
+    pendingSwipeTransitionRef.current = null;
     gesture.timerId = window.setTimeout(() => {
       if (
         reelsGestureRef.current !== gesture
@@ -682,6 +698,17 @@ export function VerticalVideoFeed({
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
     if (distance <= REELS_MOVEMENT_SLOP_PX) return;
+    if (
+      Math.abs(event.clientY - gesture.startY) > Math.abs(event.clientX - gesture.startX)
+      && committedItemIdRef.current === gesture.itemId
+      && activeItemIdRef.current === gesture.itemId
+    ) {
+      pendingSwipeTransitionRef.current = {
+        sourceItemId: gesture.itemId,
+        token: gesture.token,
+        expiresAt: Date.now() + 1_500,
+      };
+    }
     cancelReelsGesture("movement");
   }, [cancelReelsGesture]);
 

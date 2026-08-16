@@ -1,43 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { AppBottomNavigation } from "./app-bottom-navigation";
 import { useManagementControl } from "../hooks/use-management-control";
 import { useOfflineDownloads } from "../hooks/use-offline-downloads";
 import { useLocalReserve } from "../hooks/use-local-reserve";
-import { ManagementApiError, getCollectionRun } from "../lib/api/management";
-import { getEntireVideoCatalog } from "../lib/api/videos";
-import { getStorageEstimate, isStage8FixtureBuild, setStage8FixtureQuotaReached, type LocalStorageEstimate } from "../lib/offline/storage";
+import { ManagementApiError, getAccountCatalog, getCollectionRun } from "../lib/api/management";
+import { isStage8FixtureBuild, setStage8FixtureQuotaReached } from "../lib/offline/storage";
+import { AUTO_REFILL_ENABLED } from "../lib/offline/feature-flags";
 
-export type StorageUsagePresentation = { label: string; percent: number | null };
+// Compile-time only.  A normal production build hardcodes false, so no user
+// controlled setting can lower the device cap or alter manual collection.
+const STAGE9_FIXTURE_BUILD = process.env.OFFLINE_REELS_BUILD_STAGE9_FIXTURE === "true";
 
-const UNAVAILABLE_ESTIMATE: LocalStorageEstimate = { usage: null, quota: null, available: null, isAvailable: false };
 // Production retains the Stage 7 bounded default. An explicitly built
 // disposable staging image may lower it for a controlled live acceptance
 // without changing the user-visible control plane or accepting a runtime URL
 // parameter.
 const configuredCollectionTarget = Number(process.env.NEXT_PUBLIC_STAGE7_COLLECTION_TARGET);
-const COLLECTION_TARGET = Number.isInteger(configuredCollectionTarget)
+const configuredStage7CollectionTarget = Number.isInteger(configuredCollectionTarget)
   && configuredCollectionTarget >= 1
   && configuredCollectionTarget <= 10
   ? configuredCollectionTarget
   : 10;
+const COLLECTION_TARGET = STAGE9_FIXTURE_BUILD ? 3 : configuredStage7CollectionTarget;
+// Manual downloads remain user initiated, but a device must never accumulate
+// an unbounded catalog. The disposable fixture exercises the same rule at 3;
+// the MVP production ceiling is 500.
+const LOCAL_LIBRARY_CAP = STAGE9_FIXTURE_BUILD ? 3 : 500;
 
 type PipelineStage = "collecting" | "normalizing" | "downloading";
 type Pipeline = { stage: PipelineStage; runId: string | null; target: number; percent: number | null; generation: number };
-
-export function getStorageUsagePresentation(estimate: LocalStorageEstimate): StorageUsagePresentation {
-  if (!estimate.isAvailable || estimate.usage === null || estimate.quota === null || estimate.quota <= 0) {
-    return { label: "Не удалось определить заполненность хранилища", percent: null };
-  }
-  if (estimate.usage <= 0) return { label: "Хранилище не используется — 0%", percent: 0 };
-  const percent = Math.min(100, Math.max(0, (estimate.usage / estimate.quota) * 100));
-  return percent < 1
-    ? { label: "Хранилище заполнено менее чем на 1%", percent }
-    : { label: `Хранилище заполнено на ${Math.round(percent)}%`, percent };
-}
 
 function localProgressPercent(displayedBytes: number, totalBytes: number): number {
   if (totalBytes <= 0) return 0;
@@ -73,11 +67,9 @@ function pipelineLabel(pipeline: Pipeline, localPercent: number | null): string 
 }
 
 export function LibraryDashboard() {
-  const router = useRouter();
   const management = useManagementControl();
   const { snapshot, enqueueCatalogAndStart, cancelBatch, cancelAndClear } = useOfflineDownloads();
   const reserve = useLocalReserve();
-  const [estimate, setEstimate] = useState<LocalStorageEstimate>(UNAVAILABLE_ESTIMATE);
   const [pairingCode, setPairingCode] = useState("");
   const [pairingErrorCode, setPairingErrorCode] = useState<string | undefined>();
   const [pairingPending, setPairingPending] = useState(false);
@@ -92,9 +84,6 @@ export function LibraryDashboard() {
     pipelineRef.current = next;
     setPipeline(next);
   }, []);
-  const refreshEstimate = useCallback(() => { void getStorageEstimate().then(setEstimate); }, []);
-
-  useEffect(() => { refreshEstimate(); }, [refreshEstimate, snapshot?.completedCount, snapshot?.batchProgress?.state]);
   useEffect(() => {
     const abortPipelinePolling = () => pipelineAbortRef.current?.abort();
     window.addEventListener("pagehide", abortPipelinePolling);
@@ -125,6 +114,8 @@ export function LibraryDashboard() {
 
   const startPipeline = useCallback(async () => {
     if (!management.isOnline || management.state !== "paired" || management.status?.connection_status !== "connected" || pipelineRef.current) return;
+    const remainingCapacity = LOCAL_LIBRARY_CAP - (snapshot?.completedCount ?? 0);
+    if (remainingCapacity <= 0) return;
     setActionError(null);
     const controller = new AbortController();
     pipelineAbortRef.current?.abort();
@@ -134,9 +125,10 @@ export function LibraryDashboard() {
     // The key belongs to this user operation. A transient retry reuses it;
     // the ref is cleared after cancellation or terminal completion.
     pipelineKeyRef.current = crypto.randomUUID();
-    setCurrentPipeline({ stage: "collecting", runId: null, target: COLLECTION_TARGET, percent: 0, generation });
+    const target = Math.min(COLLECTION_TARGET, remainingCapacity);
+    setCurrentPipeline({ stage: "collecting", runId: null, target, percent: 0, generation });
     try {
-      const created = await management.startCollection(COLLECTION_TARGET, pipelineKeyRef.current);
+      const created = await management.startCollection(target, pipelineKeyRef.current);
       if (!currentPipeline(generation)) return;
       setCurrentPipeline({ stage: "collecting", runId: created.id, target: created.target, percent: 0, generation });
 
@@ -171,15 +163,15 @@ export function LibraryDashboard() {
         delay = Math.min(8_000, delay * 2);
       }
       if (!currentPipeline(generation)) return;
-      const catalog = await getEntireVideoCatalog({ signal: controller.signal });
+      const catalog = await getAccountCatalog(controller.signal);
       if (!currentPipeline(generation)) return;
-      const enqueued = await enqueueCatalogAndStart(catalog);
+      // The API catalog is historical and can be larger than the local
+      // ceiling after prior collections. Queue only the free device slots.
+      const enqueued = await enqueueCatalogAndStart(catalog.items.slice(0, remainingCapacity));
       if (!currentPipeline(generation)) return;
       if (enqueued === 0) {
         pipelineKeyRef.current = null;
         setCurrentPipeline(null);
-        refreshEstimate();
-        router.push("/offline");
         return;
       }
       setCurrentPipeline({ stage: "downloading", runId: null, target: created.target, percent: null, generation });
@@ -189,7 +181,7 @@ export function LibraryDashboard() {
       pipelineKeyRef.current = null;
       setCurrentPipeline(null);
     }
-  }, [currentPipeline, enqueueCatalogAndStart, management, refreshEstimate, router, setCurrentPipeline, wait]);
+  }, [currentPipeline, enqueueCatalogAndStart, management, setCurrentPipeline, snapshot?.completedCount, wait]);
 
   const cancelPipeline = useCallback(() => {
     const current = pipelineRef.current;
@@ -218,8 +210,6 @@ export function LibraryDashboard() {
       if (batch.state === "completed") {
         pipelineKeyRef.current = null;
         setCurrentPipeline(null);
-        refreshEstimate();
-        router.push("/offline");
       } else if (batch.state === "failed") {
         pipelineKeyRef.current = null;
         setCurrentPipeline(null);
@@ -227,7 +217,7 @@ export function LibraryDashboard() {
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [refreshEstimate, router, setCurrentPipeline, snapshot?.batchProgress]);
+  }, [setCurrentPipeline, snapshot?.batchProgress]);
 
   const pair = useCallback(() => {
     const code = pairingCode.trim();
@@ -251,16 +241,20 @@ export function LibraryDashboard() {
     if (!window.confirm("Вы точно хотите удалить все скачанные Reels?")) return;
     if (pipelineRef.current?.stage === "downloading") cancelPipeline();
     setActionError(null);
-    void cancelAndClear().then(refreshEstimate, () => setActionError("clear"));
-  }, [cancelAndClear, cancelPipeline, refreshEstimate]);
+    void cancelAndClear().catch(() => setActionError("clear"));
+  }, [cancelAndClear, cancelPipeline]);
 
-  const storage = getStorageUsagePresentation(estimate);
-  const storageWidth = storage.percent === null || storage.percent <= 0 ? 0 : Math.max(1, storage.percent);
+  const localCompletedCount = snapshot?.completedCount ?? 0;
+  const libraryPercent = Math.min(100, Math.round((localCompletedCount / LOCAL_LIBRARY_CAP) * 100));
   const batch = snapshot?.batchProgress ?? null;
   const localPercent = batch ? localProgressPercent(batch.displayedBytes, batch.totalBytes) : null;
   const active = pipeline ?? (batch?.state === "active" ? { stage: "downloading" as const, runId: null, target: 0, percent: null, generation: -1 } : null);
-  const canStart = management.isOnline && management.state === "paired" && management.status?.connection_status === "connected" && !active && !management.busyElsewhere;
-  const reserveLabel: Record<string, string> = { reconciling: "Проверяем сохранённые ролики", evaluating: "Проверяем сохранённые ролики", requesting_sources: "Получаем новые Reels", waiting_for_collection: "Получаем новые Reels", waiting_for_normalization: "Подготавливаем видео", downloading: "Загружаем на устройство", satisfied: "Запас готов", quota_reached: "Недостаточно места", offline: "Нет подключения", paused_by_user: "Автопополнение приостановлено", cancelled: "Автопополнение приостановлено", safe_error: "Автопополнение приостановлено", idle: "Запас готов" };
+  const canStart = management.isOnline
+    && management.state === "paired"
+    && management.status?.connection_status === "connected"
+    && !active
+    && !management.busyElsewhere
+    && (snapshot?.completedCount ?? 0) < LOCAL_LIBRARY_CAP;
   // Only a pairing submission may render a pairing alert. Management polling,
   // reconnect, and a deliberate revoke must never leak an unrelated error into
   // the unpaired onboarding form.
@@ -298,7 +292,6 @@ export function LibraryDashboard() {
               </button>
             )}
             {management.status?.active_login ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void management.cancelInstagramLogin()}>Отменить подключение</button> : null}
-            {management.status?.auto_collection.scheduler_active === false ? <p className="text-sm text-slate-600">Автопополнение будет доступно позже</p> : null}
             <button className="min-h-11 rounded-xl border border-red-300 px-4 py-2 font-medium text-red-800" type="button" onClick={() => void management.disconnectDevice()}>Отключить это устройство</button>
           </section>
         ) : null}
@@ -317,19 +310,18 @@ export function LibraryDashboard() {
         {management.busyElsewhere ? <p role="status" className="text-sm text-slate-600">Операция выполняется в другой вкладке.</p> : null}
 
         <section aria-labelledby="storage-heading" className="space-y-3">
-          <h2 id="storage-heading" className="sr-only">Заполненность хранилища</h2>
-          <p className="text-base font-medium text-slate-800">{storage.label}</p>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="Заполненность хранилища" aria-valuemin={0} aria-valuemax={100} aria-valuenow={storage.percent ?? undefined}><div className="h-full rounded-full bg-slate-900" style={{ width: `${storageWidth}%` }} /></div>
+          <h2 id="storage-heading" className="sr-only">Заполненность локальной библиотеки</h2>
+          <p className="text-base font-medium text-slate-800">Локальная библиотека: {localCompletedCount} из {LOCAL_LIBRARY_CAP}</p>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="Заполненность локальной библиотеки" aria-valuemin={0} aria-valuemax={LOCAL_LIBRARY_CAP} aria-valuenow={localCompletedCount}><div className="h-full rounded-full bg-slate-900" style={{ width: `${libraryPercent}%` }} /></div>
         </section>
 
-        <button className="min-h-12 w-full rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" type="button" disabled={!canStart} onClick={() => void reserve.start()}>Загрузить Reels</button>
+        <button className="min-h-12 w-full rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400" type="button" disabled={!canStart} onClick={() => void startPipeline()}>Загрузить Reels</button>
         <button className="min-h-11 w-full rounded-xl border border-red-300 px-5 py-3 font-medium text-red-800 disabled:opacity-50" type="button" disabled={snapshot?.clearing === true} onClick={clearLibrary}>Очистить библиотеку</button>
       </section>
         <section aria-labelledby="reserve-heading" className="space-y-3">
           <h2 id="reserve-heading" className="text-xl font-semibold">Локальный запас</h2>
-          {management.isOnline ? <p role="status" aria-live="polite">{reserve.snapshot ? reserveLabel[reserve.snapshot.state] : "Проверяем сохранённые ролики"}</p> : null}
-          <p className="text-sm text-slate-600">Сохранено роликов: {reserve.snapshot?.localCompletedCount ?? snapshot?.completedCount ?? 0}</p>
-          <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input type="checkbox" checked={reserve.snapshot?.settings?.autoRefillEnabled ?? false} onChange={(event) => {
+          <p className="text-sm text-slate-600">Сохранено роликов: {snapshot?.completedCount ?? reserve.snapshot?.localCompletedCount ?? 0}</p>
+          {AUTO_REFILL_ENABLED ? <><label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input type="checkbox" checked={reserve.snapshot?.settings?.autoRefillEnabled ?? false} onChange={(event) => {
             if (event.target.checked) {
               void reserve.updateSettings({ autoRefillEnabled: true });
             } else {
@@ -343,11 +335,11 @@ export function LibraryDashboard() {
           <label className="block text-sm font-medium" htmlFor="reserve-count">Желаемое количество роликов</label>
           <select id="reserve-count" className="min-h-11 w-full rounded-xl border border-slate-300 px-3" value={reserve.snapshot?.settings?.desiredCount ?? 20} onChange={(event) => { const desiredCount = Number(event.target.value); void reserve.updateSettings({ desiredCount, lowWatermark: Math.max(1, Math.floor(desiredCount * 0.4)) }); }}>
             {[3, 10, 20, 30, 40, 50].map((count) => <option key={count} value={count}>{count}</option>)}
-          </select>
-          {reserve.snapshot?.state === "downloading" || reserve.snapshot?.state === "waiting_for_collection" || reserve.snapshot?.state === "waiting_for_normalization" || reserve.snapshot?.state === "requesting_sources" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void reserve.cancel()}>Безопасно отменить</button> : null}
-          {reserve.snapshot?.state === "paused_by_user" || reserve.snapshot?.state === "cancelled" || reserve.snapshot?.state === "safe_error" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void reserve.start()}>Возобновить</button> : null}
-          {isStage8FixtureBuild && reserve.snapshot?.state !== "quota_reached" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium" type="button" onClick={() => { setStage8FixtureQuotaReached(true); void reserve.start(); }}>Проверить нехватку места</button> : null}
-          {isStage8FixtureBuild && reserve.snapshot?.state === "quota_reached" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium" type="button" onClick={() => { setStage8FixtureQuotaReached(false); void reserve.start(); }}>Вернуть место</button> : null}
+          </select></> : null}
+          {reserve.snapshot?.state === "downloading" || reserve.snapshot?.state === "waiting_for_collection" || reserve.snapshot?.state === "waiting_for_normalization" || reserve.snapshot?.state === "requesting_sources" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void reserve.cancel()}>Отменить загрузку</button> : null}
+          {AUTO_REFILL_ENABLED && (reserve.snapshot?.state === "paused_by_user" || reserve.snapshot?.state === "cancelled" || reserve.snapshot?.state === "safe_error") ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 font-medium" type="button" onClick={() => void reserve.start()}>Возобновить</button> : null}
+          {AUTO_REFILL_ENABLED && isStage8FixtureBuild && reserve.snapshot?.state !== "quota_reached" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium" type="button" onClick={() => { setStage8FixtureQuotaReached(true); void reserve.start(); }}>Проверить нехватку места</button> : null}
+          {AUTO_REFILL_ENABLED && isStage8FixtureBuild && reserve.snapshot?.state === "quota_reached" ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium" type="button" onClick={() => { setStage8FixtureQuotaReached(false); void reserve.start(); }}>Вернуть место</button> : null}
         </section>
       <AppBottomNavigation activeRoute="home" />
     </main>

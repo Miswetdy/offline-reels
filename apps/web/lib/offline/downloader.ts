@@ -186,6 +186,12 @@ export async function downloadVideoForOffline(
   const videoId = normalizeVideoId(video.id);
   const existing = await dependencies.getOfflineVideo(videoId);
 
+  // A view tombstone is durable even if a previous cache write or fetch
+  // finishes late. It is never eligible to re-enter the local library.
+  if (existing?.viewedAt || existing?.deletionState === "deleted") {
+    throw new OfflineStorageError("download_aborted");
+  }
+
   if (existing?.status === "completed") {
     const validation = await dependencies.validateCachedVideo(videoId, existing);
     if (validation.valid) return existing;
@@ -263,6 +269,11 @@ export async function downloadVideoForOffline(
     });
     if (!validation.valid) throw new OfflineStorageError("cache_validation_failed");
 
+    const beforeCommit = await dependencies.getOfflineVideo(videoId);
+    if (beforeCommit?.viewedAt || beforeCommit?.deletionState === "deleted") {
+      await dependencies.deleteCachedVideo(videoId).catch(() => undefined);
+      throw new OfflineStorageError("download_aborted");
+    }
     const completed = await dependencies.updateOfflineVideo(videoId, {
       status: "completed",
       downloadedBytes: actualByteSize,
@@ -277,6 +288,12 @@ export async function downloadVideoForOffline(
   } catch (error) {
     const normalized = normalizeDownloadError(error, signal);
     await dependencies.deleteCachedVideo(videoId).catch(() => undefined);
+    const current = await dependencies.getOfflineVideo(videoId);
+    if (current?.viewedAt || current?.deletionState === "deleted") {
+      // A concurrent Stage 9 tombstone wins over a stale downloader. Never
+      // turn it into a retryable failed record.
+      throw normalized;
+    }
     try {
       await markFailed(videoId, normalized, dependencies);
     } catch (metadataError) {

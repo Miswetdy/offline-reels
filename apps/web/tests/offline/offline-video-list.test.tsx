@@ -7,11 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   reconcile: vi.fn(),
   listCompleted: vi.fn(),
+  lifecycle: { reconcile: vi.fn(), subscribe: vi.fn(() => () => undefined), setActiveVideoId: vi.fn(), recordViewed: vi.fn() },
+  reserve: { snapshot: null as { state: string } | null },
 }));
 
 vi.mock("../../lib/offline/reconciliation", () => ({ reconcileOfflineLibrary: mocks.reconcile }));
 vi.mock("../../lib/offline/repository", () => ({ listCompletedOfflineVideos: mocks.listCompleted }));
 vi.mock("../../lib/offline/media-cache", () => ({ getMediaCacheKey: (videoId: string) => `/offline-media/${videoId}` }));
+vi.mock("../../lib/offline/view-lifecycle", () => ({ getViewedReelLifecycle: () => mocks.lifecycle }));
 
 import { OfflineVideoList } from "../../components/offline-video-list";
 import { VIDEO_ID_ONE } from "./test-helpers";
@@ -45,6 +48,7 @@ class MockIntersectionObserver {
 beforeEach(() => {
   mocks.reconcile.mockResolvedValue({ errors: [], storageUnavailable: false });
   mocks.listCompleted.mockResolvedValue([record]);
+  mocks.reserve.snapshot = null;
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
@@ -80,9 +84,11 @@ describe("OfflineVideoList", () => {
 
   it("shows the clean empty state with a canonical home link", async () => {
     mocks.listCompleted.mockResolvedValueOnce([]);
+    mocks.reserve.snapshot = { state: "waiting_for_normalization" };
     render(<OfflineVideoList />);
 
     expect(await screen.findByText("Пока нет скачанных Reels")).toBeInTheDocument();
+    expect(screen.getByLabelText("Локальный запас")).toHaveTextContent("Запас: 0");
     expect(screen.getByRole("link", { name: "Перейти на главную" })).toHaveAttribute("href", "/");
   });
 
@@ -96,5 +102,38 @@ describe("OfflineVideoList", () => {
     await act(async () => navigator.serviceWorker.dispatchEvent(new Event("controllerchange")));
     await waitFor(() => expect(screen.getByLabelText("Technical title")).toBeInTheDocument());
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows the current available reserve without automatic-refill status", async () => {
+    mocks.reserve.snapshot = { state: "downloading" };
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByLabelText("Локальный запас")).toHaveTextContent("Запас: 1");
+    expect(screen.queryByText(VIDEO_ID_ONE)).not.toBeInTheDocument();
+  });
+
+  it("keeps deletion feedback human-readable while a viewed Reel is still local", async () => {
+    mocks.listCompleted.mockResolvedValueOnce([{
+      ...record,
+      viewedAt: "2026-08-13T10:00:00.000Z",
+      deleteAfter: "2026-08-13T11:00:00.000Z",
+      deletionState: "deleting",
+    }]);
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByText("Освобождаем место")).toBeInTheDocument();
+    expect(screen.getByLabelText("Локальный запас")).toHaveTextContent("Запас: 0");
+  });
+
+  it("shows a safe retry message when local Cache deletion fails", async () => {
+    mocks.listCompleted.mockResolvedValueOnce([{
+      ...record,
+      viewedAt: "2026-08-13T10:00:00.000Z",
+      deleteAfter: "2026-08-13T11:00:00.000Z",
+      deletionState: "failed",
+    }]);
+    render(<OfflineVideoList />);
+
+    expect(await screen.findByText("Не удалось освободить место — повторим позже")).toBeInTheDocument();
   });
 });

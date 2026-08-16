@@ -6,6 +6,10 @@ import type { OfflineVideoPatch, OfflineVideoRecord, OfflineVideoStatus } from "
 
 type OfflineVideoUpdater = OfflineVideoPatch | ((record: OfflineVideoRecord) => OfflineVideoPatch);
 
+export type ViewedOfflineVideo = Pick<OfflineVideoRecord, "id" | "viewedAt" | "deleteAfter" | "viewSyncState"> & {
+  newlyRecorded: boolean;
+};
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -66,6 +70,36 @@ export async function updateOfflineVideo(
   });
 }
 
+/**
+ * The first view and its sync outbox are committed in one IndexedDB
+ * transaction. Network work must only begin after this promise resolves.
+ */
+export async function markOfflineVideoViewed(videoId: string, viewedAt: string): Promise<ViewedOfflineVideo | undefined> {
+  const id = normalizeVideoId(videoId);
+  if (!Number.isFinite(Date.parse(viewedAt))) throw new OfflineStorageError("unknown_error");
+  return withOfflineDatabase(async (database) => {
+    const transaction = database.transaction(OFFLINE_VIDEO_STORE, "readwrite");
+    const existing = await transaction.store.get(id);
+    if (!existing) { await transaction.done; return undefined; }
+    if (existing.viewedAt) { await transaction.done; return { ...existing, newlyRecorded: false }; }
+    const deleteAfter = new Date(Date.parse(viewedAt) + 60 * 60 * 1000).toISOString();
+    const updated: OfflineVideoRecord = {
+      ...existing,
+      viewedAt,
+      deleteAfter,
+      deletionState: "pending",
+      viewSyncState: "pending",
+      viewSyncAttempts: 0,
+      lastViewReasonCode: null,
+      updatedAt: viewedAt,
+    };
+    assertOfflineVideoRecord(updated);
+    await transaction.store.put(updated);
+    await transaction.done;
+    return { ...updated, newlyRecorded: true };
+  });
+}
+
 export async function deleteOfflineVideo(videoId: string): Promise<void> {
   const id = normalizeVideoId(videoId);
   await withOfflineDatabase(async (database) => {
@@ -73,10 +107,25 @@ export async function deleteOfflineVideo(videoId: string): Promise<void> {
   });
 }
 
-export async function clearOfflineVideos(): Promise<void> {
+export async function clearOfflineVideos(preserveViewed = false): Promise<void> {
   await withOfflineDatabase(async (database) => {
-    await database.clear(OFFLINE_VIDEO_STORE);
+    if (!preserveViewed) {
+      await database.clear(OFFLINE_VIDEO_STORE);
+      return;
+    }
+    const transaction = database.transaction(OFFLINE_VIDEO_STORE, "readwrite");
+    let cursor = await transaction.store.openCursor();
+    while (cursor) {
+      if (!cursor.value.viewedAt) await cursor.delete();
+      cursor = await cursor.continue();
+    }
+    await transaction.done;
   });
+}
+
+/** Clear user-downloadable media metadata while retaining Stage 9 tombstones/outbox. */
+export async function clearUnviewedOfflineVideos(): Promise<void> {
+  await clearOfflineVideos(true);
 }
 
 export async function markInterruptedDownloadsFailed(): Promise<OfflineVideoRecord[]> {

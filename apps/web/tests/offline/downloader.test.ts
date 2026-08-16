@@ -168,6 +168,28 @@ describe("single-stream offline downloader", () => {
     expect(harness.dependencies.fetchImplementation).toHaveBeenCalledTimes(1);
   });
 
+  it("cannot resurrect a Reel tombstoned while an older download finishes", async () => {
+    const harness = createHarness();
+    harness.dependencies.validateCachedVideo = vi.fn(async (id, expected) => {
+      const current = harness.records.get(id)!;
+      harness.records.set(id, {
+        ...current,
+        viewedAt: "2026-08-13T10:00:00.000Z",
+        deleteAfter: "2026-08-13T11:00:00.000Z",
+        deletionState: "pending",
+        viewSyncState: "pending",
+        viewSyncAttempts: 0,
+      });
+      return { valid: true as const, byteSize: expected.byteSize };
+    });
+    await expect(downloadVideoForOffline({ video, signal: new AbortController().signal }, harness.dependencies)).rejects.toMatchObject({
+      code: "download_aborted",
+    });
+    expect(harness.records.get(VIDEO_ID_ONE)).toMatchObject({ viewedAt: "2026-08-13T10:00:00.000Z", deletionState: "pending" });
+    expect(harness.records.get(VIDEO_ID_ONE)?.status).not.toBe("completed");
+    expect(harness.cache.has(VIDEO_ID_ONE)).toBe(false);
+  });
+
   it.each([
     [new Response("error", { status: 500 }), "http_error"],
     [new Response("missing", { status: 404 }), "http_error"],

@@ -13,6 +13,7 @@ import {
   listCompletedOfflineVideos,
   listOfflineVideos,
   listOfflineVideosByStatus,
+  markOfflineVideoViewed,
   markInterruptedDownloadsFailed,
   putOfflineVideo,
   updateOfflineVideo,
@@ -77,6 +78,20 @@ describe("offline IndexedDB repository", () => {
 
     await deleteOfflineVideo(VIDEO_ID_ONE);
     expect(await getOfflineVideo(VIDEO_ID_ONE)).toBeUndefined();
+  });
+
+  it("atomically preserves the first viewed tombstone and durable outbox across reloads", async () => {
+    await putOfflineVideo(record(VIDEO_ID_ONE, {
+      status: "completed", downloadedBytes: 100, downloadedAt: "2026-07-22T13:00:00.000Z",
+      cacheKey: getOfflineMediaPath(VIDEO_ID_ONE),
+    }));
+    const first = await markOfflineVideoViewed(VIDEO_ID_ONE, "2026-08-13T10:00:00.000Z");
+    const duplicate = await markOfflineVideoViewed(VIDEO_ID_ONE, "2026-08-13T11:00:00.000Z");
+    expect(first).toMatchObject({ newlyRecorded: true, viewSyncState: "pending", deleteAfter: "2026-08-13T11:00:00.000Z" });
+    expect(duplicate).toMatchObject({ newlyRecorded: false, viewedAt: "2026-08-13T10:00:00.000Z" });
+    expect(await getOfflineVideo(VIDEO_ID_ONE)).toMatchObject({
+      viewedAt: "2026-08-13T10:00:00.000Z", deletionState: "pending", viewSyncState: "pending",
+    });
   });
 
   it("lists by status, marks interrupted downloads failed, and clears records", async () => {

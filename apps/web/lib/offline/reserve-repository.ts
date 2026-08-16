@@ -1,7 +1,10 @@
 import { LOCAL_RESERVE_ID, type LocalReserveRecord, type ReserveCycleIntent } from "./types";
 import { LOCAL_RESERVE_STORE, withOfflineDatabase } from "./db";
+import { AUTO_REFILL_ENABLED } from "./feature-flags";
 
-export const DEFAULT_DESIRED_RESERVE = 20;
+// A disposable Stage 9 fixture may reduce only its compile-time manual test
+// target. Production has no runtime setting for automatic reserve behaviour.
+export const DEFAULT_DESIRED_RESERVE = process.env.OFFLINE_REELS_BUILD_STAGE9_FIXTURE === "true" ? 3 : 20;
 export const DEFAULT_LOW_WATERMARK = 8;
 export const DEFAULT_MAX_STORAGE_PERCENT = 80;
 
@@ -40,7 +43,7 @@ function assertRecord(record: LocalReserveRecord): void {
 export async function getLocalReserve(): Promise<LocalReserveRecord> {
   return withOfflineDatabase(async (database) => {
     const existing = await database.get(LOCAL_RESERVE_STORE, LOCAL_RESERVE_ID);
-    if (existing) return existing;
+    if (existing) return AUTO_REFILL_ENABLED ? existing : { ...existing, autoRefillEnabled: false, pendingCycle: "none" };
     const created = defaults();
     await database.put(LOCAL_RESERVE_STORE, created);
     return created;
@@ -52,7 +55,13 @@ export async function updateLocalReserve(
 ): Promise<LocalReserveRecord> {
   return withOfflineDatabase(async (database) => {
     const current = await database.get(LOCAL_RESERVE_STORE, LOCAL_RESERVE_ID) ?? defaults();
-    const next: LocalReserveRecord = { ...current, ...patch, updatedAt: now() };
+    const next: LocalReserveRecord = {
+      ...current,
+      ...patch,
+      autoRefillEnabled: AUTO_REFILL_ENABLED ? Boolean(patch.autoRefillEnabled ?? current.autoRefillEnabled) : false,
+      pendingCycle: AUTO_REFILL_ENABLED ? (patch.pendingCycle ?? current.pendingCycle) : "none",
+      updatedAt: now(),
+    };
     assertRecord(next);
     await database.put(LOCAL_RESERVE_STORE, next);
     return next;

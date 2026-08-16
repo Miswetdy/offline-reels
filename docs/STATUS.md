@@ -1,5 +1,31 @@
 # Status
 
+## Stage 9 viewed lifecycle
+
+Stage 9 uses swipe-only viewed semantics: only a confirmed user touch/pointer
+swipe transition from full-screen A to different full-screen B marks A viewed.
+Playback progress, autoplay, duration, ended, visibility, reloads and internal
+feed changes are deliberately excluded. The first local IndexedDB event fixes
+`viewedAt` and `deleteAfter` (+1 hour), tombstones the Reel and persists its
+outbox before sync. Expiry deletes only the local Cache Storage object and is
+deferred only while that same Reel is active; canonical MP4/normalization data
+is never deleted. Migration `0009`, account-scoped backend idempotency and
+catalog exclusion are retained.
+
+Stage 9 verification now additionally covers a disposable real-PostgreSQL
+control-plane race suite (concurrent view sync, first-view preservation and
+account isolation), local ffmpeg/ffprobe normalizer integration,
+Serwist/no-store policies, FastAPI startup imports, and secret/artifact audits.
+No Stage 9 disposable resource remains. The manual iPhone sequence is still
+pending; Funnel and production PWA were not started for Stage 9.
+
+The `/offline` Reels surface presents only local reserve and real deletion
+feedback; it exposes no viewed marker, timestamps, UUIDs or reason codes.
+Stage 8 infrastructure and manual sequential download/cancellation are kept,
+but automatic refill is disabled for the MVP through the production-false
+`AUTO_REFILL_ENABLED` compile-time gate. No launch/foreground/online/deletion/
+quota path runs automatic reserve work while the gate is off.
+
 ## Stage 8 local reserve management
 
 The PWA now has a foreground reserve controller that reconciles local media,

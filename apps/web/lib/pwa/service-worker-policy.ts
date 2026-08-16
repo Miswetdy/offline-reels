@@ -22,6 +22,8 @@ export function isNeverCacheManagementPath(pathname: string): boolean {
     || pathname.startsWith("/api/instagram/collection-runs")
     || pathname === "/api/instagram/normalization-status"
     || pathname === "/api/instagram/collection-settings"
+    || pathname.startsWith("/api/instagram/views")
+    || pathname === "/api/instagram/catalog"
     || pathname.startsWith("/connect/");
 }
 

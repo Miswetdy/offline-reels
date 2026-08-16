@@ -1,10 +1,11 @@
-import { cancelCollectionRun, getCollectionRun, createCollectionRun, getInstagramStatus, getNormalizationStatus, ManagementApiError, reportReserve } from "../api/management";
-import { getEntireVideoCatalog, type Video } from "../api/videos";
+import { cancelCollectionRun, getCollectionRun, createCollectionRun, getInstagramStatus, getNormalizationStatus, ManagementApiError, reportReserve, getAccountCatalog } from "../api/management";
+import type { Video } from "../api/videos";
 import { getStorageEstimate } from "./storage";
 import { getOfflineDownloadQueue, type OfflineDownloadQueue } from "./download-queue";
 import { reconcileOfflineLibrary } from "./reconciliation";
 import { getLocalReserve, setReserveCycleIntent, updateLocalReserve } from "./reserve-repository";
 import type { LocalReserveRecord } from "./types";
+import { AUTO_REFILL_ENABLED } from "./feature-flags";
 
 export type ReserveState =
   | "idle" | "reconciling" | "evaluating" | "requesting_sources" | "waiting_for_collection"
@@ -18,6 +19,10 @@ export type ReserveSnapshot = {
   storagePercent: number | null;
 };
 
+// Retained Stage 8 request variant. The production-false feature gate rejects
+// it before a cycle starts; keeping the type isolates the eventual re-enable.
+type ReserveRequestIntent = "auto" | "manual" | "viewed_deletion";
+
 type Dependencies = {
   queue: OfflineDownloadQueue;
   reconcile: typeof reconcileOfflineLibrary;
@@ -25,7 +30,7 @@ type Dependencies = {
   setIntent: typeof setReserveCycleIntent;
   updateSettings: typeof updateLocalReserve;
   estimate: typeof getStorageEstimate;
-  getCatalog: typeof getEntireVideoCatalog;
+  getCatalog: (options?: { signal?: AbortSignal }) => Promise<Video[]>;
   getStatus: typeof getInstagramStatus;
   startCollection: typeof createCollectionRun;
   cancelCollection: typeof cancelCollectionRun;
@@ -44,7 +49,7 @@ const DEFAULT: Dependencies = {
   setIntent: setReserveCycleIntent,
   updateSettings: updateLocalReserve,
   estimate: getStorageEstimate,
-  getCatalog: getEntireVideoCatalog,
+  getCatalog: async (options?: { signal?: AbortSignal }) => (await getAccountCatalog(options?.signal)).items,
   getStatus: getInstagramStatus,
   startCollection: createCollectionRun,
   cancelCollection: cancelCollectionRun,
@@ -78,7 +83,7 @@ export class LocalReserveController {
   private readonly listeners = new Set<() => void>();
   private cycle: Promise<void> | null = null;
   private aborter: AbortController | null = null;
-  private requestedWhileActive = false;
+  private requestedWhileActive: ReserveRequestIntent | null = null;
   // Only a run created by this reserve cycle may be cancelled here. A queued
   // run from another management action remains owned by that action.
   private ownedCollectionRunId: string | null = null;
@@ -91,14 +96,23 @@ export class LocalReserveController {
   async updateSettings(patch: Parameters<typeof updateLocalReserve>[0]): Promise<void> {
     const settings = await this.dependencies.updateSettings(patch);
     this.set(this.snapshot.state, { settings });
-    if (settings.autoRefillEnabled) void this.request("auto");
+    if (AUTO_REFILL_ENABLED && settings.autoRefillEnabled) void this.request("auto");
   }
 
-  request(intent: "auto" | "manual" = "auto"): Promise<void> {
-    if (this.cycle) { this.requestedWhileActive = true; return this.cycle; }
+  request(intent: ReserveRequestIntent = "auto"): Promise<void> {
+    if (intent !== "manual" && !AUTO_REFILL_ENABLED) {
+      this.set("idle", { settings: this.snapshot.settings === null ? null : { ...this.snapshot.settings, autoRefillEnabled: false } });
+      return Promise.resolve();
+    }
+    if (this.cycle) {
+      if (this.requestedWhileActive === null) this.requestedWhileActive = intent;
+      return this.cycle;
+    }
     this.cycle = this.run(intent).finally(() => {
       this.cycle = null;
-      if (this.requestedWhileActive) { this.requestedWhileActive = false; void this.request("auto"); }
+      const requested = this.requestedWhileActive;
+      this.requestedWhileActive = null;
+      if (requested) void this.request(requested);
     });
     return this.cycle;
   }
@@ -119,14 +133,14 @@ export class LocalReserveController {
     this.set("cancelled");
   }
 
-  private async run(intent: "auto" | "manual"): Promise<void> {
+  private async run(intent: ReserveRequestIntent): Promise<void> {
     if (!this.dependencies.isOnline() || !this.dependencies.isActive()) { this.set("offline"); return; }
     const controller = new AbortController(); this.aborter = controller;
     const deadline = Date.now() + MAX_CYCLE_MS;
     try {
       let settings = await this.dependencies.getSettings();
-      if (intent === "auto" && !settings.autoRefillEnabled) { this.set("idle", { settings }); return; }
-      await this.dependencies.setIntent(intent);
+      if (intent !== "manual" && (!AUTO_REFILL_ENABLED || !settings.autoRefillEnabled)) { this.set("idle", { settings }); return; }
+      await this.dependencies.setIntent(intent === "manual" ? "manual" : "auto");
       // Queue snapshots are in-memory projections.  Restore its existing
       // IndexedDB-backed projection before deciding whether the local reserve
       // is below its target; otherwise a reload can see zero and create an
@@ -134,10 +148,14 @@ export class LocalReserveController {
       await (this.dependencies.queue as Partial<OfflineDownloadQueue>).initialize?.();
       this.set("reconciling", { settings });
       await this.dependencies.reconcile();
+      // Stage 9 can update a viewed/deleted record outside the queue. Refresh
+      // its projection before computing the reserve deficit, otherwise a
+      // pre-deletion completed record can suppress the one coalesced refill.
+      await (this.dependencies.queue as Partial<OfflineDownloadQueue>).refreshFromStorage?.();
       const queueSnapshot = this.dependencies.queue.getSnapshot();
       const estimate = await this.dependencies.estimate();
       const percent = usableStoragePercent(estimate.usage, estimate.quota);
-      const completed = queueSnapshot.records.filter((item) => item.status === "completed").length;
+      const completed = queueSnapshot.records.filter((item) => item.status === "completed" && !item.viewedAt).length;
       settings = await this.dependencies.updateSettings({ lastSuccessfulReconciliationAt: new Date().toISOString() });
       this.set("evaluating", { settings, localCompletedCount: completed, storagePercent: percent });
       if (percent !== null && percent >= settings.maxStoragePercent) { this.set("quota_reached"); return; }
@@ -171,7 +189,7 @@ export class LocalReserveController {
       this.set("downloading");
       await this.dependencies.queue.enqueueReserveAndStart(candidates, Math.max(0, settings.desiredCount - completed));
       const after = this.dependencies.queue.getSnapshot();
-      const newCompleted = after.records.filter((item) => item.status === "completed").length;
+      const newCompleted = after.records.filter((item) => item.status === "completed" && !item.viewedAt).length;
       if (!this.dependencies.isOnline()) this.set("offline", { localCompletedCount: newCompleted });
       else if (after.currentErrorCode === "storage_quota_exceeded") this.set("quota_reached", { localCompletedCount: newCompleted });
       else if (newCompleted >= settings.desiredCount || candidates.length === 0) this.set("satisfied", { localCompletedCount: newCompleted });
@@ -186,7 +204,7 @@ export class LocalReserveController {
   }
 
   private async missing(catalog: Video[]): Promise<Video[]> {
-    const completed = new Set(this.dependencies.queue.getSnapshot().records.filter((item) => item.status === "completed").map((item) => item.id));
+    const completed = new Set(this.dependencies.queue.getSnapshot().records.filter((item) => item.status === "completed" || Boolean(item.viewedAt) || item.deletionState === "deleted").map((item) => item.id));
     const unique = new Map(catalog.map((video) => [video.id, video]));
     return [...unique.values()].filter((video) => !completed.has(video.id));
   }

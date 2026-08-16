@@ -1,4 +1,4 @@
-export const OFFLINE_VIDEO_STATUSES = ["queued", "downloading", "completed", "failed"] as const;
+export const OFFLINE_VIDEO_STATUSES = ["queued", "downloading", "completed", "failed", "deleted"] as const;
 
 export type OfflineVideoStatus = (typeof OFFLINE_VIDEO_STATUSES)[number];
 
@@ -36,6 +36,13 @@ export type OfflineVideoRecord = {
   lastErrorMessage: string | null;
   failedAt: string | null;
   lastWatchedAt: string | null;
+  /** Stage 9 durable tombstone fields. Undefined is accepted for a v1/v2 row. */
+  viewedAt?: string | null;
+  deleteAfter?: string | null;
+  deletionState?: "none" | "pending" | "deleting" | "deleted" | "failed";
+  viewSyncState?: "none" | "pending" | "synced";
+  viewSyncAttempts?: number;
+  lastViewReasonCode?: "cache_delete_failed" | null;
   updatedAt: string;
 };
 

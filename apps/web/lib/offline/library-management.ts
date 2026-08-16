@@ -18,9 +18,11 @@ export async function deleteOfflineLibraryVideo(videoId: string): Promise<void> 
 }
 
 export async function clearOfflineLibrary(): Promise<void> {
+  // Cache media is disposable; the metadata deletion uses its preserve flag so
+  // a viewed ID and its durable sync outbox cannot be downloaded again.
   await clearMediaCache();
   try {
-    await clearOfflineVideos();
+    await clearOfflineVideos(true);
   } catch (error) {
     await recoverAfterMetadataFailure(error);
   }

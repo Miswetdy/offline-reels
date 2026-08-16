@@ -46,6 +46,21 @@ export function assertOfflineVideoRecord(record: OfflineVideoRecord): void {
   assertNullableIsoDate(record.downloadedAt, "downloadedAt");
   assertNullableIsoDate(record.failedAt, "failedAt");
   assertNullableIsoDate(record.lastWatchedAt, "lastWatchedAt");
+  assertNullableIsoDate(record.viewedAt ?? null, "viewedAt");
+  assertNullableIsoDate(record.deleteAfter ?? null, "deleteAfter");
+
+  if (record.viewedAt && (!record.deleteAfter || Date.parse(record.deleteAfter) < Date.parse(record.viewedAt))) {
+    throw new OfflineStorageError("unknown_error", new Error("Viewed video must have an ordered delete deadline."));
+  }
+  if (record.deletionState && !["none", "pending", "deleting", "deleted", "failed"].includes(record.deletionState)) {
+    throw new OfflineStorageError("unknown_error", new Error("deletionState is invalid."));
+  }
+  if (record.viewSyncState && !["none", "pending", "synced"].includes(record.viewSyncState)) {
+    throw new OfflineStorageError("unknown_error", new Error("viewSyncState is invalid."));
+  }
+  if (record.viewSyncAttempts !== undefined && (!Number.isInteger(record.viewSyncAttempts) || record.viewSyncAttempts < 0 || record.viewSyncAttempts > 8)) {
+    throw new OfflineStorageError("unknown_error", new Error("viewSyncAttempts is invalid."));
+  }
 
   if (record.cacheKey !== null && record.cacheKey !== getOfflineMediaPath(record.id)) {
     throw new OfflineStorageError("invalid_video_id");

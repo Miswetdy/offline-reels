@@ -155,6 +155,17 @@ export class OfflineDownloadQueue {
     return this.initializationPromise;
   }
 
+  /**
+   * Re-read durable library metadata after an external lifecycle operation
+   * (for example Stage 9's delayed Cache deletion). This intentionally does
+   * not mutate queued work or Cache Storage; it only refreshes the in-memory
+   * projection used by the reserve controller and UI.
+   */
+  async refreshFromStorage(): Promise<void> {
+    await this.initialize();
+    await this.refreshRecords();
+  }
+
   async enqueue(video: Video): Promise<boolean> {
     return this.runControlled(async () => this.enqueueUnlocked(video));
   }
@@ -191,7 +202,7 @@ export class OfflineDownloadQueue {
       const candidates: Video[] = [];
       for (const video of uniqueVideos.values()) {
         const existing = await this.dependencies.getOfflineVideo(video.id);
-        if (existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") continue;
+        if (existing?.viewedAt || existing?.deletionState === "deleted" || existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") continue;
         if (existing?.status === "failed") {
           if (await this.retryUnlocked(video.id)) candidates.push(video);
           continue;
@@ -224,7 +235,7 @@ export class OfflineDownloadQueue {
       for (const video of uniqueVideos.values()) {
         if (candidates.length >= limit) break;
         const existing = await this.dependencies.getOfflineVideo(video.id);
-        if (existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") continue;
+        if (existing?.viewedAt || existing?.deletionState === "deleted" || existing?.status === "completed" || existing?.status === "queued" || existing?.status === "downloading") continue;
         if (existing?.status === "failed") {
           if (await this.retryUnlocked(video.id)) candidates.push(video);
           continue;
