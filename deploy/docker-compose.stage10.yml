@@ -1,0 +1,285 @@
+name: offline-reels-stage10
+
+# Stage 10 reuses the production application/data topology. Its dedicated
+# localhost ingress replaces the production Caddy entry point for this model;
+# the two Collector services remain opt-in one-shots.
+include:
+  - path: docker-compose.prod.yml
+
+x-collector-build: &collector_build
+  image: offline-reels-collector:${IMAGE_TAG:?IMAGE_TAG must be set}
+  build:
+    context: ../apps/api
+    dockerfile: Dockerfile
+    target: collector
+
+x-collector-security: &collector_security
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges=true
+    - seccomp=./security/chromium-seccomp.json
+    - apparmor=offline-reels-collector
+  shm_size: 1gb
+  pids_limit: 512
+  mem_limit: 2g
+  cpus: "2.0"
+  ulimits:
+    nofile:
+      soft: 8192
+      hard: 8192
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    - /collector/home:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
+  restart: "no"
+
+x-login-browser-build: &login_browser_build
+  image: offline-reels-login-browser:${IMAGE_TAG:?IMAGE_TAG must be set}
+  build:
+    context: ../apps/login-browser
+    args:
+      LOGIN_BROWSER_UID: "10001"
+
+x-login-browser-security: &login_browser_security
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges=true
+    - seccomp=./security/chromium-seccomp.json
+    - apparmor=offline-reels-collector
+  shm_size: 1gb
+  pids_limit: 512
+  mem_limit: 2g
+  cpus: "2.0"
+  ulimits:
+    nofile:
+      soft: 8192
+      hard: 8192
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    - /home/loginbrowser:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
+  restart: "no"
+
+services:
+  # Keep the included production Caddy definition intact but unreachable in
+  # Stage 10. It is never enabled by the Stage 10 operator workflow.
+  caddy:
+    profiles: [production-ingress]
+    ports: !reset []
+
+  web:
+    build:
+      args:
+        # Match the only target accepted by the bounded Stage 10 Collector.
+        NEXT_PUBLIC_STAGE7_COLLECTION_TARGET: "3"
+    expose:
+      - "3000"
+
+  api:
+    environment:
+      MANAGEMENT_ORIGIN: ${MANAGEMENT_ORIGIN:?MANAGEMENT_ORIGIN must be set}
+    expose:
+      - "8000"
+
+  stage10-ingress:
+    image: offline-reels-stage10-ingress:${IMAGE_TAG:?IMAGE_TAG must be set}
+    build:
+      context: .
+      dockerfile: Dockerfile.stage10-caddy
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges=true
+    ports:
+      - "127.0.0.1:13080:8080"
+    volumes:
+      - ./Caddyfile.stage10:/etc/caddy/Caddyfile:ro
+    tmpfs:
+      - /config:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
+      - /data:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    networks:
+      - caddy_web
+      - caddy_api
+      - caddy_login
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Opt-in, single-account login boundary. The gateway is the only public-path
+  # peer; VNC, CDP and the safe browser controller remain private networks.
+  login-browser:
+    <<: [*login_browser_build, *login_browser_security]
+    profiles: [instagram-login]
+    environment:
+      HOME: /home/loginbrowser
+      LOGIN_ACCOUNT_ID: ${COLLECTOR_ACCOUNT_ID:?COLLECTOR_ACCOUNT_ID must be set}
+      LOGIN_BROWSER_CONTROL_SECRET: ${LOGIN_BROWSER_CONTROL_SECRET:?LOGIN_BROWSER_CONTROL_SECRET must be set}
+      LOGIN_BROWSER_EXPECTED_UID: "10001"
+      LOGIN_BROWSER_EXPECTED_APPARMOR_PROFILE: offline-reels-collector
+    volumes:
+      - collector_profile_stage10:/login-profiles
+    expose:
+      - "8081"
+      - "6080"
+    networks:
+      - login_control
+      - login_egress
+
+  login-gateway:
+    image: offline-reels-api:${IMAGE_TAG:?IMAGE_TAG must be set}
+    profiles: [instagram-login]
+    command:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "uvicorn",
+        "app.instagram.login_gateway:create_login_gateway",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--no-access-log",
+      ]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges=true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment:
+      HOME: /tmp
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      LOGIN_GATEWAY_ORIGIN: ${MANAGEMENT_ORIGIN:?MANAGEMENT_ORIGIN must be set}
+      LOGIN_GATEWAY_SESSION_SECRET: ${LOGIN_GATEWAY_SESSION_SECRET:?LOGIN_GATEWAY_SESSION_SECRET must be set}
+      LOGIN_BROWSER_CONTROL_SECRET: ${LOGIN_BROWSER_CONTROL_SECRET:?LOGIN_BROWSER_CONTROL_SECRET must be set}
+      LOGIN_BROWSER_CONTROL_URL: http://login-browser:8081
+      LOGIN_BROWSER_VNC_URL: http://login-browser:6080
+    expose:
+      - "8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      login-browser:
+        condition: service_started
+    networks:
+      - app_private
+      - caddy_login
+      - login_control
+    restart: "no"
+
+  # Opt-in, one-shot destructive reset. The Python contract verifies that no
+  # active login exists and requires matching account confirmation plus an
+  # explicit true flag before it removes only that account's profile directory.
+  profile-reset:
+    image: offline-reels-api:${IMAGE_TAG:?IMAGE_TAG must be set}
+    profiles: [instagram-profile-reset]
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.scripts.stage4_profile_reset"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges=true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      LOGIN_GATEWAY_ORIGIN: ${MANAGEMENT_ORIGIN:?MANAGEMENT_ORIGIN must be set}
+      LOGIN_GATEWAY_SESSION_SECRET: ${LOGIN_GATEWAY_SESSION_SECRET:?LOGIN_GATEWAY_SESSION_SECRET must be set}
+      LOGIN_BROWSER_CONTROL_SECRET: ${LOGIN_BROWSER_CONTROL_SECRET:?LOGIN_BROWSER_CONTROL_SECRET must be set}
+      LOGIN_RESET_ACCOUNT_ID: ${COLLECTOR_ACCOUNT_ID:?COLLECTOR_ACCOUNT_ID must be set}
+      LOGIN_RESET_CONFIRM_ACCOUNT: ${COLLECTOR_ACCOUNT_ID:?COLLECTOR_ACCOUNT_ID must be set}
+      LOGIN_RESET_DELETE_PROFILE: "false"
+    volumes:
+      - collector_profile_stage10:/login-profiles
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - app_private
+    restart: "no"
+
+  collector-sandbox-smoke:
+    <<: [*collector_build, *collector_security]
+    profiles: [sandbox-smoke]
+    command: ["sandbox-smoke"]
+    environment:
+      HOME: /collector/home
+      COLLECTOR_PROFILE_ROOT: /collector/profile
+      COLLECTOR_EXPECTED_APPARMOR_PROFILE: offline-reels-collector
+    # The proof renders only in-memory HTML. It cannot reach Instagram, the
+    # staging data plane, the host, or any other container.
+    network_mode: none
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+      - /collector/home:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
+      - /collector/profile:rw,noexec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700
+      - /collector/workspace:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
+
+  collector:
+    <<: [*collector_build, *collector_security]
+    profiles: [collector]
+    command:
+      [
+        "live",
+        "--target",
+        "3",
+        "--account-id",
+        "${COLLECTOR_ACCOUNT_ID:?COLLECTOR_ACCOUNT_ID must be set}",
+        "--confirmed",
+      ]
+    environment:
+      HOME: /collector/home
+      APP_ENV: ${APP_ENV:?APP_ENV must be set}
+      LOG_LEVEL: ${LOG_LEVEL:?LOG_LEVEL must be set}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?FRONTEND_ORIGIN must be set}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:?MINIO_ENDPOINT must be set}
+      MINIO_BUCKET: ${MINIO_BUCKET:?MINIO_BUCKET must be set}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set}
+      VIDEO_CURSOR_SECRET: ${VIDEO_CURSOR_SECRET:?VIDEO_CURSOR_SECRET must be set}
+      COLLECTOR_ENABLED: "true"
+      COLLECTOR_ACCOUNT_ID: ${COLLECTOR_ACCOUNT_ID:?COLLECTOR_ACCOUNT_ID must be set}
+      COLLECTOR_PROFILE_ROOT: /collector/profile
+      COLLECTOR_WORKSPACE_ROOT: /collector/workspace
+      COLLECTOR_HEADLESS: "false"
+      COLLECTOR_MAXIMUM_TARGET_COUNT: "3"
+      COLLECTOR_MAXIMUM_RUN_BYTES: "314572800"
+      COLLECTOR_EXPECTED_APPARMOR_PROFILE: offline-reels-collector
+    volumes:
+      - collector_profile_stage10:/collector/profile
+      - collector_workspace_stage10:/collector/workspace
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - app_private
+      - collector_egress
+
+networks:
+  collector_egress: {}
+  caddy_login: {}
+  login_control:
+    internal: true
+  login_egress: {}
+
+volumes:
+  collector_profile_stage10:
+  collector_workspace_stage10:

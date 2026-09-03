@@ -1,5 +1,17 @@
 # Production-like VPS foundation
 
+Stage 10 adds a separate hardened Ubuntu staging composition and a networkless
+Chromium acceptance gate. Use the dedicated
+[`Stage 10 Linux staging runbook`](../docs/operations/stage-10-linux-staging.md)
+before any server deployment; do not infer Linux sandbox readiness from the
+older Windows Docker Desktop workflows below.
+
+Its opt-in `instagram-login` profile reuses the protected mobile login contract
+without the older Stage 4 `seccomp=unconfined` exception. The hardened browser
+shares only the persistent account profile with Collector, while the gateway
+owns the same-origin `/connect/*` and `/remote/*` boundary. Neither service
+publishes a host port and neither starts with the base application.
+
 This directory is deliberately separate from the local-development
 [`compose.yaml`](../compose.yaml). Do not use the production Compose file for
 desktop development, and do not publish the local Compose data-service ports

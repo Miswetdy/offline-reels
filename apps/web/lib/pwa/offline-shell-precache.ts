@@ -4,11 +4,10 @@ import { join, relative } from "node:path";
 
 export const HOME_SHELL_URL = "/";
 export const OFFLINE_SHELL_URL = "/offline";
-export const VIDEOS_SHELL_URL = "/videos";
 export const WEB_MANIFEST_URL = "/manifest.webmanifest";
 
 export type ApplicationShellPrecacheEntry = {
-  url: typeof HOME_SHELL_URL | typeof OFFLINE_SHELL_URL | typeof VIDEOS_SHELL_URL | typeof WEB_MANIFEST_URL;
+  url: typeof HOME_SHELL_URL | typeof OFFLINE_SHELL_URL | typeof WEB_MANIFEST_URL;
   revision: string;
 };
 
@@ -48,7 +47,6 @@ export function createApplicationShellPrecacheEntriesFromBuildInputs(
   return [
     createApplicationShellPrecacheEntry(HOME_SHELL_URL, revisionInput),
     createApplicationShellPrecacheEntry(OFFLINE_SHELL_URL, revisionInput),
-    createApplicationShellPrecacheEntry(VIDEOS_SHELL_URL, revisionInput),
     createApplicationShellPrecacheEntry(WEB_MANIFEST_URL, revisionInput),
   ];
 }

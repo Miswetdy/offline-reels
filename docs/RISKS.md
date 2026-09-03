@@ -35,6 +35,16 @@ This document tracks known technical risks and mitigation plans.
 
 # Risk 17: Stage 4 Windows runtime is not production-hardened
 
+Stage 10 now prepares, but has not yet executed, the Linux mitigation. The
+Collector launch explicitly enables Chromium sandboxing; its Ubuntu staging
+Compose uses a pinned default-deny seccomp profile with only the Playwright
+user-namespace syscall delta and an enforcing Collector-only AppArmor profile
+with `userns,`. A standalone networkless smoke will require `/proc` evidence
+for the Chromium user namespace and its own seccomp-BPF layer before any
+application deployment. Risk 17 remains open until that proof passes on the
+actual Ubuntu 24.04 staging kernel; repository/static checks are not runtime
+evidence.
+
 The Stage 4 browser UX and account connection were accepted on Windows Docker
 Desktop with iPhone Safari. That functional evidence does not prove a hardened
 Linux deployment. The current Windows-compatible Compose configuration gives
@@ -56,9 +66,10 @@ was not and must not be copied to Linux.
   only; never add `--no-sandbox`, a root browser, privileged container,
   `SYS_ADMIN`, host VNC/CDP/X11 ports or automated
   credential/CAPTCHA handling.
-- On a real Linux server, identify the actual sandbox constraint and complete
-  restricted-seccomp Chromium/noVNC/profile checks before enabling public
-  login. Do not infer success from the VirtualBox experiment.
+- On Linux staging, load only the enforcing `offline-reels-collector`
+  AppArmor profile, keep the Ubuntu-wide userns restriction enabled, and run
+  the Stage 10 read-only preflight plus networkless synthetic smoke before
+  enabling public login or live collection.
 - Treat remote keyboard/pointer transport as a credential-input trust boundary:
   it must not log, inspect or retain events. The business API must continue to
   receive neither credentials nor cookies.
@@ -71,9 +82,9 @@ Open. Stage 4 real remote login is functionally accepted on Windows Docker
 Desktop but is not production-hardened. The full retained-profile → Collector
 → normalizer → PWA chain is not accepted there: isolated non-root Chromium,
 including direct private CDP, closed before browser readiness under Docker
-Desktop. Repeat it on Linux staging or a real server; no sandbox-bypass
-workaround was applied. Deployment hardening remains a prerequisite for a real
-server.
+Desktop. Stage 10 repository controls are ready, but their synthetic runtime
+proof has not run on the Ubuntu staging host. No sandbox-bypass workaround was
+applied; the server remains gated on that proof.
 
 ---
 
@@ -382,8 +393,8 @@ TASK-005 Block 4.1 precaches the production application shell so a previously vi
 ## Mitigation
 
 - One Turbopack-built Serwist worker is served at `/serwist/sw.js` with scope `/` and automatic registration by `SerwistProvider`.
-- The Turbopack glob manifest contains static assets but not literal App Router page URLs. `/`, `/offline`, legacy `/videos`, and `/manifest.webmanifest` are therefore explicitly precached with deterministic SHA-256 revisions derived from application-shell build inputs.
-- Navigation fallback is restricted to same-origin `GET /`, `/offline`, and legacy `/videos`; the Backend API, video streams and media are not runtime-cached.
+- The Turbopack glob manifest contains static assets but not literal App Router page URLs. `/`, `/offline`, and `/manifest.webmanifest` are therefore explicitly precached with deterministic SHA-256 revisions derived from application-shell build inputs.
+- Navigation fallback is restricted to same-origin `GET /` and `/offline`; `/videos` is Backend-owned and explicitly excluded from shell caching together with its subpaths.
 - iOS can retain an old Home Screen launch URL after a manifest `start_url` change. The app deliberately has no runtime redirect because a precached `/offline` document is also a valid offline navigation target; users must reinstall once to adopt the new `/` launch route.
 - Serwist's precache cleanup is isolated from `offline-reels-media-v1`; local-library delete/clear also targets only that media cache.
 - `reloadOnOnline=false` prevents a connection change from forcing an application reload.
@@ -411,7 +422,7 @@ Desktop Chromium verification does not establish iPhone Safari/WebKit behavior. 
 - The standalone manifest starts at `/`, and the worker serves the same-origin dashboard shell and `/offline-media/{id}` without a Backend fallback.
 - The dashboard presents only a percentage derived from `navigator.storage.estimate()`; this remains a hint and does not promise retention or request persistence automatically.
 - Safari and the installed Home Screen PWA use distinct offline-storage contexts; users must install first and download media inside the installed PWA.
-- Safe-area-aware controls, `100dvh`, `playsInline`, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. `/videos` is now a legacy redirect; Reels starts with normal sound and leaves an iOS-blocked audible startup paused for an explicit user Play, without a silent workaround. The current window improves return to the previous item while bounding sources to three.
+- Safe-area-aware controls, `100dvh`, `playsInline`, native scroll-snap, visibility handling, and previous/current/next source cleanup are in place. `/videos` is reserved for the Backend API; Reels starts with normal sound and leaves an iOS-blocked audible startup paused for an explicit user Play, without a silent workaround. The current window improves return to the previous item while bounding sources to three.
 - `/offline` now uses the shared feed's Reels-like mode. One tokenized pointer state machine separates tap, centre hold, symmetric outer-10% edge hold and movement cancellation without `preventDefault` or pointer capture. Only tap-pause exposes controls; an activated centre hold retains a scoped pause lock through move/scroll and iOS `pointercancel`, then resumes only after the actual touch ends if its original item remains active and unchanged. Lifecycle and source cleanup clear that lock without autoplay. Reels-only `touch-action: pan-y`, callout/selection suppression and drag prevention do not apply to the dashboard. The lower progress → glass-navigation layout uses scoped backdrop blur with an opaque fallback; its safe-area sizing and WebKit rendering still need device acceptance.
 - The production startup path attempts guarded playback on `HAVE_METADATA` or `loadedmetadata`, which avoids the observed WebKit metadata/suspend deadlock without relying on `canplay`. A nonzero reset still waits for current `seeked`. Effective active selection only pauses/plays cards and is reversible while a drag is partial. A distinct commit requires ratio ≥ 0.999 and card/root geometry within 2 CSS px; only the previous committed card may reset after its ratio-zero, fully offscreen exit. A post-commit rapid return waits for the same guarded seek, while a pre-commit reversal retains its paused position.
 
@@ -449,9 +460,9 @@ The network hint from `navigator.onLine` is not a guarantee that the Backend is 
 
 ## Mitigation
 
-- `/` precaches its application shell and keeps the Backend catalog request `cache: "no-store"`; `/videos` is a legacy redirect shell only.
+- `/` precaches its application shell and keeps the Backend catalog request `cache: "no-store"`; `/videos` belongs exclusively to the Backend API.
 - A failed catalog request renders a controlled dashboard state. This avoids relying on `navigator.onLine` as an authoritative reachability signal.
-- `/`, `/offline`, and legacy `/videos` are the only navigation fallbacks. Unknown routes do not receive a shell document.
+- `/` and `/offline` are the only navigation fallbacks. Unknown and Backend-owned routes do not receive a shell document.
 - The network indicator is informational and does not infer downloaded-video availability.
 - `skipWaiting` is disabled and `reloadOnOnline=false`. A waiting update remains inert until the user selects **«Обновить»**; Serwist then activates only that waiting worker through its supported message API and the page reloads once after `controllerchange`.
 - Shell cache lifecycle remains isolated from `offline-reels-media-v1`.

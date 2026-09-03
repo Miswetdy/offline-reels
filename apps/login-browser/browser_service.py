@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
 import json
 import os
@@ -21,6 +22,12 @@ from uuid import UUID
 
 CONTROL_SECRET = os.environ["LOGIN_BROWSER_CONTROL_SECRET"]
 ACCOUNT_ID = UUID(os.environ["LOGIN_ACCOUNT_ID"])
+EXPECTED_UID = int(os.environ.get("LOGIN_BROWSER_EXPECTED_UID", "10002"))
+EXPECTED_APPARMOR_PROFILE = os.environ.get("LOGIN_BROWSER_EXPECTED_APPARMOR_PROFILE")
+CHROMIUM_EXECUTABLE = os.environ.get(
+    "LOGIN_BROWSER_CHROMIUM_EXECUTABLE",
+    "/opt/chrome-for-testing/chrome-linux64/chrome",
+)
 PROFILE_ROOT = Path("/login-profiles").resolve()
 PROFILE = (PROFILE_ROOT / str(ACCOUNT_ID)).resolve()
 if PROFILE_ROOT not in PROFILE.parents:
@@ -31,13 +38,17 @@ class BrowserRuntime:
     def __init__(self) -> None:
         self.stopping = threading.Event()
         self.processes: list[subprocess.Popen[bytes]] = []
+        self.profile_lock_descriptor: int | None = None
 
     def start(self) -> None:
+        _require_runtime_boundary()
         PROFILE.mkdir(parents=True, exist_ok=True)
         # Docker named volumes may be created with a permissive root directory.
         # The account directory itself is the sensitive browser state and must
         # remain readable only by this non-root service account.
         PROFILE.chmod(0o700)
+        _require_profile_permissions()
+        self._acquire_profile_lock()
         # Chromium can leave these process locks behind after a container
         # signal.  This service owns the sole account profile, so remove only
         # the exact transient locks before spawning its next Chromium process.
@@ -46,6 +57,9 @@ class BrowserRuntime:
                 (PROFILE / name).unlink()
             except FileNotFoundError:
                 pass
+            except OSError:
+                self._release_profile_lock()
+                raise
         try:
             self.processes.append(
                 subprocess.Popen(
@@ -62,11 +76,11 @@ class BrowserRuntime:
             )
             chromium = subprocess.Popen(
                 [
-                    "chromium", "--display=:99", f"--user-data-dir={PROFILE}",
+                    CHROMIUM_EXECUTABLE, "--display=:99", f"--user-data-dir={PROFILE}",
                     "--no-first-run", "--no-default-browser-check",
-                    # Keep Chromium's supported non-setuid sandbox selection
-                    # without ever using --no-sandbox.
-                    "--disable-setuid-sandbox",
+                    # The pinned Chrome for Testing binary falls back to its
+                    # user-namespace sandbox under no-new-privileges. Do not
+                    # pass --no-sandbox or suppress that fallback.
                     "--window-size=430,800", "--window-position=0,0",
                     # Keep the physical VNC canvas compact while giving
                     # mobile-web layouts enough CSS width for their controls.
@@ -102,19 +116,58 @@ class BrowserRuntime:
         if self.stopping.is_set():
             return
         self.stopping.set()
-        for process in reversed(self.processes):
-            if process.poll() is None:
-                process.terminate()
-        for process in reversed(self.processes):
-            try:
-                process.wait(timeout=4)
-            except subprocess.TimeoutExpired:
-                process.kill()
-        for path in (Path("/tmp/.X99-lock"), Path("/tmp/.X11-unix/X99")):
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+        try:
+            self._close_chromium_gracefully()
+            for process in reversed(self.processes):
+                if process.poll() is None:
+                    process.terminate()
+            for process in reversed(self.processes):
+                try:
+                    process.wait(timeout=4)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        finally:
+            for path in (Path("/tmp/.X99-lock"), Path("/tmp/.X11-unix/X99")):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+            self._release_profile_lock()
+
+    def _close_chromium_gracefully(self) -> None:
+        """Ask the browser to flush its profile before the process fallback."""
+        try:
+            browser = json.loads(urlopen("http://127.0.0.1:9222/json/version", timeout=1).read())
+            endpoint = browser.get("webSocketDebuggerUrl")
+            if isinstance(endpoint, str):
+                _cdp_call(endpoint, "Browser.close", {})
+        except Exception:
+            # SIGTERM below remains the bounded fallback; no browser state is
+            # inspected or returned through this controller.
+            pass
+
+    def _acquire_profile_lock(self) -> None:
+        lock_path = PROFILE / ".collector.lock"
+        descriptor: int | None = None
+        try:
+            descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.ftruncate(descriptor, 0)
+            os.write(descriptor, b"offline-reels-profile-lock\n")
+        except OSError as error:
+            if descriptor is not None:
+                os.close(descriptor)
+            raise RuntimeError("profile is already in use") from error
+        self.profile_lock_descriptor = descriptor
+
+    def _release_profile_lock(self) -> None:
+        if self.profile_lock_descriptor is None:
+            return
+        try:
+            fcntl.flock(self.profile_lock_descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(self.profile_lock_descriptor)
+            self.profile_lock_descriptor = None
 
     def readiness(self) -> str:
         if self.stopping.is_set() or not any(process.poll() is None for process in self.processes):
@@ -209,6 +262,35 @@ def _wait_until(condition) -> None:
             return
         time.sleep(0.05)
     raise RuntimeError("browser runtime did not become ready")
+
+
+def _require_runtime_boundary() -> None:
+    if os.getuid() == 0 or os.getuid() != EXPECTED_UID:
+        raise RuntimeError("login browser requires its configured non-root uid")
+    if EXPECTED_APPARMOR_PROFILE is None:
+        return
+    values = {}
+    for line in Path("/proc/self/status").read_text(encoding="ascii").splitlines():
+        key, separator, value = line.partition(":")
+        if separator:
+            values[key] = value.strip()
+    if (
+        int(values.get("CapEff", "1"), 16) != 0
+        or values.get("NoNewPrivs") != "1"
+        or values.get("Seccomp") != "2"
+    ):
+        raise RuntimeError("login browser runtime boundary is not hardened")
+    current = Path("/proc/self/attr/current").read_text(encoding="utf-8").strip()
+    if current.removesuffix(" (enforce)") != EXPECTED_APPARMOR_PROFILE:
+        raise RuntimeError("login browser AppArmor profile is not enforced")
+
+
+def _require_profile_permissions() -> None:
+    metadata = PROFILE.stat()
+    if metadata.st_uid != EXPECTED_UID or metadata.st_gid != EXPECTED_UID:
+        raise RuntimeError("login browser profile ownership is invalid")
+    if metadata.st_mode & 0o777 != 0o700:
+        raise RuntimeError("login browser profile mode is invalid")
 
 
 RUNTIME = BrowserRuntime()

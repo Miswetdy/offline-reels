@@ -112,6 +112,25 @@ class _Context:
         self.pages = pages
 
 
+class _DelayedReelPage(_Page):
+    def __init__(self) -> None:
+        super().__init__(
+            url="https://www.instagram.com/reels/",
+            payload={
+                "video_count": 0,
+                "visible_video_count": 0,
+                "central_video_present": False,
+                "extraction_strategy": "none",
+            },
+        )
+        self.wait_calls = 0
+
+    def wait_for_timeout(self, timeout: float) -> None:
+        del timeout
+        self.wait_calls += 1
+        self.payload = _payload("ASYNC_READY")
+
+
 class _Mouse:
     def __init__(self) -> None:
         self.calls: list[tuple[int, int]] = []
@@ -202,6 +221,20 @@ def test_pathname_fallback_is_normalized_from_selected_instagram_page(path: str)
     candidate = feed.current()
     assert candidate.shortcode == code
     assert candidate.canonical_url == f"https://www.instagram.com/reel/{code}/"
+
+
+def test_context_waits_for_async_initial_reel_without_scrolling() -> None:
+    page = _DelayedReelPage()
+    feed = PlaywrightReelsFeed(
+        page,
+        limits=TransitionLimits(0.01, 0.1, 2),
+        context=_Context([page]),
+    )
+
+    assert feed.current().shortcode == "ASYNC_READY"
+    assert page.wait_calls == 1
+    assert page.mouse.moves == []
+    assert page.mouse.calls == []
 
 
 def _abort_http(route, unexpected: list[str]) -> None:

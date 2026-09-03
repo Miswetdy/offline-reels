@@ -3,9 +3,12 @@
 import errno
 import os
 import shutil
+import signal
 import socket
 import tempfile
+import threading
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -20,6 +23,7 @@ from app.instagram.collector.runtime.session_cookies import (
 
 MAX_RETRIES = 1
 SOCKET_TIMEOUT_SECONDS = 30
+MAX_DOWNLOAD_SECONDS = 120
 
 _YTDLP_ERROR_MODULE = "yt_dlp"
 _SAFE_MESSAGE_MARKERS: tuple[tuple[RuntimeReasonCode, tuple[str, ...]], ...] = (
@@ -273,7 +277,8 @@ class PythonYtDlpFacade:
             with factory(options) as ydl:
                 ydl.cookiejar = ytdlp_cookie_jar
                 self._last_diagnostics.stage = "media_download"
-                ydl.extract_info(candidate.canonical_url, download=True)
+                with _download_deadline():
+                    ydl.extract_info(candidate.canonical_url, download=True)
             self._last_diagnostics.stage = "output_discovery"
             outputs = [
                 path
@@ -372,6 +377,26 @@ class _RedactingLogger:
 
     def error(self, message: str) -> None:
         del message
+
+
+@contextmanager
+def _download_deadline():
+    """Bound one synchronous yt-dlp attempt without logging its request data."""
+    if os.name != "posix" or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def expire(_signal_number: int, _frame: object) -> None:
+        raise TimeoutError("bounded download deadline exceeded")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, expire)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, MAX_DOWNLOAD_SECONDS)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def _classify_download_exception(error: Exception) -> RuntimeReasonCode:

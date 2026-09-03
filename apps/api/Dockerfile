@@ -40,7 +40,8 @@ CMD ["uv", "run", "--no-sync", "python", "-m", "app.scripts.run_instagram_normal
 FROM base AS collector
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN apt-get update \
-    && apt-get install --no-install-recommends --yes tini \
+    && apt-get install --no-install-recommends --yes \
+        tini xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --extra collector \
@@ -48,7 +49,7 @@ RUN uv sync --frozen --no-dev --extra collector \
     && groupadd --gid 10001 collector \
     && useradd --uid 10001 --gid collector --create-home --home-dir /home/collector collector \
     && install --directory --owner collector --group collector --mode 0750 \
-        /collector/profile /collector/workspace \
+        /collector/profile /collector/workspace /collector/home \
     && chown --recursive collector:collector /ms-playwright
 COPY --chown=collector:collector app ./app
 COPY --chown=collector:collector alembic ./alembic

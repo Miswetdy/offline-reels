@@ -16,8 +16,8 @@ set `FRONTEND_ORIGIN=https://HOST.ts.net`. Do not put secrets in either value.
 - Post-iPhone hardening block 2 now keeps a previous/current/next preload
   window to improve return to the prior item while bounding resource use.
 - Post-iPhone hardening block 3 enables Reels-like controls only on
-  `/offline`. Block 4A makes `/videos` a legacy redirect to `/`; block 4B is
-  the installed-PWA real-device acceptance for this lifecycle.
+  `/offline`. `/videos` is now reserved for the Backend API; block 4B is the
+  installed-PWA real-device acceptance for this lifecycle.
 
 | Field | Value |
 | --- | --- |
@@ -135,7 +135,7 @@ Expected target (not yet a release blocker): no material degradation. This speci
 2. While online, select **Загрузить Reels**. Confirm all available catalog Reels download sequentially and the batch percentage never decreases. Cancel once during a transfer, then select **Повторить** and let the batch finish.
 3. Select **Очистить библиотеку** and confirm the exact prompt **Вы точно хотите удалить все скачанные Reels?**. Confirm the batch stops, `/offline` shows **Пока нет скачанных Reels**, and **Перейти на главную** opens `/`.
 4. Close the PWA, enable Airplane Mode, and reopen `/offline`. Confirm the empty shell remains available without server content.
-5. While online, open legacy `/videos`. Confirm it redirects to `/` and no old online video feed appears.
+5. While online, confirm navigation uses only `/` and `/offline`; `/videos` is not an application-shell destination.
 
 Expected: clear removes local media and metadata together (or reconciliation repairs a partial operation), never deletes server records or objects, and no late download restores a cleared local record. Future watched-retention is not implemented: a later policy may delete watched media locally after one hour and refill only when the app is open online; iOS cannot guarantee work while the PWA is fully closed.
 

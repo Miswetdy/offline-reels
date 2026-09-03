@@ -1,5 +1,6 @@
 # ruff: noqa: E501
 
+import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import pytest
 from app.instagram.collector.contracts import ReelCandidate
 from app.instagram.collector.runtime.browser_feed import (
     IDENTITY_PROBE,
+    IDENTITY_STRUCTURE_PROBE,
     PAUSE_PROBE,
     SCROLL_TARGET_PROBE,
     STATE_PROBE,
@@ -74,6 +76,17 @@ class FakePage:
                 return {"shortcode": sampled.shortcode, "canonical_url": sampled.canonical_url}
             current = self._candidates[self._index]
             return {"shortcode": current.shortcode, "canonical_url": current.canonical_url}
+        if expression == IDENTITY_STRUCTURE_PROBE:
+            return {
+                "video_count": 4,
+                "visible_video_count": 1,
+                "central_video_present": True,
+                "page_reel_anchor_count": 0,
+                "nearby_reel_anchor_count": 0,
+                "ancestor_data_attribute_count": 3,
+                "location_is_specific_reel": False,
+                "href": "must-not-leak",
+            }
         if expression == PAUSE_PROBE:
             self.pause_calls += 1
             return True
@@ -111,6 +124,47 @@ def test_browser_feed_confirms_two_stable_samples_and_pauses_only_current() -> N
     assert page.mouse.moves == [(100.0, 200.0)]
     assert page.mouse.calls == [(0, 640)]
     assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 640)]
+
+
+def test_browser_feed_uses_native_touch_gesture_for_live_mobile_context() -> None:
+    page = FakePage([candidate()])
+    context = _CdpContext()
+    adapter = PlaywrightReelsFeed(
+        page,
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=2),
+        context=context,
+    )
+
+    adapter.advance()
+
+    assert page.mouse.actions == []
+    assert context.session.commands == [
+        (
+            "Input.dispatchTouchEvent",
+            {
+                "type": "touchStart",
+                "touchPoints": [{"x": 100.0, "y": 350.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}],
+            },
+        ),
+        ("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 100.0, "y": 260.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}]}),
+        ("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 100.0, "y": 170.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}]}),
+        ("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 100.0, "y": 80.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}]}),
+        ("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []}),
+    ]
+    assert context.session.detach_calls == 1
+
+
+def test_identity_structure_diagnostics_are_aggregate_only() -> None:
+    result = feed(FakePage([candidate()])).identity_structure_diagnostics()
+    assert result == {
+        "video_count": 4,
+        "visible_video_count": 1,
+        "central_video_present": True,
+        "page_reel_anchor_count": 0,
+        "nearby_reel_anchor_count": 0,
+        "ancestor_data_attribute_count": 3,
+        "location_is_specific_reel": False,
+    }
 
 
 def test_browser_feed_timeout_and_controlled_stops_are_safe() -> None:
@@ -270,7 +324,35 @@ def test_python_yt_dlp_facade_clears_attempt_local_ytdlp_cookie_jar(tmp_path: Pa
         assert output.read_bytes() == b"fixture-media"
     assert captured
     assert list(captured[0]) == []
-    assert "secret" not in repr(captured[0])
+
+
+@pytest.mark.skipif(os.name != "posix", reason="SIGALRM download deadline is Linux-only")
+def test_python_yt_dlp_facade_applies_a_hard_download_deadline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.instagram.collector.runtime import downloader as runtime_downloader
+
+    class BlockingYoutubeDL:
+        def __init__(self, _options: dict[str, object]) -> None:
+            self.cookiejar = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def extract_info(self, _url: str, *, download: bool) -> None:
+            assert download is True
+            import time
+
+            time.sleep(1)
+
+    monkeypatch.setattr(runtime_downloader, "MAX_DOWNLOAD_SECONDS", 0.01)
+    jar = SessionCookieProvider().get(
+        _CookieContext([_cookie("sessionid", "secret", ".instagram.com")])
+    )
+    with pytest.raises(CollectorRuntimeError) as error:
+        PythonYtDlpFacade(BlockingYoutubeDL).download(candidate(), jar, tmp_path / "output.mp4", 1024)
+    assert error.value.code is RuntimeReasonCode.DIRECT_DOWNLOAD_TIMEOUT
 
 
 def test_python_yt_dlp_facade_uses_spike_attempt_directory_and_native_cookiejar(
@@ -591,12 +673,25 @@ def test_browser_open_preserves_controlled_stop_despite_cleanup_failures(tmp_pat
         types.SimpleNamespace(sync_playwright=lambda: _SyncStarter(playwright)),
     )
     settings = CollectorRuntimeSettings(True, tmp_path / "profiles", tmp_path / "workspace")
+    account_id = uuid4()
+    profile = settings.profile_root / str(account_id)
+    profile.mkdir(parents=True)
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        (profile / name).touch()
     with pytest.raises(CollectorRuntimeError) as error:
-        PlaywrightReelsFeed.open(uuid4(), settings, repository_root=tmp_path / "repository")
+        PlaywrightReelsFeed.open(account_id, settings, repository_root=tmp_path / "repository")
     assert error.value.code is RuntimeReasonCode.AUTH_REQUIRED
+    assert playwright.launch_options is not None
+    assert playwright.launch_options[1]["chromium_sandbox"] is True
+    assert playwright.launch_options[1]["viewport"] == {"width": 430, "height": 800}
+    assert playwright.launch_options[1]["is_mobile"] is True
+    assert playwright.launch_options[1]["has_touch"] is True
+    assert "Android 13; Pixel 7" in playwright.launch_options[1]["user_agent"]
+    assert "env" not in playwright.launch_options[1]
     assert context.close_calls == 1
     assert playwright.stop_calls == 1
     assert lock.release_calls == 1
+    assert not any((profile / name).exists() for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"))
 
 
 class _CookieContext:
@@ -605,6 +700,26 @@ class _CookieContext:
 
     def cookies(self) -> list[dict[str, object]]:
         return self._cookies
+
+
+class _CdpSession:
+    def __init__(self) -> None:
+        self.commands: list[tuple[str, dict[str, object]]] = []
+        self.detach_calls = 0
+
+    def send(self, method: str, parameters: dict[str, object]) -> None:
+        self.commands.append((method, parameters))
+
+    def detach(self) -> None:
+        self.detach_calls += 1
+
+
+class _CdpContext:
+    def __init__(self) -> None:
+        self.session = _CdpSession()
+
+    def new_cdp_session(self, _page: FakePage) -> _CdpSession:
+        return self.session
 
 
 class _FakeMouse:
@@ -716,7 +831,15 @@ class _OpenFailureContext(_CloseFailureContext):
 class _OpenFailurePlaywright(_CloseFailurePlaywright):
     def __init__(self, context: _OpenFailureContext) -> None:
         super().__init__()
-        self.chromium = types.SimpleNamespace(launch_persistent_context=lambda profile, headless: context)
+        self.launch_options = None
+
+        def launch_persistent_context(profile, **options):
+            self.launch_options = (profile, options)
+            return context
+
+        self.chromium = types.SimpleNamespace(
+            launch_persistent_context=launch_persistent_context
+        )
 
 
 class _SyncStarter:

@@ -10,7 +10,6 @@ import {
 import {
   HOME_SHELL_URL,
   OFFLINE_SHELL_URL,
-  VIDEOS_SHELL_URL,
   WEB_MANIFEST_URL,
   createApplicationShellPrecacheEntry,
   createApplicationShellPrecacheEntriesFromBuildInputs,
@@ -32,31 +31,35 @@ describe("application-shell cache policy", () => {
     expect(changed.revision).not.toBe(first.revision);
   });
 
-  it("allows only explicit dashboard, Reels, and legacy navigation shells", () => {
+  it("allows only the explicit dashboard and Reels navigation shells", () => {
     expect(shouldUseOfflineNavigationFallback(request("GET", "/"))).toBe(true);
     expect(shouldUseOfflineNavigationFallback(request("GET", "/offline"))).toBe(true);
-    expect(shouldUseOfflineNavigationFallback(request("GET", "/videos"))).toBe(true);
+    expect(shouldUseOfflineNavigationFallback(request("GET", "/videos"))).toBe(false);
     expect(shouldUseOfflineNavigationFallback(request("GET", "/unknown"))).toBe(false);
     expect(shouldUseOfflineNavigationFallback(request("POST", "/"))).toBe(false);
   });
 
   it("excludes API catalog and stream requests from shell caching", () => {
     expect(isExcludedFromShellCaching(request("GET", "http://localhost:8000/videos"))).toBe(true);
+    expect(isExcludedFromShellCaching(request("GET", "/videos"))).toBe(true);
+    expect(isExcludedFromShellCaching(request("GET", "/videos/video-id"))).toBe(true);
     expect(isExcludedFromShellCaching(request("GET", "/api/videos"))).toBe(true);
     expect(isExcludedFromShellCaching(request("GET", "/api/videos/video-id/stream"))).toBe(true);
     expect(isExcludedFromShellCaching(request("GET", "/videos/video-id/stream"))).toBe(true);
   });
 
-  it("precaches the canonical dashboard, Reels, manifest, and only a legacy redirect shell", () => {
+  it("precaches only the canonical dashboard, Reels, and manifest shells", () => {
     expect(isExplicitApplicationShellPath("/")).toBe(true);
     expect(isExplicitApplicationShellPath("/offline")).toBe(true);
-    expect(isExplicitApplicationShellPath("/videos")).toBe(true);
+    expect(isExplicitApplicationShellPath("/videos")).toBe(false);
     expect(isExplicitApplicationShellPath("/unknown")).toBe(false);
     expect(createApplicationShellPrecacheEntriesFromBuildInputs()).toEqual(expect.arrayContaining([
       expect.objectContaining({ url: HOME_SHELL_URL }),
       expect.objectContaining({ url: OFFLINE_SHELL_URL }),
-      expect.objectContaining({ url: VIDEOS_SHELL_URL }),
       expect.objectContaining({ url: WEB_MANIFEST_URL }),
+    ]));
+    expect(createApplicationShellPrecacheEntriesFromBuildInputs()).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ url: "/videos" }),
     ]));
   });
 

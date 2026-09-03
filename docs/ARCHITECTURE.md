@@ -1,5 +1,51 @@
 # Architecture
 
+## Stage 10 Linux staging boundary
+
+Stage 10 overlays the existing production-like web/API/data topology and adds
+a dedicated single-origin Caddy ingress bound only to `127.0.0.1:13080`. The
+included production Caddy is disabled in this model without changing its
+production Compose definition. Exact `/videos`, `/videos/*`, `/health/*`, and
+`/api/*` paths go to FastAPI without rewriting. Opt-in `/connect/*` and
+`/remote/*` paths go to the isolated login gateway, and all other paths go to
+Next.js. The login route does not expose VNC, CDP or the browser controller
+directly. The obsolete frontend `/videos` redirect is removed so the namespace
+is unambiguous.
+
+The opt-in one-shot Collector has its own outbound network; it also joins the
+internal application network for PostgreSQL and MinIO, has no port, and never
+starts with API or normalizer startup. Profile and workspace remain separate
+named volumes. A separate pre-deployment Compose project runs the same image
+with `network_mode: none`, tmpfs-only state, no secrets, no data services and
+no persistent resources.
+
+The separate opt-in login browser has only its private control network and an
+outbound network for the user-driven Instagram boundary. It runs with the same
+UID/GID, seccomp and AppArmor policy as Collector and mounts the same persistent
+account profile at a different container path. Both runtimes use the same
+atomic profile lock, so they cannot run concurrently. Before Chromium starts,
+the browser enforces non-root UID, zero capabilities, no-new-privileges,
+seccomp filtering, the expected AppArmor label, and account-directory mode
+0700. The gateway joins the database and ingress networks but never mounts the
+profile.
+
+Chromium sandboxing is explicit (`chromium_sandbox=True`). Both Collector
+services run as UID/GID 10001 with all capabilities dropped,
+`no-new-privileges`, a read-only root filesystem, private shared memory and
+bounded resources. Their default-deny seccomp profile is the pinned current
+Moby baseline plus only Playwright's `clone`/`setns`/`unshare` user-namespace
+rule. An enforcing AppArmor profile retains the Docker default restrictions
+and adds `userns,` only under the `offline-reels-collector` label. Ubuntu's
+host-wide unprivileged-userns restriction remains enabled; ordinary host-side
+non-root `unshare` may and should remain denied.
+
+Linux acceptance is fail-closed and synthetic before deployment. The smoke
+requires process evidence for non-root UID, zero capabilities,
+`NoNewPrivs=1`, AppArmor confinement, Docker seccomp, a child user namespace,
+Chromium's additional seccomp-BPF filter, no `--no-sandbox`, and zero network
+requests. This repository state prepares that proof but does not claim it has
+run on staging. See [ADR 015](adr/015-hardened-linux-chromium-collector.md).
+
 ## Stage 9 viewed lifecycle
 
 `/offline` records a view only after a user pointer/touch swipe has committed a
@@ -352,7 +398,7 @@ TASK-005 Block 3.2 adds the browser-only `/offline` catalog. It runs reconciliat
 
 TASK-005 Block 3.3 adds local-library management. A small coordinator deletes the Cache Storage entry before its IndexedDB record, or clears only the versioned media cache before `offlineVideos`. If metadata cleanup fails after cache cleanup, reconciliation prevents the stale record from being presented as completed. Neither operation affects Backend, MinIO, PostgreSQL or other cache namespaces.
 
-TASK-005 Block 4.1 adds one production-only Service Worker using the Turbopack integration of Serwist. The worker is dynamically served at `/serwist/sw.js`, has scope `/`, and is registered automatically by `SerwistProvider`; the application does not register a second worker. Native `esbuild` is required to bundle `app/sw.ts` on Windows. Block 4A explicitly precaches `/`, `/offline`, legacy `/videos`, and `/manifest.webmanifest` with deterministic revisions. The navigation fallback accepts only these routes and falls back to `/`; `/videos` itself remains an explicit legacy redirect rather than a canonical destination. Backend API requests, video streams and media are never runtime-cached. Serwist's precache namespace remains separate from `offline-reels-media-v1`; worker activation cleanup targets only outdated precache caches, while library cleanup targets only offline-owned media and IndexedDB records.
+TASK-005 Block 4.1 adds one production-only Service Worker using the Turbopack integration of Serwist. The worker is dynamically served at `/serwist/sw.js`, has scope `/`, and is registered automatically by `SerwistProvider`; the application does not register a second worker. Native `esbuild` is required to bundle `app/sw.ts` on Windows. The current shell explicitly precaches `/`, `/offline`, and `/manifest.webmanifest` with deterministic revisions. Navigation fallback accepts only `/` and `/offline`; `/videos` is reserved for the Backend catalog API and is explicitly excluded from shell caching. Backend API requests, video streams and media are never runtime-cached. Serwist's precache namespace remains separate from `offline-reels-media-v1`; worker activation cleanup targets only outdated precache caches, while library cleanup targets only offline-owned media and IndexedDB records.
 
 The dashboard reads `navigator.onLine` only as a hint and still treats catalog fetch failure as controlled UI state. It displays no technical storage details: `navigator.storage.estimate()` is reduced to a percentage, while the existing downloader continues to make the authoritative safety decision for the next file. The worker keeps `skipWaiting: false`; Serwist reports a waiting update to a compact safe-area-aware PWA notification. Only an explicit user click sends Serwist's supported `SKIP_WAITING` message to the waiting worker. The page reloads once after its `controllerchange`, never automatically during playback or download, and does not clear the separate media cache or IndexedDB.
 
@@ -368,7 +414,7 @@ An online or offline media delivery failure is terminal for that card during its
 
 Post-iPhone hardening block 2 expands the shared source window to previous/current/next. The active item alone has `preload="auto"` and receives autoplay; its immediate previous and next neighbours retain their existing source with `preload="metadata"` and are paused. All other mounted players have no source. The source-assignment effect keeps an unchanged URL intact, so a backward swipe to the previous item does not require removing and reassigning its `src`. This preserves one component and lifecycle for both backend stream URLs and Service Worker offline URLs. Browser preload remains advisory; the offline single-range handler can still materialize a full cached MP4 in worker memory per media request, requiring post-change iPhone validation.
 
-Post-iPhone hardening block 3 keeps that shared playback boundary and adds an explicit Reels controls mode. `OfflineVideoList` selects it, removing native controls, enabling `loop`, using `object-cover`, and starting with sound enabled. Its guarded startup first attempts normal audible playback; a `NotAllowedError` leaves that active item unmuted and paused with an explicit Play button, never a hidden muted-autoplay fallback. A tap-specific visibility state, separate from actual media pause state, reveals central SVG play/sound buttons only after an explicit tap-pause or that audible-policy rejection; only the current active video's guarded `play` event hides them. Its single pending timer transitions to either a temporary centre pause or temporary outer-10% edge 2× action, neither of which reveals controls. An activated centre hold records its item, video, source, generation, and pointer sequence separately from gesture recognition: movement, scroll, and touch `pointercancel` end recognition but retain that item's pause until the physical touch ends. A release resumes only that still-active, unchanged item if it was playing before the hold; another active item continues normally. Lifecycle/source cleanup clears the hold without autoplay. It never calls `preventDefault` or captures the pointer, leaving vertical scroll-snap to the browser. The feed distinguishes effective active from committed item: active selection controls pause/play and is reversible during a partial drag, so both cards retain their paused position and visible frame. A commit requires observer ratio ≥ 0.999 and both card/root edges within 2 CSS px; only then does the previous committed card gain a guarded offscreen reset at ratio 0. A fast return before commit resumes its saved position; a return after commit waits for any pending seek and starts at 0. Scoped Reels card styles suppress iOS callout, selection and video drag without affecting the dashboard. Progress is derived from active-video media events rather than a persistent animation frame. Reels lays metadata above progress and the shared safe-area-aware bottom navigation. Its scoped `backdrop-filter` and translucent fallback blur only the lower navigation zone, not the video element. Block 4A later replaced the former native `/videos` screen with a legacy redirect; the two real navigation links now point to `/` (**Главная**) and `/offline` (**Рилсы**), exposing the current route through `aria-current`. The active startup path starts guarded playback as soon as `HAVE_METADATA` is available or `loadedmetadata` arrives; an actual reset seek still waits for current `seeked`, and `canplay` never creates a second start. Future author/caption fields remain outside this UI boundary until TASK-006. This UI mode does not change Service Worker delivery, Cache Storage, IndexedDB, queue, or Backend contracts.
+Post-iPhone hardening block 3 keeps that shared playback boundary and adds an explicit Reels controls mode. `OfflineVideoList` selects it, removing native controls, enabling `loop`, using `object-cover`, and starting with sound enabled. Its guarded startup first attempts normal audible playback; a `NotAllowedError` leaves that active item unmuted and paused with an explicit Play button, never a hidden muted-autoplay fallback. A tap-specific visibility state, separate from actual media pause state, reveals central SVG play/sound buttons only after an explicit tap-pause or that audible-policy rejection; only the current active video's guarded `play` event hides them. Its single pending timer transitions to either a temporary centre pause or temporary outer-10% edge 2× action, neither of which reveals controls. An activated centre hold records its item, video, source, generation, and pointer sequence separately from gesture recognition: movement, scroll, and touch `pointercancel` end recognition but retain that item's pause until the physical touch ends. A release resumes only that still-active, unchanged item if it was playing before the hold; another active item continues normally. Lifecycle/source cleanup clears the hold without autoplay. It never calls `preventDefault` or captures the pointer, leaving vertical scroll-snap to the browser. The feed distinguishes effective active from committed item: active selection controls pause/play and is reversible during a partial drag, so both cards retain their paused position and visible frame. A commit requires observer ratio ≥ 0.999 and both card/root edges within 2 CSS px; only then does the previous committed card gain a guarded offscreen reset at ratio 0. A fast return before commit resumes its saved position; a return after commit waits for any pending seek and starts at 0. Scoped Reels card styles suppress iOS callout, selection and video drag without affecting the dashboard. Progress is derived from active-video media events rather than a persistent animation frame. Reels lays metadata above progress and the shared safe-area-aware bottom navigation. Its scoped `backdrop-filter` and translucent fallback blur only the lower navigation zone, not the video element. Block 4A replaced the former native `/videos` screen with a temporary legacy redirect; Stage 10 removes that redirect and reserves `/videos` for the Backend API. The two real navigation links point to `/` (**Главная**) and `/offline` (**Рилсы**), exposing the current route through `aria-current`. The active startup path starts guarded playback as soon as `HAVE_METADATA` is available or `loadedmetadata` arrives; an actual reset seek still waits for current `seeked`, and `canplay` never creates a second start. Future author/caption fields remain outside this UI boundary until TASK-006. This UI mode does not change Service Worker delivery, Cache Storage, IndexedDB, queue, or Backend contracts.
 
 The full-screen commit is atomic: it marks the prior committed card reset-required and immediately checks cached intersection and card/root geometry. This makes `A=zero` before `B=full` equivalent to `B=full` before `A=zero`; neither order waits for another observer callback. Per-card preparation progresses through reset-required, reset-in-flight and prepared-at-zero. An offscreen card becomes visible only after its seek and a decodable first frame. A matching prepared card returns without another seek or visibility transition; a return during preparation waits for the existing guarded operation.
 
@@ -464,13 +510,17 @@ Only that target contains Playwright Chromium and yt-dlp; the API image keeps
 its normal dependency surface. The Collector uses a non-root account, `tini`,
 one persistent per-account profile mount and a separate attempt-owned workspace
 mount. It accepts no default live command.
+Stage 10 keeps that fail-closed default while adding explicit `sandbox-smoke`
+and `live` entrypoint verbs; Compose exposes both only through opt-in one-shot
+profiles.
 
 The Stage 3C.2 Compose fixture is deliberately separate from both development
 and production Compose. It uses an `internal: true` network containing only
 PostgreSQL, MinIO, their bootstrap/migration jobs and a one-shot Collector.
 The fixture is a real persistence/storage/ffprobe composition with local
-synthetic MP4s, not a browser or Instagram flow. A future Stage 4 runner may
-add controlled live operation without changing this API/service boundary.
+synthetic MP4s, not a browser or Instagram flow. The Stage 10 live runner
+preserves this API/service boundary and remains gated by Linux sandbox and
+authenticated-profile acceptance.
 # Stage 6 management control plane
 
 The management API is a separately authenticated FastAPI router backed only by

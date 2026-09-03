@@ -1,0 +1,30 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Preserve every incoming URI. The Backend owns these exact public paths.
+	@backend path /videos /videos/* /health/* /api/*
+	handle @backend {
+		reverse_proxy api:8000
+	}
+
+	# The one-time launch page and authenticated remote viewer stay on the
+	# management origin. Caddy forwards WebSocket upgrades without exposing
+	# login-browser, VNC or CDP directly.
+	@login path /connect/* /remote/*
+	handle @login {
+		reverse_proxy login-gateway:8080
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

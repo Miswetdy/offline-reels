@@ -1,0 +1,38 @@
+name: offline-reels-stage10-sandbox-smoke
+
+# Standalone pre-deployment proof. This model has no staging secrets, data
+# services, published ports, volumes, or networks.
+services:
+  collector-sandbox-smoke:
+    image: offline-reels-collector-stage10-smoke:${IMAGE_TAG:-local}
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+      target: collector
+    command: ["sandbox-smoke"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges=true
+      - seccomp=./security/chromium-seccomp.json
+      - apparmor=offline-reels-collector
+    environment:
+      HOME: /collector/home
+      COLLECTOR_PROFILE_ROOT: /collector/profile
+      COLLECTOR_EXPECTED_APPARMOR_PROFILE: offline-reels-collector
+    network_mode: none
+    shm_size: 1gb
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: "2.0"
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+      - /collector/home:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
+      - /collector/profile:rw,noexec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700
+      - /collector/workspace:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
+    restart: "no"

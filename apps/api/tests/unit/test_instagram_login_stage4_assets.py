@@ -35,6 +35,11 @@ def test_login_browser_is_non_root_and_keeps_cdp_and_vnc_loopback_only() -> None
     service = (ROOT / "apps" / "login-browser" / "browser_service.py").read_text(encoding="utf-8")
     assert "USER loginbrowser" in dockerfile
     assert "chromium-sandbox" in dockerfile
+    assert (
+        "LOGIN_BROWSER_CHROMIUM_EXECUTABLE=/opt/chrome-for-testing/chrome-linux64/chrome"
+        in dockerfile
+    )
+    assert "151.0.7922.34/linux64/chrome-linux64.zip" in dockerfile
     assert "--remote-debugging-address=127.0.0.1" in service
     assert '"0.0.0.0:6080"' in service
     assert '"-localhost"' in service
@@ -42,11 +47,16 @@ def test_login_browser_is_non_root_and_keeps_cdp_and_vnc_loopback_only() -> None
     assert "--window-size=430,800" in service
     assert "--window-position=0,0" in service
     assert "--force-device-scale-factor=0.9" in service
-    assert "--disable-setuid-sandbox" in service
+    assert "CHROMIUM_EXECUTABLE" in service
+    assert 'Browser.close' in service
+    assert "--disable-setuid-sandbox" not in service
     assert '"--no-sandbox"' not in service
     assert "Mobile Safari/537.36" in service
     assert '"--kiosk", "about:blank"' in service
     assert '"SingletonLock", "SingletonSocket", "SingletonCookie"' in service
+    assert 'lock_path = PROFILE / ".collector.lock"' in service
+    assert "fcntl.LOCK_EX | fcntl.LOCK_NB" in service
+    assert "LOGIN_BROWSER_EXPECTED_APPARMOR_PROFILE" in service
     assert "password" not in service.lower().replace("input[name=password]", "")
 
 

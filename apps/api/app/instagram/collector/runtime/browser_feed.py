@@ -17,8 +17,14 @@ from app.instagram.collector.contracts import (
     TransitionSamplingDiagnostics,
 )
 from app.instagram.collector.runtime.errors import CollectorRuntimeError, RuntimeReasonCode
+from app.instagram.collector.runtime.feed_json import FeedJsonCandidateCatalog
 from app.instagram.collector.runtime.profile_lock import ProfileLock, profile_path
 from app.instagram.collector.runtime.settings import CollectorRuntimeSettings
+
+MOBILE_INSTAGRAM_USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+)
 
 IDENTITY_PROBE = """
 () => {
@@ -86,6 +92,48 @@ IDENTITY_PROBE = """
 }
 """
 
+# Aggregate-only troubleshooting probe. It never returns attributes, hrefs,
+# DOM text, URLs, cookie data, or media sources.
+IDENTITY_STRUCTURE_PROBE = """
+() => {
+  const validPath = (pathname) => /^\\/reels?\\/([A-Za-z0-9_-]{1,64})\\/$/.test(pathname || '');
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  const videos = [...document.querySelectorAll('video')].map((video) => {
+    const rect = video.getBoundingClientRect();
+    const width = Math.max(0, Math.min(rect.right, viewport.width) - Math.max(rect.left, 0));
+    const height = Math.max(0, Math.min(rect.bottom, viewport.height) - Math.max(rect.top, 0));
+    return { video, area: width * height };
+  });
+  const visible = videos.filter((item) => item.area > 0);
+  const reelAnchor = (anchor) => {
+    try {
+      const parsed = new URL(anchor.getAttribute('href') || '', location.href);
+      return parsed.hostname === 'www.instagram.com' && validPath(parsed.pathname);
+    } catch { return false; }
+  };
+  const pageReelAnchorCount = [...document.querySelectorAll('a[href]')].filter(reelAnchor).length;
+  let nearbyReelAnchorCount = 0;
+  let ancestorDataAttributeCount = 0;
+  if (visible.length) {
+    let node = visible[0].video;
+    for (let depth = 0; depth < 8 && node; depth += 1) {
+      ancestorDataAttributeCount += node.getAttributeNames().filter((name) => name.startsWith('data-')).length;
+      nearbyReelAnchorCount += [...node.querySelectorAll?.('a[href]') || []].filter(reelAnchor).length;
+      node = node.parentElement;
+    }
+  }
+  return {
+    video_count: videos.length,
+    visible_video_count: visible.length,
+    central_video_present: visible.length > 0,
+    page_reel_anchor_count: pageReelAnchorCount,
+    nearby_reel_anchor_count: nearbyReelAnchorCount,
+    ancestor_data_attribute_count: ancestorDataAttributeCount,
+    location_is_specific_reel: validPath(location.pathname),
+  };
+}
+"""
+
 PAUSE_PROBE = """
 () => {
   const midpoint = window.innerHeight / 2;
@@ -95,6 +143,21 @@ PAUSE_PROBE = """
   if (!videos.length) return false;
   videos[0].video.pause();
   return true;
+}
+"""
+
+ACTIVE_MEDIA_IDENTITY_PROBE = """
+() => {
+  const visible = [...document.querySelectorAll('video')].map((video) => {
+    const rect = video.getBoundingClientRect();
+    const area = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) * Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+    return { video, area, distance: Math.abs((rect.top + rect.bottom) / 2 - innerHeight / 2) };
+  }).filter((item) => item.area > 0).sort((a, b) => b.area - a.area || a.distance - b.distance);
+  if (!visible.length) return null;
+  const ids = window.__offlineReelsCollectorMediaIds || (window.__offlineReelsCollectorMediaIds = new WeakMap());
+  const next = window.__offlineReelsCollectorMediaIdNext || 1;
+  if (!ids.has(visible[0].video)) { ids.set(visible[0].video, next); window.__offlineReelsCollectorMediaIdNext = next + 1; }
+  return `${ids.get(visible[0].video)}:${visible[0].video.duration || 0}:${visible[0].video.videoWidth}x${visible[0].video.videoHeight}`;
 }
 """
 
@@ -182,6 +245,10 @@ class PlaywrightReelsFeed:
         self._diagnostics = _empty_diagnostics()
         self._transition_diagnostics = TransitionSamplingDiagnostics()
         self._scroll_target_diagnostics = ScrollTargetDiagnostics()
+        try:
+            self._feed_json = FeedJsonCandidateCatalog(page)
+        except Exception:
+            self._feed_json = None
 
     @classmethod
     def open(
@@ -201,12 +268,27 @@ class PlaywrightReelsFeed:
             profile = profile_path(settings.profile_root, account_id)
             lock = ProfileLock(profile)
             lock.acquire()
+            _clear_transient_chromium_locks(profile)
             from playwright.sync_api import sync_playwright
 
             playwright = sync_playwright().start()
+            launch_options: dict[str, object] = {
+                "headless": settings.headless,
+                "chromium_sandbox": True,
+                # The shared profile was created by the mobile login browser.
+                # Match that supported presentation contract rather than
+                # mixing a mobile profile with Playwright's desktop defaults.
+                "user_agent": MOBILE_INSTAGRAM_USER_AGENT,
+                "viewport": {"width": 430, "height": 800},
+                "is_mobile": True,
+                "has_touch": True,
+            }
             context = playwright.chromium.launch_persistent_context(
                 str(profile),
-                headless=settings.headless,
+                # Playwright defaults this to false and would otherwise add
+                # --no-sandbox. Collector pages are external input, so the
+                # Chromium user-namespace sandbox is mandatory on every host.
+                **launch_options,
             )
             page = context.pages[0] if context.pages else context.new_page()
             page.goto("https://www.instagram.com/reels/", wait_until="domcontentloaded")
@@ -255,10 +337,43 @@ class PlaywrightReelsFeed:
         if self._closed:
             raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED)
         if self._context is not None:
-            return self._select_reels_page()
+            return self._wait_for_initial_reel()
         self._raise_if_closed()
         self._raise_if_controlled_stop()
         return self._candidate_from_probe()
+
+    def identity_structure_diagnostics(self) -> dict[str, int | bool]:
+        """Return safe aggregate identity evidence without content extraction."""
+        if self._closed:
+            raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED)
+        polls = max(1, int(self._limits.timeout_seconds / self._limits.polling_seconds))
+        result = _empty_identity_structure_diagnostics()
+        for attempt in range(polls):
+            self._raise_if_closed()
+            self._raise_if_controlled_stop()
+            result = _identity_structure_from_payload(self._page.evaluate(IDENTITY_STRUCTURE_PROBE))
+            if result["central_video_present"]:
+                return result
+            if attempt + 1 < polls:
+                self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
+        return result
+
+    def _wait_for_initial_reel(self) -> ReelCandidate:
+        """Boundedly wait for the first async-rendered Reel without scrolling."""
+        polls = max(1, int(self._limits.timeout_seconds / self._limits.polling_seconds))
+        last_error: CollectorRuntimeError | None = None
+        for attempt in range(polls):
+            self._raise_if_closed()
+            try:
+                return self._select_reels_page()
+            except CollectorRuntimeError as error:
+                if error.code is not RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND:
+                    raise
+                last_error = error
+            if attempt + 1 < polls:
+                self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
+        assert last_error is not None
+        raise last_error
 
     def pause_current(self) -> None:
         self._raise_if_closed()
@@ -274,18 +389,51 @@ class PlaywrightReelsFeed:
         if target is None:
             raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND)
         try:
-            self._page.mouse.move(*target)
+            self._scroll_active_reel(*target)
             self._scroll_target_diagnostics = ScrollTargetDiagnostics(
                 scroll_target_available=True,
                 scroll_target_in_viewport=True,
                 mouse_move_performed=True,
             )
-            self._page.mouse.wheel(0, 640)
         except Exception:
             if self._page_is_closed():
                 raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
             raise
         self._scroll_attempts += 1
+
+    def _scroll_active_reel(self, x: float, y: float, height: float) -> None:
+        """Use a native touch gesture for the mobile Instagram presentation."""
+        create_session = getattr(self._context, "new_cdp_session", None)
+        if callable(create_session):
+            session = create_session(self._page)
+            start_y = min(height - 80, max(80, y + height * 0.25))
+            end_y = max(80, start_y - height * 0.7)
+
+            def point(touch_y: float) -> dict[str, float | int]:
+                return {
+                    "x": x,
+                    "y": touch_y,
+                    "radiusX": 1,
+                    "radiusY": 1,
+                    "force": 1,
+                    "id": 1,
+                }
+
+            try:
+                session.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point(start_y)]})
+                for fraction in (1 / 3, 2 / 3, 1):
+                    touch_y = start_y - (start_y - end_y) * fraction
+                    session.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [point(touch_y)]})
+                session.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            finally:
+                detach = getattr(session, "detach", None)
+                if callable(detach):
+                    detach()
+            return
+        # Unit fixtures deliberately omit CDP; retain the prior deterministic
+        # input path only for that test adapter contract.
+        self._page.mouse.move(x, y)
+        self._page.mouse.wheel(0, 640)
 
     def wait_for_next(
         self,
@@ -301,6 +449,7 @@ class PlaywrightReelsFeed:
         observed_different = False
         poll_count = unchanged_count = missing_count = 0
         stable_count = 0
+        previous_media_identity = self._active_media_identity()
 
         def sample() -> ReelCandidate | None:
             nonlocal stable, observed_different, poll_count, unchanged_count, missing_count, stable_count
@@ -318,6 +467,12 @@ class PlaywrightReelsFeed:
             self._raise_if_controlled_stop()
             try:
                 candidate = self._candidate_or_none()
+                if (
+                    (candidate is None or candidate.shortcode == previous_shortcode)
+                    and self._media_changed(previous_media_identity)
+                    and self._feed_json is not None
+                ):
+                    candidate = self._feed_json.next_after(previous_shortcode)
                 self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
             except CollectorRuntimeError as error:
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
@@ -393,6 +548,17 @@ class PlaywrightReelsFeed:
             stop_reason_code="TRANSITION_TIMEOUT",
         )
         return None
+
+    def _active_media_identity(self) -> str | None:
+        try:
+            result = self._page.evaluate(ACTIVE_MEDIA_IDENTITY_PROBE)
+        except Exception:
+            return None
+        return result if isinstance(result, str) and 1 <= len(result) <= 128 else None
+
+    def _media_changed(self, previous: str | None) -> bool:
+        current = self._active_media_identity()
+        return previous is not None and current is not None and current != previous
 
     def close(self) -> None:
         if self._closed:
@@ -531,7 +697,7 @@ class PlaywrightReelsFeed:
         except Exception:
             return True
 
-    def _targeted_wheel_point(self) -> tuple[float, float] | None:
+    def _targeted_wheel_point(self) -> tuple[float, float, float] | None:
         self._scroll_target_diagnostics = ScrollTargetDiagnostics()
         try:
             payload = self._page.evaluate(SCROLL_TARGET_PROBE)
@@ -556,7 +722,7 @@ class PlaywrightReelsFeed:
             scroll_target_available=True,
             scroll_target_in_viewport=True,
         )
-        return x, y
+        return x, y, height
 
 
 def _candidate_from_payload(payload: object) -> ReelCandidate | None:
@@ -605,6 +771,44 @@ def _empty_diagnostics() -> dict[str, object]:
         "extraction_strategy": "none",
         "reason_code": None,
     }
+
+
+def _clear_transient_chromium_locks(profile: Path) -> None:
+    """Remove only stale Chromium process locks under an exclusive profile lock."""
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        try:
+            (profile / name).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _empty_identity_structure_diagnostics() -> dict[str, int | bool]:
+    return {
+        "video_count": 0,
+        "visible_video_count": 0,
+        "central_video_present": False,
+        "page_reel_anchor_count": 0,
+        "nearby_reel_anchor_count": 0,
+        "ancestor_data_attribute_count": 0,
+        "location_is_specific_reel": False,
+    }
+
+
+def _identity_structure_from_payload(payload: object) -> dict[str, int | bool]:
+    safe = _empty_identity_structure_diagnostics()
+    if not isinstance(payload, dict):
+        return safe
+    for key in (
+        "video_count",
+        "visible_video_count",
+        "page_reel_anchor_count",
+        "nearby_reel_anchor_count",
+        "ancestor_data_attribute_count",
+    ):
+        safe[key] = _nonnegative_integer(payload.get(key))
+    safe["central_video_present"] = payload.get("central_video_present") is True
+    safe["location_is_specific_reel"] = payload.get("location_is_specific_reel") is True
+    return safe
 
 
 def _nonnegative_integer(value: object) -> int:

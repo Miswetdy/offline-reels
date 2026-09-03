@@ -9,10 +9,11 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.db.models.instagram import InstagramLoginSession
+from app.db.models.instagram import InstagramAccount, InstagramLoginSession
 from app.db.session import create_session_factory
-from app.instagram.contracts import LoginSessionStatus
+from app.instagram.contracts import AccountStatus, LoginSessionStatus
 from app.instagram.login_gateway import LoginGatewaySettings
+from app.instagram.transitions import ACCOUNT_TRANSITIONS, require_transition
 
 
 def main() -> int:
@@ -39,6 +40,14 @@ def main() -> int:
         return 2
     if target.exists():
         shutil.rmtree(target)
+    with sessions.begin() as db:
+        account = db.get(InstagramAccount, account_id, with_for_update=True)
+        if account is not None:
+            current = AccountStatus(account.status)
+            if current is not AccountStatus.DISCONNECTED:
+                require_transition(ACCOUNT_TRANSITIONS, current, AccountStatus.DISCONNECTED)
+                account.status = AccountStatus.DISCONNECTED.value
+            account.reason_code = None
     print('{"status":"profile_reset"}')
     return 0
 
