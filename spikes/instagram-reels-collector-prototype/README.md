@@ -28,6 +28,9 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
+`ffmpeg` and `ffprobe` must also be available on `PATH`; they validate and
+normalize every saved file.
+
 Provide credentials only for the process, never in a file:
 
 ```powershell

@@ -12,11 +12,11 @@ import hashlib
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
-from http.cookiejar import Cookie
 from pathlib import Path
 from typing import Any
 
@@ -260,37 +260,52 @@ def _login_if_needed(page: Any, username: str | None, password: str | None) -> N
 
 
 def _download(context: Any, code: str, temporary: Path) -> int:
-    """Use yt-dlp on a canonical Reel URL with one in-memory browser cookie jar."""
+    """Run one bounded yt-dlp attempt with an attempt-local cookie file."""
 
-    from yt_dlp import YoutubeDL
-    from yt_dlp.cookies import YoutubeDLCookieJar
-
-    jar = YoutubeDLCookieJar()
+    cookies: list[tuple[str, str, str, str, int]] = []
     for raw in context.cookies():
         name, value, domain, path = (raw.get(key) for key in ("name", "value", "domain", "path"))
         if not all(isinstance(item, str) and item for item in (name, value, domain, path)):
             continue
         if name not in {"sessionid", "csrftoken"} or not domain.lstrip(".").endswith("instagram.com"):
             continue
-        jar.set_cookie(Cookie(0, name, value, None, False, domain, True, domain.startswith("."), path, True, True, None, False, None, None, {}, False))
-    if not any(cookie.name == "sessionid" for cookie in jar):
+        expires = raw.get("expires")
+        expires_at = int(expires) if isinstance(expires, int | float) and expires > 0 else 0
+        cookies.append((domain, path, name, value, expires_at))
+    if not any(name == "sessionid" for _, _, name, _, _ in cookies):
         raise CollectorError("AUTH_REQUIRED")
     attempt = Path(tempfile.mkdtemp(prefix=".reel-download-", dir=temporary.parent))
     try:
-        with YoutubeDL({"quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True, "outtmpl": str(attempt / "reel.%(ext)s"), "format": "best[ext=mp4]/best", "socket_timeout": 30, "retries": 2}) as ydl:
-            ydl.cookiejar = jar
-            ydl.extract_info(f"https://www.instagram.com/reel/{code}/", download=True)
-        files = [path for path in attempt.iterdir() if path.is_file()]
+        cookie_file = attempt / "cookies.txt"
+        cookie_file.write_text(
+            "# Netscape HTTP Cookie File\n"
+            + "".join(
+                f"{domain}\t{'TRUE' if domain.startswith('.') else 'FALSE'}\t{path}\tTRUE\t{expires}\t{name}\t{value}\n"
+                for domain, path, name, value, expires in cookies
+            ),
+            encoding="utf-8",
+        )
+        command = [
+            sys.executable, "-m", "yt_dlp", "--quiet", "--no-warnings", "--no-progress",
+            "--no-playlist", "--format", "best[ext=mp4]/best", "--socket-timeout", "30",
+            "--retries", "2", "--cookies", str(cookie_file), "--output", str(attempt / "reel.%(ext)s"),
+            f"https://www.instagram.com/reel/{code}/",
+        ]
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        if completed.returncode != 0:
+            raise CollectorError("MEDIA_DOWNLOAD_FAILED")
+        files = [path for path in attempt.iterdir() if path.is_file() and path.name != "cookies.txt"]
         if len(files) != 1 or files[0].stat().st_size == 0 or files[0].stat().st_size > MAX_MEDIA_BYTES:
             raise CollectorError("MEDIA_DOWNLOAD_FAILED")
         os.replace(files[0], temporary)
         return temporary.stat().st_size
     except CollectorError:
         raise
+    except subprocess.TimeoutExpired as error:
+        raise CollectorError("MEDIA_DOWNLOAD_TIMEOUT") from error
     except Exception as error:
         raise CollectorError("MEDIA_DOWNLOAD_FAILED") from error
     finally:
-        jar.clear()
         shutil.rmtree(attempt, ignore_errors=True)
 
 
