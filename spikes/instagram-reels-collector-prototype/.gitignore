@@ -1,0 +1,5 @@
+# Local authenticated state and downloaded media must never enter Git.
+runtime/
+output/
+__pycache__/
+.pytest_cache/
