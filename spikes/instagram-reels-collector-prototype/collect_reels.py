@@ -37,12 +37,17 @@ ACTIVE_VIDEO_PROBE = """() => {
     const area = visibleWidth * visibleHeight;
     const centreDistance = Math.hypot((r.left + r.right) / 2 - centreX, (r.top + r.bottom) / 2 - centreY);
     return { video, area, centreDistance, visibleWidth, visibleHeight };
-  }).filter((item) => item.area > 0 && item.video.currentSrc);
+  }).filter((item) => item.area > 0);
   candidates.sort((a, b) => b.area - a.area || a.centreDistance - b.centreDistance);
   if (!candidates.length) return null;
   const selected = candidates[0];
+  // Headless Chromium may defer network loading until playback is requested.
+  // Muting preserves autoplay policy and is unrelated to the downloaded file.
+  selected.video.muted = true;
+  selected.video.play().catch(() => {});
+  const declared = selected.video.getAttribute('src') || selected.video.querySelector('source[src]')?.src || '';
   return {
-    source: selected.video.currentSrc,
+    source: selected.video.currentSrc || declared,
     duration: Number.isFinite(selected.video.duration) ? selected.video.duration : null,
     ready: selected.video.readyState,
     visibleArea: selected.area,
