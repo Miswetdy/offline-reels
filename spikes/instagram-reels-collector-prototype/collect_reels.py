@@ -10,9 +10,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
+import shutil
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
+from http.cookiejar import Cookie
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +52,15 @@ ACTIVE_VIDEO_PROBE = """() => {
   const declared = selected.video.getAttribute('src') || selected.video.querySelector('source[src]')?.src || '';
   return {
     source: selected.video.currentSrc || declared,
+    identity: (() => {
+      const ids = window.__offlineReelsPrototypeVideoIds || (window.__offlineReelsPrototypeVideoIds = new WeakMap());
+      const next = window.__offlineReelsPrototypeVideoIdNext || 1;
+      if (!ids.has(selected.video)) {
+        ids.set(selected.video, next);
+        window.__offlineReelsPrototypeVideoIdNext = next + 1;
+      }
+      return `${ids.get(selected.video)}:${selected.video.duration || 0}:${selected.video.videoWidth}x${selected.video.videoHeight}`;
+    })(),
     duration: Number.isFinite(selected.video.duration) ? selected.video.duration : null,
     ready: selected.video.readyState,
     visibleArea: selected.area,
@@ -82,9 +95,46 @@ class CollectorError(RuntimeError):
 
 @dataclass(frozen=True)
 class ActiveVideo:
-    source: str
+    identity: str
     fingerprint: str
     duration: float | None
+
+
+class ReelCatalog:
+    """Canonical Reel codes extracted only from authenticated feed JSON."""
+
+    def __init__(self, page: Any) -> None:
+        self._codes: list[str] = []
+        self._used: set[str] = set()
+        page.on("response", self._observe)
+
+    def _observe(self, response: Any) -> None:
+        try:
+            if "json" not in response.headers.get("content-type", "").lower():
+                return
+            stack = [response.json()]
+            while stack:
+                value = stack.pop()
+                if isinstance(value, dict):
+                    code = value.get("code")
+                    if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_-]{5,64}", code):
+                        if code not in self._codes:
+                            self._codes.append(code)
+                    stack.extend(value.values())
+                elif isinstance(value, list):
+                    stack.extend(value)
+        except Exception:
+            return
+
+    def wait_for_unused(self, page: Any, *, timeout_seconds: float) -> str:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            for code in self._codes:
+                if code not in self._used:
+                    self._used.add(code)
+                    return code
+            page.wait_for_timeout(250)
+        raise CollectorError("REEL_ID_NOT_FOUND")
 
 
 def _safe_code(error: BaseException) -> str:
@@ -93,16 +143,14 @@ def _safe_code(error: BaseException) -> str:
 
 def _active_video(page: Any) -> ActiveVideo | None:
     payload = page.evaluate(ACTIVE_VIDEO_PROBE)
-    if not isinstance(payload, dict) or not isinstance(payload.get("source"), str):
-        return None
-    source = payload["source"]
-    if not source.startswith("https://"):
+    if not isinstance(payload, dict) or not isinstance(payload.get("identity"), str):
         return None
     if not isinstance(payload.get("ready"), int) or payload["ready"] < 2:
         return None
-    fingerprint = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    identity = payload["identity"]
+    fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     duration = payload.get("duration")
-    return ActiveVideo(source, fingerprint, duration if isinstance(duration, int | float) else None)
+    return ActiveVideo(identity, fingerprint, duration if isinstance(duration, int | float) else None)
 
 
 def _wait_for_active(page: Any, *, timeout_seconds: float) -> ActiveVideo:
@@ -211,18 +259,39 @@ def _login_if_needed(page: Any, username: str | None, password: str | None) -> N
     raise CollectorError("AUTH_REQUIRED")
 
 
-def _download(context: Any, video: ActiveVideo, temporary: Path) -> int:
-    response = context.request.get(video.source, headers={"Referer": "https://www.instagram.com/"}, timeout=120_000)
-    if not response.ok:
-        raise CollectorError("MEDIA_DOWNLOAD_FAILED")
-    length = response.headers.get("content-length")
-    if length is not None and (not length.isdigit() or int(length) > MAX_MEDIA_BYTES):
-        raise CollectorError("MEDIA_TOO_LARGE")
-    body = response.body()
-    if not body or len(body) > MAX_MEDIA_BYTES:
-        raise CollectorError("MEDIA_TOO_LARGE")
-    temporary.write_bytes(body)
-    return len(body)
+def _download(context: Any, code: str, temporary: Path) -> int:
+    """Use yt-dlp on a canonical Reel URL with one in-memory browser cookie jar."""
+
+    from yt_dlp import YoutubeDL
+    from yt_dlp.cookies import YoutubeDLCookieJar
+
+    jar = YoutubeDLCookieJar()
+    for raw in context.cookies():
+        name, value, domain, path = (raw.get(key) for key in ("name", "value", "domain", "path"))
+        if not all(isinstance(item, str) and item for item in (name, value, domain, path)):
+            continue
+        if name not in {"sessionid", "csrftoken"} or not domain.lstrip(".").endswith("instagram.com"):
+            continue
+        jar.set_cookie(Cookie(0, name, value, None, False, domain, True, domain.startswith("."), path, True, True, None, False, None, None, {}, False))
+    if not any(cookie.name == "sessionid" for cookie in jar):
+        raise CollectorError("AUTH_REQUIRED")
+    attempt = Path(tempfile.mkdtemp(prefix=".reel-download-", dir=temporary.parent))
+    try:
+        with YoutubeDL({"quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True, "outtmpl": str(attempt / "reel.%(ext)s"), "format": "best[ext=mp4]/best", "socket_timeout": 30, "retries": 2}) as ydl:
+            ydl.cookiejar = jar
+            ydl.extract_info(f"https://www.instagram.com/reel/{code}/", download=True)
+        files = [path for path in attempt.iterdir() if path.is_file()]
+        if len(files) != 1 or files[0].stat().st_size == 0 or files[0].stat().st_size > MAX_MEDIA_BYTES:
+            raise CollectorError("MEDIA_DOWNLOAD_FAILED")
+        os.replace(files[0], temporary)
+        return temporary.stat().st_size
+    except CollectorError:
+        raise
+    except Exception as error:
+        raise CollectorError("MEDIA_DOWNLOAD_FAILED") from error
+    finally:
+        jar.clear()
+        shutil.rmtree(attempt, ignore_errors=True)
 
 
 def collect(
@@ -263,6 +332,7 @@ def collect(
             context.set_default_timeout(15_000)
             context.set_default_navigation_timeout(30_000)
             page = context.pages[0] if context.pages else context.new_page()
+            catalog = ReelCatalog(page)
             phase = "LOGIN"
             _login_if_needed(page, username, password)
             phase = "ACTIVE_VIDEO"
@@ -270,13 +340,19 @@ def collect(
             while completed < count:
                 temporary = output / f".reel-{completed + 1:02d}.download"
                 destination = output / f"reel-{completed + 1:02d}.mp4"
+                normalized = False
                 try:
+                    code = catalog.wait_for_unused(page, timeout_seconds=30)
                     phase = "DOWNLOAD"
-                    bytes_written = _download(context, current, temporary)
+                    bytes_written = _download(context, code, temporary)
                     phase = "NORMALIZATION"
                     normalize_to_mp4(temporary, destination)
+                    normalized = True
                 finally:
-                    temporary.unlink(missing_ok=True)
+                    if normalized:
+                        temporary.unlink(missing_ok=True)
+                    elif temporary.is_file():
+                        os.replace(temporary, output / f".failed-reel-{completed + 1:02d}.mp4")
                 completed += 1
                 duration = round(current.duration, 1) if current.duration is not None else None
                 print({"event": "saved", "completed": completed, "bytes": bytes_written, "duration_seconds": duration}, flush=True)

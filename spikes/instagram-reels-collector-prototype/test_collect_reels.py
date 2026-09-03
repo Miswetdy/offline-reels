@@ -13,13 +13,13 @@ class FakePage:
 
 
 def test_transition_accepts_new_media_after_two_stable_samples():
-    previous = ActiveVideo("https://cdn.invalid/one", "one", 10.0)
+    previous = ActiveVideo("one", "one", 10.0)
     page = FakePage([
-        {"source": "https://cdn.invalid/one", "ready": 4},
-        {"source": "https://cdn.invalid/two", "ready": 4},
-        {"source": "https://cdn.invalid/two", "ready": 4},
+        {"identity": "one", "ready": 4},
+        {"identity": "two", "ready": 4},
+        {"identity": "two", "ready": 4},
     ])
-    # The fingerprint function hashes the source; provide the matching previous hash.
+    # The fingerprint function hashes the DOM media identity.
     import hashlib
-    previous = ActiveVideo(previous.source, hashlib.sha256(previous.source.encode()).hexdigest(), 10.0)
-    assert _wait_for_transition(page, previous, timeout_seconds=1).source.endswith("two")
+    previous = ActiveVideo(previous.identity, hashlib.sha256(previous.identity.encode()).hexdigest(), 10.0)
+    assert _wait_for_transition(page, previous, timeout_seconds=1).identity != previous.identity
