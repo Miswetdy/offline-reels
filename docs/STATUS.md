@@ -32,12 +32,28 @@ capabilities dropped, no-new-privileges, read-only rootfs, private shared
 memory, bounded resources, no published port, no host networking and no Docker
 socket.
 
-The current Ubuntu staging host has accepted the Collector sandbox smoke,
-Redis recovery, PostgreSQL and MinIO restore, the loopback-only single-origin
-ingress, public Funnel routing, iPhone PWA installation and management-device
-pairing. The new hardened login services have not yet been deployed or accepted
-on that host. Real Instagram login and the bounded three-Reel Collector remain
-behind their explicit operator gates.
+The Collector feed adapter now uses the accepted bounded mobile transition
+cascade: it first scrolls the nearest real scroll owner for the centred video,
+then tries keyboard navigation, and finally applies a 90%-viewport pointer
+wheel. Each action is accepted only after two stable samples of a changed
+active media identity; the visible `/reels/` URL is not evidence of movement.
+The identity observed before an action is retained only in memory until the
+following bounded candidate wait, allowing the authenticated feed-JSON catalog
+to resolve the new canonical Reel without logging media identities, URLs,
+cookies, or account data. Unit coverage includes this scroll-owner path and
+the no-container fallback. Linux Collector image verification remains required
+before a repeated live run.
+
+The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
+recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,
+public Funnel routing, iPhone PWA installation, management-device pairing and
+the hardened Linux login boundary. A test-account login, one session-first
+source download, browser-free normalization, ready catalog publication and
+HTTP Range verification also passed. The bounded three-Reel run then stopped
+after the first durable item because the live mobile feed did not confirm a
+card transition. The replacement media-identity cascade above is now covered
+by unit tests; repeat the bounded Linux live run before accepting multi-Reel
+collection or PWA offline playback from real media.
 
 ## Stage 9 viewed lifecycle
 

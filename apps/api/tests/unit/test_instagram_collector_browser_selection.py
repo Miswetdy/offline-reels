@@ -184,7 +184,7 @@ def test_context_selects_second_reels_tab_over_login_challenge_or_external_tab(
     assert first.pause_calls == 0
     feed.advance()
     assert reels.mouse.moves == [(100.0, 200.0)]
-    assert reels.mouse.calls == [(0, 640)]
+    assert reels.mouse.calls == [(0, 540)]
     assert first.mouse.moves == []
     assert external.mouse.moves == []
     assert first.mouse.calls == []

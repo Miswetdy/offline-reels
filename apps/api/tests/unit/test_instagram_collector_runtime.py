@@ -14,9 +14,11 @@ import pytest
 
 from app.instagram.collector.contracts import ReelCandidate
 from app.instagram.collector.runtime.browser_feed import (
+    ACTIVE_MEDIA_IDENTITY_PROBE,
     IDENTITY_PROBE,
     IDENTITY_STRUCTURE_PROBE,
     PAUSE_PROBE,
+    SCROLL_CONTAINER_PROBE,
     SCROLL_TARGET_PROBE,
     STATE_PROBE,
     PlaywrightReelsFeed,
@@ -50,6 +52,8 @@ class FakePage:
         state: dict[str, bool] | None = None,
         transition_samples: list[ReelCandidate | None] | None = None,
         scroll_target: dict[str, object] | None = None,
+        scroll_container: bool = False,
+        media_identity_samples: list[str] | None = None,
     ) -> None:
         self._candidates = candidates
         self._index = 0
@@ -66,6 +70,8 @@ class FakePage:
             "width": 800.0,
             "height": 600.0,
         }
+        self._scroll_container = scroll_container
+        self._media_identity_samples = list(media_identity_samples or [])
 
     def evaluate(self, expression: str):
         if expression == IDENTITY_PROBE:
@@ -92,6 +98,12 @@ class FakePage:
             return True
         if expression == SCROLL_TARGET_PROBE:
             return self._scroll_target
+        if expression == SCROLL_CONTAINER_PROBE:
+            return self._scroll_container
+        if expression == ACTIVE_MEDIA_IDENTITY_PROBE:
+            if self._media_identity_samples:
+                return self._media_identity_samples.pop(0)
+            return "media-one"
         if expression == STATE_PROBE:
             return self._state
         raise AssertionError("Unexpected browser evaluation")
@@ -122,11 +134,11 @@ def test_browser_feed_confirms_two_stable_samples_and_pauses_only_current() -> N
     assert adapter.wait_for_next("ONE").shortcode == "TWO"  # type: ignore[union-attr]
     assert page.pause_calls == 1
     assert page.mouse.moves == [(100.0, 200.0)]
-    assert page.mouse.calls == [(0, 640)]
-    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 640)]
+    assert page.mouse.calls == [(0, 540)]
+    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 540)]
 
 
-def test_browser_feed_uses_native_touch_gesture_for_live_mobile_context() -> None:
+def test_browser_feed_uses_bounded_pointer_wheel_when_scroll_container_is_unavailable() -> None:
     page = FakePage([candidate()])
     context = _CdpContext()
     adapter = PlaywrightReelsFeed(
@@ -137,21 +149,21 @@ def test_browser_feed_uses_native_touch_gesture_for_live_mobile_context() -> Non
 
     adapter.advance()
 
+    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 540)]
+    assert context.session.commands == []
+    assert context.session.detach_calls == 0
+
+
+def test_browser_feed_prefers_scroll_owner_and_confirms_stable_media_change() -> None:
+    page = FakePage(
+        [candidate("ONE")],
+        scroll_container=True,
+        media_identity_samples=["media-one", "media-two", "media-two"],
+    )
+
+    feed(page).advance()
+
     assert page.mouse.actions == []
-    assert context.session.commands == [
-        (
-            "Input.dispatchTouchEvent",
-            {
-                "type": "touchStart",
-                "touchPoints": [{"x": 100.0, "y": 350.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}],
-            },
-        ),
-        ("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 100.0, "y": 260.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}]}),
-        ("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 100.0, "y": 170.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}]}),
-        ("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 100.0, "y": 80.0, "radiusX": 1, "radiusY": 1, "force": 1, "id": 1}]}),
-        ("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []}),
-    ]
-    assert context.session.detach_calls == 1
 
 
 def test_identity_structure_diagnostics_are_aggregate_only() -> None:
@@ -224,8 +236,8 @@ def test_targeted_wheel_recomputes_partially_visible_target_for_retry() -> None:
     page._scroll_target = second
     adapter.advance()
     assert page.mouse.actions == [
-        ("move", 400.0, 250.0), ("wheel", 0, 640),
-        ("move", 300.0, 100.0), ("wheel", 0, 640),
+        ("move", 400.0, 250.0), ("wheel", 0, 540),
+        ("move", 300.0, 100.0), ("wheel", 0, 540),
     ]
     assert adapter.scroll_target_diagnostics.mouse_move_performed
 
@@ -246,7 +258,7 @@ def test_browser_feed_stabilizes_a_different_reel_before_permitting_retry() -> N
     )
     adapter.advance()
     assert adapter.wait_for_next("ONE").shortcode == "TWO"  # type: ignore[union-attr]
-    assert page.mouse.calls == [(0, 640)]
+    assert page.mouse.calls == [(0, 540)]
     assert adapter.transition_diagnostics.poll_count == 4
     assert adapter.transition_diagnostics.different_candidate_observed
     assert adapter.transition_diagnostics.stable_sample_count == 2

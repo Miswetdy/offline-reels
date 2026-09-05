@@ -186,6 +186,29 @@ SCROLL_TARGET_PROBE = """
 }
 """
 
+
+SCROLL_CONTAINER_PROBE = """
+() => {
+  const videos = [...document.querySelectorAll('video')];
+  if (!videos.length) return false;
+  const midpoint = innerHeight / 2;
+  const selected = videos
+    .map((video) => ({ video, rect: video.getBoundingClientRect() }))
+    .filter(({ rect }) => Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0)) > 0)
+    .sort((left, right) => Math.abs((left.rect.top + left.rect.bottom) / 2 - midpoint) - Math.abs((right.rect.top + right.rect.bottom) / 2 - midpoint))[0];
+  if (!selected) return false;
+  for (let node = selected.video.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
+      node.scrollBy({ top: Math.round(innerHeight * 0.92), behavior: 'instant' });
+      return true;
+    }
+  }
+  window.scrollBy({ top: Math.round(innerHeight * 0.92), behavior: 'instant' });
+  return true;
+}
+"""
+
 STATE_PROBE = """
 () => ({
   login: Boolean(document.querySelector('input[name="username"], input[name="password"]')),
@@ -245,6 +268,7 @@ class PlaywrightReelsFeed:
         self._diagnostics = _empty_diagnostics()
         self._transition_diagnostics = TransitionSamplingDiagnostics()
         self._scroll_target_diagnostics = ScrollTargetDiagnostics()
+        self._transition_media_identity: str | None = None
         try:
             self._feed_json = FeedJsonCandidateCatalog(page)
         except Exception:
@@ -385,11 +409,23 @@ class PlaywrightReelsFeed:
         self._raise_if_closed()
         if self._scroll_attempts >= self._limits.maximum_scroll_attempts:
             raise CollectorRuntimeError(RuntimeReasonCode.TRANSITION_TIMEOUT)
+        self._transition_media_identity = self._active_media_identity()
+        if self._transition_media_identity is not None and self._scroll_container_advances(
+            self._transition_media_identity
+        ):
+            self._scroll_attempts += 1
+            return
+        if self._transition_media_identity is not None and self._keyboard_advances(
+            self._transition_media_identity
+        ):
+            self._scroll_attempts += 1
+            return
         target = self._targeted_wheel_point()
         if target is None:
             raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND)
         try:
-            self._scroll_active_reel(*target)
+            self._page.mouse.move(target[0], target[1])
+            self._page.mouse.wheel(0, int(target[2] * 0.9))
             self._scroll_target_diagnostics = ScrollTargetDiagnostics(
                 scroll_target_available=True,
                 scroll_target_in_viewport=True,
@@ -401,39 +437,48 @@ class PlaywrightReelsFeed:
             raise
         self._scroll_attempts += 1
 
-    def _scroll_active_reel(self, x: float, y: float, height: float) -> None:
-        """Use a native touch gesture for the mobile Instagram presentation."""
-        create_session = getattr(self._context, "new_cdp_session", None)
-        if callable(create_session):
-            session = create_session(self._page)
-            start_y = min(height - 80, max(80, y + height * 0.25))
-            end_y = max(80, start_y - height * 0.7)
+    def _scroll_container_advances(self, previous_identity: str) -> bool:
+        """Use the spike's real scroll owner first and only accept a media change."""
+        try:
+            moved = self._page.evaluate(SCROLL_CONTAINER_PROBE)
+        except Exception:
+            if self._page_is_closed():
+                raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
+            return False
+        if moved is not True:
+            return False
+        return self._wait_for_media_transition(previous_identity, timeout_seconds=5.0)
 
-            def point(touch_y: float) -> dict[str, float | int]:
-                return {
-                    "x": x,
-                    "y": touch_y,
-                    "radiusX": 1,
-                    "radiusY": 1,
-                    "force": 1,
-                    "id": 1,
-                }
-
+    def _keyboard_advances(self, previous_identity: str) -> bool:
+        keyboard = getattr(self._page, "keyboard", None)
+        press = getattr(keyboard, "press", None)
+        if not callable(press):
+            return False
+        for key in ("ArrowDown", "PageDown"):
             try:
-                session.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point(start_y)]})
-                for fraction in (1 / 3, 2 / 3, 1):
-                    touch_y = start_y - (start_y - end_y) * fraction
-                    session.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [point(touch_y)]})
-                session.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-            finally:
-                detach = getattr(session, "detach", None)
-                if callable(detach):
-                    detach()
-            return
-        # Unit fixtures deliberately omit CDP; retain the prior deterministic
-        # input path only for that test adapter contract.
-        self._page.mouse.move(x, y)
-        self._page.mouse.wheel(0, 640)
+                press(key)
+            except Exception:
+                if self._page_is_closed():
+                    raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
+                return False
+            if self._wait_for_media_transition(previous_identity, timeout_seconds=4.0):
+                return True
+        return False
+
+    def _wait_for_media_transition(self, previous_identity: str, *, timeout_seconds: float) -> bool:
+        polls = max(1, int(timeout_seconds / self._limits.polling_seconds))
+        stable_identity: str | None = None
+        for _ in range(polls):
+            self._raise_if_closed()
+            current_identity = self._active_media_identity()
+            if current_identity is not None and current_identity != previous_identity:
+                if current_identity == stable_identity:
+                    return True
+                stable_identity = current_identity
+            else:
+                stable_identity = None
+            self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
+        return False
 
     def wait_for_next(
         self,
@@ -449,7 +494,10 @@ class PlaywrightReelsFeed:
         observed_different = False
         poll_count = unchanged_count = missing_count = 0
         stable_count = 0
-        previous_media_identity = self._active_media_identity()
+        previous_media_identity = self._transition_media_identity
+        self._transition_media_identity = None
+        if previous_media_identity is None:
+            previous_media_identity = self._active_media_identity()
 
         def sample() -> ReelCandidate | None:
             nonlocal stable, observed_different, poll_count, unchanged_count, missing_count, stable_count
