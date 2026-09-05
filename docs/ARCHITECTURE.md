@@ -315,8 +315,9 @@ and may use only the existing one pointer-wheel retry.
 
 The first input is not a script-driven `scrollBy`: after aggregate-only
 geometry and hit-test validation, the runtime sends one bounded native CDP
-touch sequence to the central video inside the actual scroll owner (falling
-back to the document scroll root only when it is scrollable). This keeps the
+touch sequence to the central video, intersected with the actual scroll owner
+when it exists. If a CSS-locked React feed has no scrollable owner or document
+root, the visible video geometry itself is the eligible surface. This keeps the
 input on the real mobile feed event path while retaining all coordinates inside
 the browser process. The operator result exposes only boolean facts for the
 validated target, native swipe, stable media identity and post-action JSON;

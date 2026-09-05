@@ -228,11 +228,12 @@ gesture target for CSS-locked React feeds; it must not fall back to DOM
 `scrollBy`, overlays or a sandbox bypass.
 
 The runtime now replaces JavaScript `scrollBy` with one verified native touch
-swipe on the active mobile scroll owner. This removes the known DOM-only
-movement mechanism without adding an API request, state mutation, retry or
-sandbox exception. Its effectiveness still requires a fresh bounded Linux 3/3
-run; absence of post-action JSON remains terminal and continues to block the
-50-Reel acceptance.
+swipe on the active mobile scroll owner, or directly on the hit-testable
+central video when a CSS-locked feed has no owner. This removes the known
+DOM-only movement mechanism without adding an API request, state mutation,
+retry or sandbox exception. Its effectiveness still requires a fresh bounded
+Linux 3/3 run; absence of post-action JSON remains terminal and continues to
+block the 50-Reel acceptance.
 
 ---
 

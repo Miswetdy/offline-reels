@@ -240,19 +240,28 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = """
     const root = document.scrollingElement;
     if (root && root.scrollHeight > root.clientHeight) owner = root;
   }
-  if (!owner) return { available: false };
-  const rect = owner.getBoundingClientRect();
-  const left = Math.max(0, rect.left), right = Math.min(width, rect.right);
-  const top = Math.max(0, rect.top), bottom = Math.min(height, rect.bottom);
+  // A CSS-locked React feed can have no ordinary DOM scroll owner at all.
+  // The visible central video itself is then the only permissible gesture
+  // surface; never substitute an overlay or script-driven scroll mutation.
+  let left = selected.left, right = selected.right, top = selected.top, bottom = selected.bottom;
+  if (owner) {
+    const rect = owner.getBoundingClientRect();
+    left = Math.max(left, Math.max(0, rect.left)); right = Math.min(right, Math.min(width, rect.right));
+    top = Math.max(top, Math.max(0, rect.top)); bottom = Math.min(bottom, Math.min(height, rect.bottom));
+  }
   if (!(right > left && bottom > top)) return { available: true, in_viewport: false };
-  // Avoid a control/overlay: only use a point whose hit-test result is the
-  // central video itself. Coordinates remain inside this browser process.
-  const points = [[(left + right) / 2, top + (bottom - top) * .72], [(left + right) / 2, top + (bottom - top) * .58], [(left + right) / 2, top + (bottom - top) * .42]];
-  const point = points.find(([x, y]) => document.elementFromPoint(x, y) === selected.video);
-  if (!point) return { available: true, in_viewport: true, hit_testable: false };
-  const [x, startY] = point;
-  const endY = Math.max(top + 1, startY - Math.min(height * .6, Math.max(1, startY - top - 1)));
-  if (!(endY < startY)) return { available: true, in_viewport: true, hit_testable: false };
+  // Both touch endpoints must hit the central video itself. Coordinates stay
+  // inside this browser process and never appear in diagnostics or results.
+  const xValues = [.32, .5, .68].map((ratio) => left + (right - left) * ratio);
+  const yPairs = [[.76, .28], [.68, .22], [.62, .18]];
+  let gesture = null;
+  for (const x of xValues) for (const [startRatio, endRatio] of yPairs) {
+    const startY = top + (bottom - top) * startRatio;
+    const endY = top + (bottom - top) * endRatio;
+    if (document.elementFromPoint(x, startY) === selected.video && document.elementFromPoint(x, endY) === selected.video) { gesture = [x, startY, endY]; break; }
+  }
+  if (!gesture) return { available: true, in_viewport: true, hit_testable: false };
+  const [x, startY, endY] = gesture;
   return { available: true, in_viewport: true, hit_testable: true, x, start_y: startY, end_y: endY };
 }
 """

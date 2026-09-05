@@ -38,8 +38,10 @@ socket.
 
 The Collector feed adapter now uses the accepted bounded mobile transition
 cascade: it first sends one native CDP touch swipe only to a hit-testable
-central video inside its real scroll owner (or the document scroll root), then
-tries keyboard navigation, and finally applies a 90%-viewport pointer wheel.
+central video, using the real scroll owner (or the document scroll root) to
+bound geometry when one exists; a CSS-locked ownerless feed uses the visible
+video geometry itself. It then tries keyboard navigation and finally applies a
+90%-viewport pointer wheel.
 It no longer changes `scrollTop` through JavaScript, because that can repaint
 the DOM without invoking Instagram's feed-input handling. Each action is
 accepted only after two stable samples of a changed
@@ -80,7 +82,7 @@ not evidence of a repaired 3/3 transition.
 The first native-touch live run likewise did not validate a gesture: the page
 had no acceptable scroll-owner/document-root target, so touch was safely not
 sent. Keyboard/wheel then observed media and post-action JSON activity without
-a different canonical candidate and failed closed. TASK-016 now requires a
+a different canonical candidate and failed closed. TASK-016 now has a
 hit-testable-central-video fallback for CSS-locked React gesture feeds before
 another 3/3 attempt.
 

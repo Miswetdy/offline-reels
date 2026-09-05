@@ -162,7 +162,7 @@ class _TouchTransitionPage(_TransitionPage):
         return super().evaluate(expression)
 
 
-def test_verified_native_mobile_swipe_generates_post_action_json_confirmation() -> None:
+def test_ownerless_hit_testable_central_video_swipe_generates_json_confirmation() -> None:
     page = _TouchTransitionPage()
     context = _TouchContext(page)
     feed = PlaywrightReelsFeed(
