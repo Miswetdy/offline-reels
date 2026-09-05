@@ -53,6 +53,11 @@ Unit coverage includes the scroll-owner path, no-container fallback, this
 catalogue-mismatch retry and viewport-centre input. Linux Collector image
 verification remains required before a repeated live run.
 
+The live Collector pauses the current Reel while its separate session-first
+download runs. Before testing a card transition it restores muted playback on
+the centred active element, matching the accepted spike; this remains browser
+memory only and does not alter the downloaded source file.
+
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,
 public Funnel routing, iPhone PWA installation, management-device pairing and

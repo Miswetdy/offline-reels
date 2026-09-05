@@ -157,6 +157,12 @@ ACTIVE_MEDIA_IDENTITY_PROBE = """
   // because it has a slightly larger visible area during a transition.
   }).filter((item) => item.area > 0).sort((a, b) => a.distance - b.distance || b.area - a.area);
   if (!visible.length) return null;
+  // Collector pauses the current Reel while its separate downloader runs.
+  // Restore muted playback before testing an input transition; this is the
+  // accepted spike behaviour and lets mobile Instagram activate the next card
+  // without exposing sound or retaining media state outside the browser.
+  visible[0].video.muted = true;
+  visible[0].video.play().catch(() => {});
   const ids = window.__offlineReelsCollectorMediaIds || (window.__offlineReelsCollectorMediaIds = new WeakMap());
   const next = window.__offlineReelsCollectorMediaIdNext || 1;
   if (!ids.has(visible[0].video)) { ids.set(visible[0].video, next); window.__offlineReelsCollectorMediaIdNext = next + 1; }
