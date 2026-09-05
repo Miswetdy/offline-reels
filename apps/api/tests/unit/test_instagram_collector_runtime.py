@@ -133,9 +133,9 @@ def test_browser_feed_confirms_two_stable_samples_and_pauses_only_current() -> N
     adapter.advance()
     assert adapter.wait_for_next("ONE").shortcode == "TWO"  # type: ignore[union-attr]
     assert page.pause_calls == 1
-    assert page.mouse.moves == [(100.0, 200.0)]
+    assert page.mouse.moves == [(400.0, 300.0)]
     assert page.mouse.calls == [(0, 540)]
-    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 540)]
+    assert page.mouse.actions == [("move", 400.0, 300.0), ("wheel", 0, 540)]
 
 
 def test_browser_feed_uses_bounded_pointer_wheel_when_scroll_container_is_unavailable() -> None:
@@ -149,7 +149,7 @@ def test_browser_feed_uses_bounded_pointer_wheel_when_scroll_container_is_unavai
 
     adapter.advance()
 
-    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 540)]
+    assert page.mouse.actions == [("move", 400.0, 300.0), ("wheel", 0, 540)]
     assert context.session.commands == []
     assert context.session.detach_calls == 0
 
@@ -179,7 +179,7 @@ def test_browser_feed_forces_pointer_retry_when_media_change_has_no_new_reel() -
     assert adapter.wait_for_next("ONE") is None
 
     adapter.advance()
-    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 540)]
+    assert page.mouse.actions == [("move", 400.0, 300.0), ("wheel", 0, 540)]
 
 
 def test_identity_structure_diagnostics_are_aggregate_only() -> None:
@@ -243,17 +243,17 @@ def test_browser_feed_rejects_missing_or_invalid_scroll_targets(target: dict[str
     assert page.mouse.calls == []
 
 
-def test_targeted_wheel_recomputes_partially_visible_target_for_retry() -> None:
+def test_pointer_wheel_uses_viewport_centre_after_target_validation() -> None:
     first = {"available": True, "in_viewport": True, "x": 400, "y": 250, "width": 800, "height": 600}
-    second = {"available": True, "in_viewport": True, "x": 300, "y": 100, "width": 800, "height": 600}
+    second = {"available": True, "in_viewport": True, "x": 300, "y": 100, "width": 600, "height": 400}
     page = FakePage([candidate("ONE")], scroll_target=first)
     adapter = feed(page)
     adapter.advance()
     page._scroll_target = second
     adapter.advance()
     assert page.mouse.actions == [
-        ("move", 400.0, 250.0), ("wheel", 0, 540),
-        ("move", 300.0, 100.0), ("wheel", 0, 540),
+        ("move", 400.0, 300.0), ("wheel", 0, 540),
+        ("move", 300.0, 200.0), ("wheel", 0, 360),
     ]
     assert adapter.scroll_target_diagnostics.mouse_move_performed
 

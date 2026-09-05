@@ -41,11 +41,13 @@ The active-media selector follows the same centred-card rule as canonical
 candidate extraction. If an action changes a rendered media element but the
 following bounded authenticated-feed-JSON wait cannot confirm a different
 canonical Reel, the one permitted retry is forced to the pointer-wheel
-fallback instead of repeating that ambiguous action. The identity is retained
-only in memory and no media identities, URLs, cookies, or account data are
-logged. Unit coverage includes the scroll-owner path, no-container fallback,
-and this catalogue-mismatch retry. Linux Collector image verification remains
-required before a repeated live run.
+fallback instead of repeating that ambiguous action. That fallback follows the
+accepted spike exactly: a 90%-viewport wheel is sent from the mobile viewport
+centre after verifying a visible Reel target. The identity is retained only in
+memory and no media identities, URLs, cookies, or account data are logged.
+Unit coverage includes the scroll-owner path, no-container fallback, this
+catalogue-mismatch retry and viewport-centre input. Linux Collector image
+verification remains required before a repeated live run.
 
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,

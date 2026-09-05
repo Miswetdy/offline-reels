@@ -446,8 +446,12 @@ class PlaywrightReelsFeed:
         if target is None:
             raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND)
         try:
-            self._page.mouse.move(target[0], target[1])
-            self._page.mouse.wheel(0, int(target[2] * 0.9))
+            # The accepted live spike wheels from the viewport centre.  The
+            # selected video still validates that a real, visible Reel owns
+            # this interaction, but Instagram may place controls over that
+            # element's geometric centre and ignore a wheel sent there.
+            self._page.mouse.move(target[2] / 2, target[3] / 2)
+            self._page.mouse.wheel(0, int(target[3] * 0.9))
             self._scroll_target_diagnostics = ScrollTargetDiagnostics(
                 scroll_target_available=True,
                 scroll_target_in_viewport=True,
@@ -769,7 +773,7 @@ class PlaywrightReelsFeed:
         except Exception:
             return True
 
-    def _targeted_wheel_point(self) -> tuple[float, float, float] | None:
+    def _targeted_wheel_point(self) -> tuple[float, float, float, float] | None:
         self._scroll_target_diagnostics = ScrollTargetDiagnostics()
         try:
             payload = self._page.evaluate(SCROLL_TARGET_PROBE)
@@ -794,7 +798,7 @@ class PlaywrightReelsFeed:
             scroll_target_available=True,
             scroll_target_in_viewport=True,
         )
-        return x, y, height
+        return x, y, width, height
 
 
 def _candidate_from_payload(payload: object) -> ReelCandidate | None:
