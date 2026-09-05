@@ -42,6 +42,16 @@ Keyboard/wheel после этого дали media-смену и post-action JS
 React/gesture feed может принимать user gesture непосредственно на central
 video при CSS-locked root.
 
+Повторная bounded Linux-проверка после ownerless-исправления также завершилась
+`TRANSITION_FAILED` после одного durable-коммита. В ней все три признака
+`active_feed_target_available`, `active_feed_target_in_viewport` и
+`active_feed_target_hit_testable` остались `false`, а
+`mobile_swipe_performed` — `false`. Следовательно, реализация fallback ещё не
+доказала существование input-цели в реальной странице: это не отказ JSON-gate
+и не evidence отправленного touch. При этом fallback keyboard/wheel вновь
+увидел стабильную media-смену и post-action JSON, но не другой канонический
+кандидат, поэтому fail-closed результат корректен.
+
 Следовательно, нельзя считать готовым сценарий «одна кнопка PWA → новые
 Instagram Reel → заполнение лимита». Предыдущие готовые видео не должны
 использоваться, чтобы скрыть этот дефект.
@@ -120,6 +130,11 @@ Production-значение лимита `500` не меняется. Значе
   с валидным available/in-viewport/hit-testable target; отсутствие обычного
   scroll owner не должно само по себе отключать native gesture на central
   video.
+- Добавить безопасно агрегированную диагностику различения «probe не был
+  вычислен» и «на странице нет видимого central video»; без DOM-текста,
+  координат, URL, кодов или response body. Селекция input-цели должна быть
+  согласована с селекцией active-media identity, чтобы наличие последней не
+  могло молча сочетаться с `active_feed_target_available=false`.
 - Все три source-коммита, нормализации и final MP4 проходят ffprobe/decode.
 - Нет неочищенных временных файлов, staging-объектов, незавершённых jobs или
   невалидных DB-состояний.

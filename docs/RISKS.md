@@ -235,6 +235,13 @@ retry or sandbox exception. Its effectiveness still requires a fresh bounded
 Linux 3/3 run; absence of post-action JSON remains terminal and continues to
 block the 50-Reel acceptance.
 
+The first ownerless-target Linux run still returned no available input target
+and therefore sent no touch, despite later observing active-media changes.
+The ambiguity between a probe-evaluation failure and no visible central video
+must be exposed only as safe aggregate state, and target selection must stay
+aligned with media selection. Until then, the native-gesture repair remains
+unproven and the 50-Reel acceptance is blocked.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

@@ -85,6 +85,13 @@ sent. Keyboard/wheel then observed media and post-action JSON activity without
 a different canonical candidate and failed closed. TASK-016 now has a
 hit-testable-central-video fallback for CSS-locked React gesture feeds before
 another 3/3 attempt.
+The subsequent ownerless-target build did not yet validate that fallback in
+Linux: its bounded run again safely recorded no available/in-viewport/
+hit-testable target and sent no native touch. The keyboard/wheel fallback saw
+stable media and post-action JSON activity without a different canonical
+candidate, so it correctly failed closed after one durable source commit.
+TASK-016 now requires safe aggregate probe-state diagnostics and alignment of
+its target selection with active-media selection before another live run.
 
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,
