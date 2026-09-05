@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.instagram.collector.runtime.browser_feed import (
+    ACTIVE_FEED_INPUT_TARGET_PROBE,
     ACTIVE_MEDIA_IDENTITY_PROBE,
     STATE_PROBE,
     PlaywrightReelsFeed,
@@ -117,6 +118,72 @@ def test_wait_for_next_requires_stable_media_then_post_transition_feed_json() ->
     assert confirmed is not None and confirmed.shortcode == "CONFIRMED_2"
     assert feed.transition_diagnostics.stable_sample_count >= 2
     assert feed.transition_diagnostics.canonical_confirmation_observed is True
+
+
+class _TouchSession:
+    def __init__(self, page) -> None:
+        self.page = page
+        self.calls: list[str] = []
+        self.detached = False
+
+    def send(self, method: str, params: dict[str, object]) -> None:
+        self.calls.append(method)
+        if params.get("type") == "touchEnd":
+            self.page.observe_json("TOUCH_CONFIRMED")
+
+    def detach(self) -> None:
+        self.detached = True
+
+
+class _TouchContext:
+    def __init__(self, page) -> None:
+        self.session = _TouchSession(page)
+
+    def new_cdp_session(self, page):
+        assert page is self.session.page
+        return self.session
+
+
+class _TouchTransitionPage(_TransitionPage):
+    def __init__(self) -> None:
+        super().__init__()
+        self.identities = iter(("OLD_MEDIA", "NEW_MEDIA", "NEW_MEDIA", "NEW_MEDIA", "NEW_MEDIA"))
+
+    def evaluate(self, expression: str):
+        if expression == ACTIVE_FEED_INPUT_TARGET_PROBE:
+            return {
+                "available": True,
+                "in_viewport": True,
+                "hit_testable": True,
+                "x": 180,
+                "start_y": 430,
+                "end_y": 120,
+            }
+        return super().evaluate(expression)
+
+
+def test_verified_native_mobile_swipe_generates_post_action_json_confirmation() -> None:
+    page = _TouchTransitionPage()
+    context = _TouchContext(page)
+    feed = PlaywrightReelsFeed(
+        page,
+        context=context,
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.05, maximum_scroll_attempts=2),
+    )
+
+    feed.advance()
+    confirmed = feed.wait_for_next("OLD_CODE")
+
+    assert context.session.calls == [
+        "Input.dispatchTouchEvent",
+        "Input.dispatchTouchEvent",
+        "Input.dispatchTouchEvent",
+    ]
+    assert context.session.detached is True
+    assert feed.scroll_target_diagnostics.mobile_swipe_performed is True
+    assert confirmed is not None and confirmed.shortcode == "TOUCH_CONFIRMED"
+    assert feed.transition_diagnostics.stable_media_identity_observed is True
+    assert feed.transition_diagnostics.post_action_json_observed is True
 
 
 def _fixture_html() -> str:

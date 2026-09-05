@@ -38,6 +38,8 @@ class TransitionSamplingDiagnostics:
     missing_candidate_count: int = 0
     different_candidate_observed: bool = False
     stable_sample_count: int = 0
+    stable_media_identity_observed: bool = False
+    post_action_json_observed: bool = False
     canonical_confirmation_observed: bool = False
     stop_reason_code: str | None = None
 
@@ -49,6 +51,10 @@ class ScrollTargetDiagnostics:
     scroll_target_available: bool = False
     scroll_target_in_viewport: bool = False
     mouse_move_performed: bool = False
+    active_feed_target_available: bool = False
+    active_feed_target_in_viewport: bool = False
+    active_feed_target_hit_testable: bool = False
+    mobile_swipe_performed: bool = False
 
 
 class FeedPort(Protocol):

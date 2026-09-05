@@ -313,6 +313,15 @@ immediately before the input action. A DOM candidate or URL never proves a
 transition. If that JSON confirmation is absent, the transition fails safely
 and may use only the existing one pointer-wheel retry.
 
+The first input is not a script-driven `scrollBy`: after aggregate-only
+geometry and hit-test validation, the runtime sends one bounded native CDP
+touch sequence to the central video inside the actual scroll owner (falling
+back to the document scroll root only when it is scrollable). This keeps the
+input on the real mobile feed event path while retaining all coordinates inside
+the browser process. The operator result exposes only boolean facts for the
+validated target, native swipe, stable media identity and post-action JSON;
+neither coordinates nor browser content are retained.
+
 Restrictions:
 
 - Instagram automation must be isolated from the rest of the system.

@@ -495,9 +495,16 @@ class CollectorEngine:
             "missing_candidate_count": 0,
             "different_candidate_observed": False,
             "stable_sample_count": 0,
+            "stable_media_identity_observed": False,
+            "post_action_json_observed": False,
+            "canonical_confirmation_observed": False,
             "scroll_target_available": False,
             "scroll_target_in_viewport": False,
             "mouse_move_performed": False,
+            "active_feed_target_available": False,
+            "active_feed_target_in_viewport": False,
+            "active_feed_target_hit_testable": False,
+            "mobile_swipe_performed": False,
             "stop_reason_code": None,
         }
         for attempt in (1, 2):
@@ -561,6 +568,12 @@ class CollectorEngine:
         destination["stable_sample_count"] = max(
             int(destination["stable_sample_count"]), sampling.stable_sample_count
         )
+        for key in (
+            "stable_media_identity_observed",
+            "post_action_json_observed",
+            "canonical_confirmation_observed",
+        ):
+            destination[key] = bool(destination[key] or getattr(sampling, key))
         if isinstance(sampling.stop_reason_code, str):
             destination["stop_reason_code"] = sampling.stop_reason_code
 
@@ -577,6 +590,13 @@ class CollectorEngine:
         destination["mouse_move_performed"] = bool(
             destination["mouse_move_performed"] or target.mouse_move_performed
         )
+        for key in (
+            "active_feed_target_available",
+            "active_feed_target_in_viewport",
+            "active_feed_target_hit_testable",
+            "mobile_swipe_performed",
+        ):
+            destination[key] = bool(destination[key] or getattr(target, key))
 
     def _record_transition_diagnostics(self, diagnostic: dict[str, object]) -> None:
         if len(self._transition_diagnostics) < self._limits.max_target:

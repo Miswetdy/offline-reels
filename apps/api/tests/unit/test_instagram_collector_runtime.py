@@ -14,6 +14,7 @@ import pytest
 
 from app.instagram.collector.contracts import ReelCandidate
 from app.instagram.collector.runtime.browser_feed import (
+    ACTIVE_FEED_INPUT_TARGET_PROBE,
     ACTIVE_MEDIA_IDENTITY_PROBE,
     IDENTITY_PROBE,
     IDENTITY_STRUCTURE_PROBE,
@@ -71,7 +72,21 @@ class FakePage:
             "height": 600.0,
         }
         self._scroll_container = scroll_container
+        self._active_feed_target = {
+            "available": scroll_container,
+            "in_viewport": scroll_container,
+            "hit_testable": scroll_container,
+            "x": 400.0,
+            "start_y": 430.0,
+            "end_y": 120.0,
+        }
         self._media_identity_samples = list(media_identity_samples or [])
+        self._input_performed = False
+        self._response_handler = None
+
+    def on(self, event, handler) -> None:
+        assert event == "response"
+        self._response_handler = handler
 
     def evaluate(self, expression: str):
         if expression == IDENTITY_PROBE:
@@ -100,9 +115,13 @@ class FakePage:
             return self._scroll_target
         if expression == SCROLL_CONTAINER_PROBE:
             return self._scroll_container
+        if expression == ACTIVE_FEED_INPUT_TARGET_PROBE:
+            return self._active_feed_target
         if expression == ACTIVE_MEDIA_IDENTITY_PROBE:
             if self._media_identity_samples:
                 return self._media_identity_samples.pop(0)
+            if self._input_performed:
+                return "media-two"
             return "media-one"
         if expression == STATE_PROBE:
             return self._state
@@ -116,6 +135,13 @@ class FakePage:
 
     def is_closed(self) -> bool:
         return self.closed
+
+    def complete_input(self) -> None:
+        self._input_performed = True
+        if self._index < len(self._candidates) - 1:
+            self._index += 1
+            if self._response_handler is not None:
+                self._response_handler(_JsonResponse(self._candidates[self._index].shortcode))
 
 
 def feed(page: FakePage) -> PlaywrightReelsFeed:
@@ -161,9 +187,17 @@ def test_browser_feed_prefers_scroll_owner_and_confirms_stable_media_change() ->
         media_identity_samples=["media-one", "media-two", "media-two"],
     )
 
-    feed(page).advance()
+    context = _CdpContext(page)
+    PlaywrightReelsFeed(
+        page,
+        context=context,
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=2),
+    ).advance()
 
     assert page.mouse.actions == []
+    assert [params["type"] for _, params in context.session.commands] == [
+        "touchStart", "touchMove", "touchEnd"
+    ]
 
 
 def test_browser_feed_forces_pointer_retry_when_media_change_has_no_new_reel() -> None:
@@ -172,7 +206,11 @@ def test_browser_feed_forces_pointer_retry_when_media_change_has_no_new_reel() -
         scroll_container=True,
         media_identity_samples=["media-one", "media-two", "media-two"],
     )
-    adapter = feed(page)
+    adapter = PlaywrightReelsFeed(
+        page,
+        context=_CdpContext(page),
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=2),
+    )
 
     adapter.advance()
     assert page.mouse.actions == []
@@ -212,9 +250,7 @@ def test_browser_feed_timeout_and_controlled_stops_are_safe() -> None:
         )
     )
     invalid.advance()
-    with pytest.raises(CollectorRuntimeError) as error:
-        invalid.wait_for_next("ONE")
-    assert error.value.code is RuntimeReasonCode.INVALID_REEL_CANDIDATE
+    assert invalid.wait_for_next("ONE") is None
 
 
 def test_browser_feed_wheel_close_is_a_safe_browser_closed_stop() -> None:
@@ -275,9 +311,10 @@ def test_browser_feed_stabilizes_a_different_reel_before_permitting_retry() -> N
     adapter.advance()
     assert adapter.wait_for_next("ONE").shortcode == "TWO"  # type: ignore[union-attr]
     assert page.mouse.calls == [(0, 540)]
-    assert adapter.transition_diagnostics.poll_count == 4
+    assert adapter.transition_diagnostics.poll_count == 2
     assert adapter.transition_diagnostics.different_candidate_observed
     assert adapter.transition_diagnostics.stable_sample_count == 2
+    assert adapter.transition_diagnostics.post_action_json_observed
 
 
 def test_cookie_provider_filters_to_minimal_secure_instagram_jar() -> None:
@@ -731,20 +768,23 @@ class _CookieContext:
 
 
 class _CdpSession:
-    def __init__(self) -> None:
+    def __init__(self, page: FakePage | None = None) -> None:
         self.commands: list[tuple[str, dict[str, object]]] = []
         self.detach_calls = 0
+        self._page = page
 
     def send(self, method: str, parameters: dict[str, object]) -> None:
         self.commands.append((method, parameters))
+        if self._page is not None and parameters.get("type") == "touchEnd":
+            self._page.complete_input()
 
     def detach(self) -> None:
         self.detach_calls += 1
 
 
 class _CdpContext:
-    def __init__(self) -> None:
-        self.session = _CdpSession()
+    def __init__(self, page: FakePage | None = None) -> None:
+        self.session = _CdpSession(page)
 
     def new_cdp_session(self, _page: FakePage) -> _CdpSession:
         return self.session
@@ -769,7 +809,17 @@ class _FakeMouse:
             self._page.closed = True
             raise RuntimeError("browser closed")
         if self._page._index < len(self._page._candidates) - 1:
-            self._page._index += 1
+            self._page.complete_input()
+
+
+class _JsonResponse:
+    headers = {"content-type": "application/json"}
+
+    def __init__(self, code: str) -> None:
+        self._code = code
+
+    def json(self):
+        return {"code": self._code}
 
 
 def _cookie(name: str, value: str, domain: str, *, expires: float = -1) -> dict[str, object]:

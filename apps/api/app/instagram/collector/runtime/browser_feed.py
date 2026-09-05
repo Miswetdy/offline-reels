@@ -218,6 +218,45 @@ SCROLL_CONTAINER_PROBE = """
 }
 """
 
+
+ACTIVE_FEED_INPUT_TARGET_PROBE = """
+() => {
+  const width = innerWidth, height = innerHeight;
+  const midpoint = { x: width / 2, y: height / 2 };
+  const visible = [...document.querySelectorAll('video')].map((video) => {
+    const rect = video.getBoundingClientRect();
+    const left = Math.max(0, rect.left), right = Math.min(width, rect.right);
+    const top = Math.max(0, rect.top), bottom = Math.min(height, rect.bottom);
+    return { video, left, right, top, bottom, area: Math.max(0, right - left) * Math.max(0, bottom - top), distance: Math.hypot((left + right) / 2 - midpoint.x, (top + bottom) / 2 - midpoint.y) };
+  }).filter((item) => item.area > 0).sort((a, b) => a.distance - b.distance || b.area - a.area);
+  if (!visible.length) return { available: false };
+  const selected = visible[0];
+  let owner = null;
+  for (let node = selected.video.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) { owner = node; break; }
+  }
+  if (!owner) {
+    const root = document.scrollingElement;
+    if (root && root.scrollHeight > root.clientHeight) owner = root;
+  }
+  if (!owner) return { available: false };
+  const rect = owner.getBoundingClientRect();
+  const left = Math.max(0, rect.left), right = Math.min(width, rect.right);
+  const top = Math.max(0, rect.top), bottom = Math.min(height, rect.bottom);
+  if (!(right > left && bottom > top)) return { available: true, in_viewport: false };
+  // Avoid a control/overlay: only use a point whose hit-test result is the
+  // central video itself. Coordinates remain inside this browser process.
+  const points = [[(left + right) / 2, top + (bottom - top) * .72], [(left + right) / 2, top + (bottom - top) * .58], [(left + right) / 2, top + (bottom - top) * .42]];
+  const point = points.find(([x, y]) => document.elementFromPoint(x, y) === selected.video);
+  if (!point) return { available: true, in_viewport: true, hit_testable: false };
+  const [x, startY] = point;
+  const endY = Math.max(top + 1, startY - Math.min(height * .6, Math.max(1, startY - top - 1)));
+  if (!(endY < startY)) return { available: true, in_viewport: true, hit_testable: false };
+  return { available: true, in_viewport: true, hit_testable: true, x, start_y: startY, end_y: endY };
+}
+"""
+
 STATE_PROBE = """
 () => ({
   login: Boolean(document.querySelector('input[name="username"], input[name="password"]')),
@@ -231,6 +270,12 @@ class BrowserMouse(Protocol):
     def move(self, x: float, y: float) -> None: ...
 
     def wheel(self, delta_x: float, delta_y: float) -> None: ...
+
+
+class CdpSession(Protocol):
+    def send(self, method: str, params: dict[str, object]) -> object: ...
+
+    def detach(self) -> None: ...
 
 
 class BrowserPage(Protocol):
@@ -435,7 +480,7 @@ class PlaywrightReelsFeed:
             self._pointer_wheel_advance()
             self._scroll_attempts += 1
             return
-        if self._transition_media_identity is not None and self._scroll_container_advances(
+        if self._transition_media_identity is not None and self._mobile_feed_swipe_advances(
             self._transition_media_identity
         ):
             self._transition_media_confirmed = True
@@ -450,6 +495,39 @@ class PlaywrightReelsFeed:
 
         self._pointer_wheel_advance()
         self._scroll_attempts += 1
+
+    def _mobile_feed_swipe_advances(self, previous_identity: str) -> bool:
+        """Send one native touch swipe to the verified active feed owner."""
+        target = self._active_feed_input_target()
+        if target is None:
+            return False
+        x, start_y, end_y = target
+        session: CdpSession | None = None
+        try:
+            create_session = getattr(self._context, "new_cdp_session", None)
+            if not callable(create_session):
+                return False
+            session = create_session(self._page)
+            session.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": start_y, "id": 1}]})
+            session.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": end_y, "id": 1}]})
+            session.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+                active_feed_target_available=True,
+                active_feed_target_in_viewport=True,
+                active_feed_target_hit_testable=True,
+                mobile_swipe_performed=True,
+            )
+        except Exception:
+            if self._page_is_closed():
+                raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
+            return False
+        finally:
+            if session is not None:
+                try:
+                    session.detach()
+                except Exception:
+                    pass
+        return self._wait_for_media_transition(previous_identity, timeout_seconds=5.0)
 
     def _pointer_wheel_advance(self) -> None:
         target = self._targeted_wheel_point()
@@ -567,6 +645,10 @@ class PlaywrightReelsFeed:
                     stable_media_identity[0] = None
                     stable_count = 0
                 candidate = None
+                post_action_json_observed = (
+                    self._feed_json is not None
+                    and self._feed_json.observed_after(self._transition_json_checkpoint)
+                )
                 if stable_count >= 2 and self._feed_json is not None:
                     candidate = self._feed_json.next_after(
                         previous_shortcode,
@@ -608,6 +690,8 @@ class PlaywrightReelsFeed:
                     missing_candidate_count=missing_count,
                     different_candidate_observed=True,
                     stable_sample_count=stable_count,
+                    stable_media_identity_observed=True,
+                    post_action_json_observed=post_action_json_observed,
                     canonical_confirmation_observed=True,
                 )
                 return candidate
@@ -635,6 +719,11 @@ class PlaywrightReelsFeed:
             missing_candidate_count=missing_count,
             different_candidate_observed=observed_different,
             stable_sample_count=stable_count,
+            stable_media_identity_observed=stable_count >= 2,
+            post_action_json_observed=(
+                self._feed_json is not None
+                and self._feed_json.observed_after(self._transition_json_checkpoint)
+            ),
             stop_reason_code="TRANSITION_TIMEOUT",
         )
         if self._transition_media_confirmed:
@@ -815,6 +904,38 @@ class PlaywrightReelsFeed:
             scroll_target_in_viewport=True,
         )
         return x, y, width, height
+
+    def _active_feed_input_target(self) -> tuple[float, float, float] | None:
+        self._scroll_target_diagnostics = ScrollTargetDiagnostics()
+        try:
+            payload = self._page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+        except Exception:
+            if self._page_is_closed():
+                raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
+            return None
+        if not isinstance(payload, dict) or payload.get("available") is not True:
+            return None
+        if payload.get("in_viewport") is not True:
+            self._scroll_target_diagnostics = ScrollTargetDiagnostics(active_feed_target_available=True)
+            return None
+        if payload.get("hit_testable") is not True:
+            self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+                active_feed_target_available=True,
+                active_feed_target_in_viewport=True,
+            )
+            return None
+        values = tuple(payload.get(key) for key in ("x", "start_y", "end_y"))
+        if any(isinstance(value, bool) or not isinstance(value, int | float) for value in values):
+            return None
+        x, start_y, end_y = (float(value) for value in values)
+        if not all(math.isfinite(value) for value in (x, start_y, end_y)):
+            return None
+        self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+            active_feed_target_available=True,
+            active_feed_target_in_viewport=True,
+            active_feed_target_hit_testable=True,
+        )
+        return x, start_y, end_y
 
 
 def _candidate_from_payload(payload: object) -> ReelCandidate | None:

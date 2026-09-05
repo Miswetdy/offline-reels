@@ -221,6 +221,13 @@ condition but no post-action canonical JSON candidate. It terminated
 whether the input action truly advances Instagram's feed request, not whether a
 stale DOM/response can be accepted as a false transition.
 
+The runtime now replaces JavaScript `scrollBy` with one verified native touch
+swipe on the active mobile scroll owner. This removes the known DOM-only
+movement mechanism without adding an API request, state mutation, retry or
+sandbox exception. Its effectiveness still requires a fresh bounded Linux 3/3
+run; absence of post-action JSON remains terminal and continues to block the
+50-Reel acceptance.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

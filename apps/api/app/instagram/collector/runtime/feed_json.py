@@ -52,6 +52,11 @@ class FeedJsonCandidateCatalog:
             return ReelCandidate(code, f"https://www.instagram.com/reel/{code}/")
         return None
 
+    def observed_after(self, observation: int) -> bool:
+        """Whether any authenticated JSON response arrived after a boundary."""
+
+        return self._observation > observation
+
     def _observe(self, response: JsonResponse) -> None:
         try:
             content_type = response.headers.get("content-type", "").lower()

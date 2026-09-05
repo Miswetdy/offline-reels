@@ -37,9 +37,12 @@ memory, bounded resources, no published port, no host networking and no Docker
 socket.
 
 The Collector feed adapter now uses the accepted bounded mobile transition
-cascade: it first scrolls the nearest real scroll owner for the centred video,
-then tries keyboard navigation, and finally applies a 90%-viewport pointer
-wheel. Each action is accepted only after two stable samples of a changed
+cascade: it first sends one native CDP touch swipe only to a hit-testable
+central video inside its real scroll owner (or the document scroll root), then
+tries keyboard navigation, and finally applies a 90%-viewport pointer wheel.
+It no longer changes `scrollTop` through JavaScript, because that can repaint
+the DOM without invoking Instagram's feed-input handling. Each action is
+accepted only after two stable samples of a changed
 active media identity and a different canonical Reel from authenticated feed
 JSON observed after the input's in-memory response boundary; the visible
 `/reels/` URL and DOM candidate are not evidence of movement.
@@ -51,8 +54,11 @@ fallback instead of repeating that ambiguous action. That fallback follows the
 accepted spike exactly: a 90%-viewport wheel is sent from the mobile viewport
 centre after verifying a visible Reel target. The identity is retained only in
 memory and no media identities, URLs, cookies, or account data are logged.
-Unit coverage includes the scroll-owner path, no-container fallback, this
-catalogue-mismatch retry, response-boundary gate and viewport-centre input.
+Operator diagnostics separately record aggregate stable-media, post-action
+JSON and canonical-confirmation facts, plus only boolean active-feed target
+and native-swipe facts. Unit coverage includes the verified native-scroll-owner
+path, no-container fallback, this catalogue-mismatch retry, response-boundary
+gate and viewport-centre input.
 Linux Collector image verification remains required before a repeated live
 run.
 
