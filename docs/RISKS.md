@@ -200,6 +200,14 @@ and rerun later; the next run recomputes the actual durable total. Live Instagra
 behaviour, account restrictions and browser-profile recovery remain operational
 risks.
 
+Stage-10 live evidence now shows a concrete transition failure: one real Reel
+can be downloaded and committed, but the browser cannot confirm the next
+canonical feed card after its bounded container/keyboard/wheel cascade. This
+blocks any claim that a PWA command can fill a device reserve from one live
+collection. TASK-016 requires a 3/3 transition repair before enabling the
+sequential 50-Reel Stage-10 scenario. No retry-limit or sandbox-bypass
+workaround is permitted.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

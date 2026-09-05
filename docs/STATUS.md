@@ -58,6 +58,12 @@ download runs. Before testing a card transition it restores muted playback on
 the centred active element, matching the accepted spike; this remains browser
 memory only and does not alter the downloaded source file.
 
+Current live evidence is deliberately not accepted as a multi-Reel collection:
+the Stage-10 Collector repeatedly commits one real source but terminates with
+`TRANSITION_FAILED` before a canonical next Reel is confirmed. TASK-016 tracks
+the required repair and the subsequent PWA-triggered, clean 50-Reel acceptance;
+previously prepared/seen media must not be counted for that task.
+
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,
 public Funnel routing, iPhone PWA installation, management-device pairing and
