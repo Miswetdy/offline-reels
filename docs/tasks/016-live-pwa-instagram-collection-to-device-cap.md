@@ -32,6 +32,16 @@ feed JSON как доказательство. Неисправна реальн
 продвижение именно того Instagram feed, который выдаёт новый authenticated
 JSON-ответ.
 
+Первая live-проверка native-touch реализации показала следующий конкретный
+недостаток: на реальной Reels-странице probe не нашёл scrollable DOM owner или
+document scroll root, поэтому корректно отказался отправлять touch
+(`active_feed_target_available=false`, `mobile_swipe_performed=false`).
+Keyboard/wheel после этого дали media-смену и post-action JSON observation, но
+не другой канонический Reel. Значит, следующий ремонт обязан отличать
+отсутствие обычного DOM scroll owner от отсутствия безопасной input-цели:
+React/gesture feed может принимать user gesture непосредственно на central
+video при CSS-locked root.
+
 Следовательно, нельзя считать готовым сценарий «одна кнопка PWA → новые
 Instagram Reel → заполнение лимита». Предыдущие готовые видео не должны
 использоваться, чтобы скрыть этот дефект.
@@ -77,6 +87,13 @@ Production-значение лимита `500` не меняется. Значе
   scroll owner/viewport Instagram, а не на preloaded/overlay DOM-элемент;
   после действия он должен дождаться нового authenticated JSON-наблюдения в
   пределах уже заданного deadline.
+- Исправить native-touch target discovery: отсутствие scrollable DOM ancestor
+  само по себе не является отказом, если central video имеет валидную видимую
+  область и hit-test в выбранной точке возвращает этот video. В таком случае
+  ограниченный touch-swipe направляется на hit-testable central video как
+  реальный mobile gesture; owner/root используется для выбора геометрии, когда
+  он существует. Нельзя отправлять жест в overlay/control или использовать
+  синтетический DOM `scrollBy` как замену user input.
 - Если текущий scroll owner не инициирует feed request, добавить только
   ограниченный эквивалент реального мобильного пользовательского действия,
   который создаёт это продвижение. Новый input обязан иметь unit/synthetic
@@ -99,6 +116,10 @@ Production-значение лимита `500` не меняется. Значе
   post-action authenticated feed-JSON observation, из которого получен другой
   канонический Reel. Смена только первого признака остаётся terminal
   `TRANSITION_FAILED`.
+- В live 3/3 хотя бы один переход имеет `mobile_swipe_performed=true` вместе
+  с валидным available/in-viewport/hit-testable target; отсутствие обычного
+  scroll owner не должно само по себе отключать native gesture на central
+  video.
 - Все три source-коммита, нормализации и final MP4 проходят ffprobe/decode.
 - Нет неочищенных временных файлов, staging-объектов, незавершённых jobs или
   невалидных DB-состояний.

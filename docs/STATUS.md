@@ -77,6 +77,12 @@ media identity, but no different canonical candidate from authenticated feed
 JSON after the action checkpoint. It therefore correctly remained
 `TRANSITION_FAILED`; this is evidence that the new JSON boundary is fail-closed,
 not evidence of a repaired 3/3 transition.
+The first native-touch live run likewise did not validate a gesture: the page
+had no acceptable scroll-owner/document-root target, so touch was safely not
+sent. Keyboard/wheel then observed media and post-action JSON activity without
+a different canonical candidate and failed closed. TASK-016 now requires a
+hit-testable-central-video fallback for CSS-locked React gesture feeds before
+another 3/3 attempt.
 
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,

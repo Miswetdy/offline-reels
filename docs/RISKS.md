@@ -221,6 +221,12 @@ condition but no post-action canonical JSON candidate. It terminated
 whether the input action truly advances Instagram's feed request, not whether a
 stale DOM/response can be accepted as a false transition.
 
+The first bounded native-touch attempt found no ordinary scrollable DOM owner
+or document root on the live Reels page, so it correctly sent no touch event.
+The next implementation must safely support a hit-testable central-video
+gesture target for CSS-locked React feeds; it must not fall back to DOM
+`scrollBy`, overlays or a sandbox bypass.
+
 The runtime now replaces JavaScript `scrollBy` with one verified native touch
 swipe on the active mobile scroll owner. This removes the known DOM-only
 movement mechanism without adding an API request, state mutation, retry or
