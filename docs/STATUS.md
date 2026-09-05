@@ -37,12 +37,15 @@ cascade: it first scrolls the nearest real scroll owner for the centred video,
 then tries keyboard navigation, and finally applies a 90%-viewport pointer
 wheel. Each action is accepted only after two stable samples of a changed
 active media identity; the visible `/reels/` URL is not evidence of movement.
-The identity observed before an action is retained only in memory until the
-following bounded candidate wait, allowing the authenticated feed-JSON catalog
-to resolve the new canonical Reel without logging media identities, URLs,
-cookies, or account data. Unit coverage includes this scroll-owner path and
-the no-container fallback. Linux Collector image verification remains required
-before a repeated live run.
+The active-media selector follows the same centred-card rule as canonical
+candidate extraction. If an action changes a rendered media element but the
+following bounded authenticated-feed-JSON wait cannot confirm a different
+canonical Reel, the one permitted retry is forced to the pointer-wheel
+fallback instead of repeating that ambiguous action. The identity is retained
+only in memory and no media identities, URLs, cookies, or account data are
+logged. Unit coverage includes the scroll-owner path, no-container fallback,
+and this catalogue-mismatch retry. Linux Collector image verification remains
+required before a repeated live run.
 
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,

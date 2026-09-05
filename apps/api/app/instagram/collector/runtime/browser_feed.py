@@ -152,7 +152,10 @@ ACTIVE_MEDIA_IDENTITY_PROBE = """
     const rect = video.getBoundingClientRect();
     const area = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) * Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
     return { video, area, distance: Math.abs((rect.top + rect.bottom) / 2 - innerHeight / 2) };
-  }).filter((item) => item.area > 0).sort((a, b) => b.area - a.area || a.distance - b.distance);
+  // Keep this selection aligned with IDENTITY_PROBE: a partially visible
+  // preloaded card must not be mistaken for the centred feed item merely
+  // because it has a slightly larger visible area during a transition.
+  }).filter((item) => item.area > 0).sort((a, b) => a.distance - b.distance || b.area - a.area);
   if (!visible.length) return null;
   const ids = window.__offlineReelsCollectorMediaIds || (window.__offlineReelsCollectorMediaIds = new WeakMap());
   const next = window.__offlineReelsCollectorMediaIdNext || 1;
@@ -269,6 +272,8 @@ class PlaywrightReelsFeed:
         self._transition_diagnostics = TransitionSamplingDiagnostics()
         self._scroll_target_diagnostics = ScrollTargetDiagnostics()
         self._transition_media_identity: str | None = None
+        self._transition_media_confirmed = False
+        self._force_pointer_wheel_next_advance = False
         try:
             self._feed_json = FeedJsonCandidateCatalog(page)
         except Exception:
@@ -410,16 +415,33 @@ class PlaywrightReelsFeed:
         if self._scroll_attempts >= self._limits.maximum_scroll_attempts:
             raise CollectorRuntimeError(RuntimeReasonCode.TRANSITION_TIMEOUT)
         self._transition_media_identity = self._active_media_identity()
+        self._transition_media_confirmed = False
+        if self._force_pointer_wheel_next_advance:
+            # A previous action changed the rendered media element but the
+            # authenticated feed catalog never confirmed a new Reel.  Do not
+            # repeat that ambiguous action: use the accepted bounded pointer
+            # fallback on the one permitted retry.
+            self._force_pointer_wheel_next_advance = False
+            self._pointer_wheel_advance()
+            self._scroll_attempts += 1
+            return
         if self._transition_media_identity is not None and self._scroll_container_advances(
             self._transition_media_identity
         ):
+            self._transition_media_confirmed = True
             self._scroll_attempts += 1
             return
         if self._transition_media_identity is not None and self._keyboard_advances(
             self._transition_media_identity
         ):
+            self._transition_media_confirmed = True
             self._scroll_attempts += 1
             return
+
+        self._pointer_wheel_advance()
+        self._scroll_attempts += 1
+
+    def _pointer_wheel_advance(self) -> None:
         target = self._targeted_wheel_point()
         if target is None:
             raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND)
@@ -435,7 +457,6 @@ class PlaywrightReelsFeed:
             if self._page_is_closed():
                 raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
             raise
-        self._scroll_attempts += 1
 
     def _scroll_container_advances(self, previous_identity: str) -> bool:
         """Use the spike's real scroll owner first and only accept a media change."""
@@ -561,6 +582,7 @@ class PlaywrightReelsFeed:
                     stable = candidate
                     stable_count = 1
                 if stable_count >= 2:
+                    self._transition_media_confirmed = False
                     self._transition_diagnostics = TransitionSamplingDiagnostics(
                         poll_count=poll_count,
                         unchanged_sample_count=unchanged_count,
@@ -595,6 +617,8 @@ class PlaywrightReelsFeed:
             stable_sample_count=stable_count,
             stop_reason_code="TRANSITION_TIMEOUT",
         )
+        if self._transition_media_confirmed:
+            self._force_pointer_wheel_next_advance = True
         return None
 
     def _active_media_identity(self) -> str | None:

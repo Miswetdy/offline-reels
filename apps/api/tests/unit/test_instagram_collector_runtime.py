@@ -166,6 +166,22 @@ def test_browser_feed_prefers_scroll_owner_and_confirms_stable_media_change() ->
     assert page.mouse.actions == []
 
 
+def test_browser_feed_forces_pointer_retry_when_media_change_has_no_new_reel() -> None:
+    page = FakePage(
+        [candidate("ONE")],
+        scroll_container=True,
+        media_identity_samples=["media-one", "media-two", "media-two"],
+    )
+    adapter = feed(page)
+
+    adapter.advance()
+    assert page.mouse.actions == []
+    assert adapter.wait_for_next("ONE") is None
+
+    adapter.advance()
+    assert page.mouse.actions == [("move", 100.0, 200.0), ("wheel", 0, 540)]
+
+
 def test_identity_structure_diagnostics_are_aggregate_only() -> None:
     result = feed(FakePage([candidate()])).identity_structure_diagnostics()
     assert result == {
