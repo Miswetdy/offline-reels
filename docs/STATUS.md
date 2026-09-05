@@ -66,6 +66,11 @@ the Stage-10 Collector repeatedly commits one real source but terminates with
 `TRANSITION_FAILED` before a canonical next Reel is confirmed. TASK-016 tracks
 the required repair and the subsequent PWA-triggered, clean 50-Reel acceptance;
 previously prepared/seen media must not be counted for that task.
+The bounded Linux verification of `e45e098` observed a stable changed central
+media identity, but no different canonical candidate from authenticated feed
+JSON after the action checkpoint. It therefore correctly remained
+`TRANSITION_FAILED`; this is evidence that the new JSON boundary is fail-closed,
+not evidence of a repaired 3/3 transition.
 
 The first Ubuntu staging attempt accepted the Collector sandbox smoke, Redis
 recovery, PostgreSQL and MinIO restore, loopback-only single-origin ingress,

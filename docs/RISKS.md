@@ -215,6 +215,12 @@ preloaded or stale feed responses from being counted as movement, but it still
 needs a new bounded 3/3 Linux run as live evidence; the 50-Reel scenario
 remains blocked until then.
 
+The first post-change Linux verification saw the stable DOM/media half of that
+condition but no post-action canonical JSON candidate. It terminated
+`TRANSITION_FAILED` as designed. The remaining investigation is therefore
+whether the input action truly advances Instagram's feed request, not whether a
+stale DOM/response can be accepted as a false transition.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity
