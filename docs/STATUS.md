@@ -19,6 +19,10 @@ Chromium. Linux/iPhone live-login acceptance remains pending.
 The Stage 10 web build pins its manual collection target to three so a
 PWA-created queued run exactly matches the bounded live Collector contract;
 the production collection target remains unchanged.
+The manual PWA download action now first uses an already-ready account-owned
+catalog, so an operator-prepared batch can be copied to the device without
+creating a redundant Instagram collection run. It requests a new bounded run
+only when that catalog is empty.
 Linux live acceptance found that a profile created by the system login
 Chromium closed immediately when reopened by the separate Chrome-for-Testing
 binary. Stage 10 now pins login-browser and Collector to the same sandbox-

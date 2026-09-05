@@ -122,12 +122,27 @@ export function LibraryDashboard() {
     pipelineAbortRef.current = controller;
     const generation = pipelineGenerationRef.current + 1;
     pipelineGenerationRef.current = generation;
-    // The key belongs to this user operation. A transient retry reuses it;
-    // the ref is cleared after cancellation or terminal completion.
-    pipelineKeyRef.current = crypto.randomUUID();
     const target = Math.min(COLLECTION_TARGET, remainingCapacity);
-    setCurrentPipeline({ stage: "collecting", runId: null, target, percent: 0, generation });
+    // Prefer the account-owned ready catalog. It avoids a redundant Instagram
+    // collection run when the operator has already prepared media for this
+    // device; a new bounded collection is only needed when it is empty.
+    setCurrentPipeline({ stage: "downloading", runId: null, target, percent: null, generation });
     try {
+      const existingCatalog = await getAccountCatalog(controller.signal);
+      if (!currentPipeline(generation)) return;
+      if (existingCatalog.items.length > 0) {
+        const enqueued = await enqueueCatalogAndStart(existingCatalog.items.slice(0, remainingCapacity));
+        if (!currentPipeline(generation)) return;
+        if (enqueued === 0) {
+          pipelineKeyRef.current = null;
+          setCurrentPipeline(null);
+        }
+        return;
+      }
+      // The key belongs only to a new server-side collection. A transient
+      // retry reuses it; it is cleared after cancellation or completion.
+      pipelineKeyRef.current = crypto.randomUUID();
+      setCurrentPipeline({ stage: "collecting", runId: null, target, percent: 0, generation });
       const created = await management.startCollection(target, pipelineKeyRef.current);
       if (!currentPipeline(generation)) return;
       setCurrentPipeline({ stage: "collecting", runId: created.id, target: created.target, percent: 0, generation });

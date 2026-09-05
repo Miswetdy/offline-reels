@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   management: vi.fn(),
   downloads: vi.fn(),
+  getAccountCatalog: vi.fn(),
+  getCollectionRun: vi.fn(),
   estimate: vi.fn(),
   push: vi.fn(),
 }));
@@ -14,6 +16,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock("../hooks/use-management-control", () => ({ useManagementControl: mocks.management }));
 vi.mock("../hooks/use-offline-downloads", () => ({ useOfflineDownloads: mocks.downloads }));
+vi.mock("../lib/api/management", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../lib/api/management")>(),
+  getAccountCatalog: mocks.getAccountCatalog,
+  getCollectionRun: mocks.getCollectionRun,
+}));
 vi.mock("../lib/offline/storage", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/offline/storage")>(),
   getStorageEstimate: mocks.estimate,
@@ -60,6 +67,7 @@ beforeEach(() => {
   mocks.estimate.mockResolvedValue({ usage: 0, quota: 100, available: 100, isAvailable: true });
   mocks.downloads.mockReturnValue({ snapshot: offlineSnapshot, enqueueCatalogAndStart: vi.fn(), cancelBatch: vi.fn(), cancelAndClear: vi.fn() });
   mocks.management.mockReturnValue(paired());
+  mocks.getAccountCatalog.mockResolvedValue({ items: [] });
   vi.stubGlobal("confirm", vi.fn(() => true));
 });
 
@@ -103,6 +111,33 @@ describe("LibraryDashboard Stage 7", () => {
     });
     render(<LibraryDashboard />);
     expect(document.body.textContent).toContain("3");
+  });
+
+  it("downloads an already prepared account catalog without starting collection", async () => {
+    const catalogItem = {
+      id: "00000000-0000-4000-8000-000000000099",
+      title: "Prepared Reel",
+      content_type: "video/mp4",
+      byte_size: 1024,
+      created_at: "2026-09-05T00:00:00Z",
+    };
+    const enqueueCatalogAndStart = vi.fn().mockResolvedValue(1);
+    const control = paired();
+    mocks.management.mockReturnValue(control);
+    mocks.downloads.mockReturnValue({
+      snapshot: offlineSnapshot,
+      enqueueCatalogAndStart,
+      cancelBatch: vi.fn(),
+      cancelAndClear: vi.fn(),
+    });
+    mocks.getAccountCatalog.mockResolvedValue({ items: [catalogItem] });
+
+    render(<LibraryDashboard />);
+    fireEvent.click(screen.getByRole("button", { name: "Загрузить Reels" }));
+
+    await waitFor(() => expect(enqueueCatalogAndStart).toHaveBeenCalledWith([catalogItem]));
+    expect(control.startCollection).not.toHaveBeenCalled();
+    expect(screen.getByText(/Загружаем на устройство/)).toBeInTheDocument();
   });
 
   it("disables management actions while offline while retaining local library cleanup", () => {
