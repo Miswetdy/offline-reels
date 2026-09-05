@@ -279,6 +279,7 @@ class PlaywrightReelsFeed:
         self._scroll_target_diagnostics = ScrollTargetDiagnostics()
         self._transition_media_identity: str | None = None
         self._transition_media_confirmed = False
+        self._transition_json_checkpoint = 0
         self._force_pointer_wheel_next_advance = False
         try:
             self._feed_json = FeedJsonCandidateCatalog(page)
@@ -422,6 +423,9 @@ class PlaywrightReelsFeed:
             raise CollectorRuntimeError(RuntimeReasonCode.TRANSITION_TIMEOUT)
         self._transition_media_identity = self._active_media_identity()
         self._transition_media_confirmed = False
+        self._transition_json_checkpoint = (
+            self._feed_json.checkpoint() if self._feed_json is not None else 0
+        )
         if self._force_pointer_wheel_next_advance:
             # A previous action changed the rendered media element but the
             # authenticated feed catalog never confirmed a new Reel.  Do not
@@ -517,7 +521,6 @@ class PlaywrightReelsFeed:
         should_stop: Callable[[], bool] | None = None,
     ) -> ReelCandidate | None:
         self._transition_diagnostics = TransitionSamplingDiagnostics()
-        stable: ReelCandidate | None = None
         polls = max(1, int(self._limits.timeout_seconds / self._limits.polling_seconds))
         stabilization_polls = max(
             1, int(self._limits.stabilization_seconds / self._limits.polling_seconds)
@@ -525,13 +528,16 @@ class PlaywrightReelsFeed:
         observed_different = False
         poll_count = unchanged_count = missing_count = 0
         stable_count = 0
+        # A one-element holder keeps the identity strictly in process memory
+        # while allowing the bounded sampler below to update it.
+        stable_media_identity: list[str | None] = [None]
         previous_media_identity = self._transition_media_identity
         self._transition_media_identity = None
         if previous_media_identity is None:
             previous_media_identity = self._active_media_identity()
 
         def sample() -> ReelCandidate | None:
-            nonlocal stable, observed_different, poll_count, unchanged_count, missing_count, stable_count
+            nonlocal observed_different, poll_count, unchanged_count, missing_count, stable_count
             if should_stop is not None and should_stop():
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
                     poll_count=poll_count,
@@ -545,13 +551,27 @@ class PlaywrightReelsFeed:
             self._raise_if_closed()
             self._raise_if_controlled_stop()
             try:
-                candidate = self._candidate_or_none()
+                current_media_identity = self._active_media_identity()
                 if (
-                    (candidate is None or candidate.shortcode == previous_shortcode)
-                    and self._media_changed(previous_media_identity)
-                    and self._feed_json is not None
+                    current_media_identity is not None
+                    and previous_media_identity is not None
+                    and current_media_identity != previous_media_identity
                 ):
-                    candidate = self._feed_json.next_after(previous_shortcode)
+                    observed_different = True
+                    if current_media_identity == stable_media_identity[0]:
+                        stable_count += 1
+                    else:
+                        stable_media_identity[0] = current_media_identity
+                        stable_count = 1
+                else:
+                    stable_media_identity[0] = None
+                    stable_count = 0
+                candidate = None
+                if stable_count >= 2 and self._feed_json is not None:
+                    candidate = self._feed_json.next_after(
+                        previous_shortcode,
+                        after_observation=self._transition_json_checkpoint,
+                    )
                 self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
             except CollectorRuntimeError as error:
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
@@ -576,31 +596,21 @@ class PlaywrightReelsFeed:
                     raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
                 raise
             poll_count += 1
-            if candidate is None:
-                missing_count += 1
-                stable = None
-                stable_count = 0
-            elif candidate.shortcode == previous_shortcode:
+            if stable_count < 2:
                 unchanged_count += 1
-                stable = None
-                stable_count = 0
+            elif candidate is None:
+                missing_count += 1
             else:
-                observed_different = True
-                if stable is not None and stable.shortcode == candidate.shortcode:
-                    stable_count += 1
-                else:
-                    stable = candidate
-                    stable_count = 1
-                if stable_count >= 2:
-                    self._transition_media_confirmed = False
-                    self._transition_diagnostics = TransitionSamplingDiagnostics(
-                        poll_count=poll_count,
-                        unchanged_sample_count=unchanged_count,
-                        missing_candidate_count=missing_count,
-                        different_candidate_observed=True,
-                        stable_sample_count=stable_count,
-                    )
-                    return candidate
+                self._transition_media_confirmed = False
+                self._transition_diagnostics = TransitionSamplingDiagnostics(
+                    poll_count=poll_count,
+                    unchanged_sample_count=unchanged_count,
+                    missing_candidate_count=missing_count,
+                    different_candidate_observed=True,
+                    stable_sample_count=stable_count,
+                    canonical_confirmation_observed=True,
+                )
+                return candidate
             return None
 
         for _ in range(polls):

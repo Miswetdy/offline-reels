@@ -45,3 +45,16 @@ def test_catalog_ignores_non_json_and_malformed_responses():
     catalog = FeedJsonCandidateCatalog(page)
     page.handler(_Response({"code": "IGNORED_1"}, "text/html"))
     assert catalog.next_after("PREVIOUS") is None
+
+
+def test_catalog_only_returns_codes_observed_after_transition_checkpoint():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    page.handler(_Response({"code": "STALE_1"}))
+    checkpoint = catalog.checkpoint()
+    page.handler(_Response({"code": "FRESH_2"}))
+
+    candidate = catalog.next_after("PREVIOUS", after_observation=checkpoint)
+
+    assert candidate is not None
+    assert candidate.shortcode == "FRESH_2"

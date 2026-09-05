@@ -208,6 +208,13 @@ collection. TASK-016 requires a 3/3 transition repair before enabling the
 sequential 50-Reel Stage-10 scenario. No retry-limit or sandbox-bypass
 workaround is permitted.
 
+The runtime now rejects a DOM-only apparent change: it requires two stable
+central-media observations plus a different canonical code from authenticated
+feed JSON received after the action's in-memory checkpoint. This prevents
+preloaded or stale feed responses from being counted as movement, but it still
+needs a new bounded 3/3 Linux run as live evidence; the 50-Reel scenario
+remains blocked until then.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

@@ -27,14 +27,27 @@ class FeedJsonCandidateCatalog:
     """Extract only validated ``code`` fields; URLs and response bodies never escape."""
 
     def __init__(self, page: ResponsePage) -> None:
-        self._codes: deque[str] = deque()
+        self._codes: deque[tuple[int, str]] = deque()
         self._seen: set[str] = set()
+        self._observation = 0
         page.on("response", self._observe)
 
-    def next_after(self, previous_shortcode: str) -> ReelCandidate | None:
+    def checkpoint(self) -> int:
+        """Return an in-memory boundary before a feed input is sent.
+
+        A code seen before this boundary cannot prove that the input advanced
+        the active card.  The value is intentionally process-local and is
+        never logged or persisted.
+        """
+
+        return self._observation
+
+    def next_after(
+        self, previous_shortcode: str, *, after_observation: int = 0
+    ) -> ReelCandidate | None:
         while self._codes:
-            code = self._codes.popleft()
-            if code == previous_shortcode:
+            observation, code = self._codes.popleft()
+            if observation <= after_observation or code == previous_shortcode:
                 continue
             return ReelCandidate(code, f"https://www.instagram.com/reel/{code}/")
         return None
@@ -44,11 +57,12 @@ class FeedJsonCandidateCatalog:
             content_type = response.headers.get("content-type", "").lower()
             if "json" not in content_type:
                 return
-            self._collect(response.json())
+            self._observation += 1
+            self._collect(response.json(), observation=self._observation)
         except Exception:
             return
 
-    def _collect(self, payload: object) -> None:
+    def _collect(self, payload: object, *, observation: int) -> None:
         stack = [payload]
         visited = 0
         while stack and visited < 20_000:
@@ -58,7 +72,7 @@ class FeedJsonCandidateCatalog:
                 code = value.get("code")
                 if isinstance(code, str) and SHORTCODE.fullmatch(code) and code not in self._seen:
                     self._seen.add(code)
-                    self._codes.append(code)
+                    self._codes.append((observation, code))
                     if len(self._codes) > _MAX_CODES:
                         self._codes.popleft()
                 stack.extend(reversed(tuple(value.values())))

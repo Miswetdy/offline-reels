@@ -38,6 +38,7 @@ class TransitionSamplingDiagnostics:
     missing_candidate_count: int = 0
     different_candidate_observed: bool = False
     stable_sample_count: int = 0
+    canonical_confirmation_observed: bool = False
     stop_reason_code: str | None = None
 
 

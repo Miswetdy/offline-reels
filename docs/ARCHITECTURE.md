@@ -305,6 +305,14 @@ closed before browser readiness, so the end-to-end profile → Collector chain
 must be re-accepted on Linux staging or a real server. No browser-sandbox
 bypass was introduced for that experiment.
 
+For a live card transition, the runtime retains only the centred media
+element's process-local identity. It first requires two stable observations of
+a different identity, then accepts a canonical candidate only from
+authenticated feed JSON observed after an in-memory response checkpoint made
+immediately before the input action. A DOM candidate or URL never proves a
+transition. If that JSON confirmation is absent, the transition fails safely
+and may use only the existing one pointer-wheel retry.
+
 Restrictions:
 
 - Instagram automation must be isolated from the rest of the system.
