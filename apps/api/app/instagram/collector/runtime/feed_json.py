@@ -31,9 +31,10 @@ class AuthenticatedFeedSource:
 
     JSON-response candidates are accepted only from GraphQL. Explicit embedded
     JSON scripts on the authenticated `/reels/` document may add validated
-    candidates after the page has loaded. Other JSON and all non-JSON response
-    classes remain aggregate diagnostics only. Values are held only in the
-    process-local bounded queue and are never logged or persisted.
+    candidates under media-shaped ancestry after the page has loaded. Other
+    JSON and all non-JSON response classes remain aggregate diagnostics only.
+    Values are held only in the process-local bounded queue and are never
+    logged or persisted.
     """
 
     def __init__(self, page: ResponsePage) -> None:
@@ -108,8 +109,9 @@ class AuthenticatedFeedSource:
         """Add validated IDs from the current Reels document's JSON scripts.
 
         The browser probe has already restricted this payload to explicit JSON
-        script types. Values from arbitrary inline JavaScript, DOM attributes,
-        URLs and response bodies never reach this method.
+        script types and media-shaped ancestry. Values from arbitrary inline
+        JavaScript, DOM attributes, URLs and response bodies never reach this
+        method.
         """
 
         if not isinstance(payload, list):

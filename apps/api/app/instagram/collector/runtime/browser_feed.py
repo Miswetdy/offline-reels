@@ -172,6 +172,7 @@ EMBEDDED_APPLICATION_DATA_PROBE = """
     parseable_embedded_json_script_count: 0,
     oversized_embedded_json_script_count: 0,
     embedded_tree_allowed_canonical_alias_values: 0,
+    embedded_media_descendant_allowed_canonical_alias_values: 0,
   };
   for (const script of document.querySelectorAll('script[type]')) {
     const type = (script.getAttribute('type') || '').trim().toLowerCase();
@@ -185,19 +186,21 @@ EMBEDDED_APPLICATION_DATA_PROBE = """
     let payload;
     try { payload = JSON.parse(text); } catch { continue; }
     result.parseable_embedded_json_script_count += 1;
-    const stack = [payload];
+    const stack = [[payload, false]];
     let visited = 0;
     while (stack.length && visited < 20_000) {
       visited += 1;
-      const value = stack.pop();
+      const [value, parentIsMedia] = stack.pop();
       if (Array.isArray(value)) {
-        stack.push(...value);
+        for (const child of value) stack.push([child, parentIsMedia]);
       } else if (value && typeof value === 'object') {
+        const isMedia = parentIsMedia || Object.hasOwn(value, 'media_type') || Object.hasOwn(value, 'video_versions');
         for (const [key, child] of Object.entries(value)) {
           if (acceptedKeys.has(key) && typeof child === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(child)) {
             result.embedded_tree_allowed_canonical_alias_values += 1;
+            if (isMedia) result.embedded_media_descendant_allowed_canonical_alias_values += 1;
           }
-          stack.push(child);
+          stack.push([child, isMedia]);
         }
       }
     }
@@ -221,20 +224,21 @@ EMBEDDED_APPLICATION_CANDIDATES_PROBE = """
     if (text.length > 2_000_000) continue;
     let payload;
     try { payload = JSON.parse(text); } catch { continue; }
-    const stack = [payload];
+    const stack = [[payload, false]];
     let visited = 0;
     while (stack.length && visited < 20_000 && candidates.length < 32) {
       visited += 1;
-      const value = stack.pop();
+      const [value, parentIsMedia] = stack.pop();
       if (Array.isArray(value)) {
-        stack.push(...value);
+        for (const child of value) stack.push([child, parentIsMedia]);
       } else if (value && typeof value === 'object') {
+        const isMedia = parentIsMedia || Object.hasOwn(value, 'media_type') || Object.hasOwn(value, 'video_versions');
         for (const [key, child] of Object.entries(value)) {
-          if (acceptedKeys.has(key) && typeof child === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(child) && !seen.has(child)) {
+          if (isMedia && acceptedKeys.has(key) && typeof child === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(child) && !seen.has(child)) {
             seen.add(child);
             candidates.push(child);
           }
-          stack.push(child);
+          stack.push([child, isMedia]);
         }
       }
     }
@@ -1439,6 +1443,7 @@ def _empty_embedded_application_data_diagnostics() -> dict[str, int]:
         "parseable_embedded_json_script_count": 0,
         "oversized_embedded_json_script_count": 0,
         "embedded_tree_allowed_canonical_alias_values": 0,
+        "embedded_media_descendant_allowed_canonical_alias_values": 0,
     }
 
 

@@ -122,6 +122,7 @@ class FakePage:
                 "parseable_embedded_json_script_count": 1,
                 "oversized_embedded_json_script_count": 1,
                 "embedded_tree_allowed_canonical_alias_values": 3,
+                "embedded_media_descendant_allowed_canonical_alias_values": 2,
             }
         if expression == EMBEDDED_APPLICATION_CANDIDATES_PROBE:
             return list(self._embedded_codes)
@@ -277,6 +278,7 @@ def test_embedded_application_data_diagnostics_are_aggregate_only() -> None:
         "parseable_embedded_json_script_count": 1,
         "oversized_embedded_json_script_count": 1,
         "embedded_tree_allowed_canonical_alias_values": 3,
+        "embedded_media_descendant_allowed_canonical_alias_values": 2,
     }
 
 
