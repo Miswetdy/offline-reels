@@ -297,6 +297,13 @@ Repeatedly trying more coordinates would add collection side effects without
 answering the interaction cause. Establish only fixed, non-content semantic or
 state facts about the blocker before an evidence-backed input repair.
 
+The `d5d3dc5` live run identifies a focusable role-button under a modal/dialog
+ancestor as the endpoint interceptor. Its aggregate state does not reveal the
+dialog's purpose. Automatic clicking or dismissal could act on an Instagram
+safety, consent or account-control prompt and is outside the Collector's
+bounded feed-input contract. Resolve it manually in the authenticated session,
+then repeat the same 3/3 verification with all direct-hit and JSON gates intact.
+
 The next diagnostic build records only aggregate role and interaction-state
 facts of that hit's already-detected interactive ancestor: native/ARIA control
 kind, disabled state, focusability, dialog/modal ancestry and

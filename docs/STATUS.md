@@ -1,5 +1,22 @@
 # Status
 
+## TASK-016 Linux blocker role evidence — 2026-09-06, d5d3dc5
+
+The bounded Stage-10 target-3 run committed one real source, confirmed zero
+advances and stopped `TRANSITION_FAILED`. Its preserved diagnostics identify a
+focusable `role=button` through an interactive ancestor that itself has a
+modal/dialog ancestor. It is neither disabled nor aria-disabled, and is not a
+native button, anchor, form control, slider, contenteditable control, or
+touch-action:none surface. It continues to intercept the endpoints above the
+selected video; no touch was dispatched.
+
+This is evidence of an active modal dialog intercepting the feed, not a safe
+target for automatic input. The aggregate flags cannot disclose its purpose;
+the Collector must not click or dismiss it. The next operational step is to
+inspect and resolve the dialog manually in the authenticated interactive
+session, then repeat the bounded 3/3 run. JSON confirmation, endpoint tests
+and the 50-Reel gate remain unchanged.
+
 ## TASK-016 local-blocker role/state diagnostics — 2026-09-06
 
 The probe now records only fixed aggregate booleans about the interactive

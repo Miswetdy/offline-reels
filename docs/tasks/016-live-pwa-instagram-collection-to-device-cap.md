@@ -2,6 +2,20 @@
 
 ## Проблема
 
+Bounded Linux run `d5d3dc5` (2026-09-06) дал 1/3 source-коммит, 0 переходов
+и `TRANSITION_FAILED`, но установил причину. Верхнее препятствие — focusable
+`role=button`, найденный через interactive ancestor внутри modal/dialog
+ancestor. Оно не disabled/ARIA-disabled, не native button, anchor, form,
+slider, contenteditable и не имеет touch-action:none. Эта кнопка по-прежнему
+перекрывает endpoints над selected video, поэтому touch не отправлен.
+
+Это evidence активного modal dialog поверх ленты, а не допустимой автоматической
+input-цели. Boolean-признаки намеренно не раскрывают назначение dialog; runtime
+не должен нажимать или закрывать его автоматически. Следующий операционный шаг
+— вручную просмотреть и разрешить/закрыть dialog в authenticated interactive
+session, затем повторить bounded 3/3. Endpoint hit-test, JSON-gate, лимиты и
+блокировка 50 не меняются.
+
 Bounded Linux run `4d77c2d` (2026-09-06) повторил 1/3 source-коммит,
 0 подтверждённых переходов и `TRANSITION_FAILED`. Selected video остаётся ниже
 верхнего hit в point stack, поэтому touch не отправлен. Local blocker не имеет
