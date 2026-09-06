@@ -10,6 +10,7 @@ from app.instagram.collector.canonical import SHORTCODE
 from app.instagram.collector.contracts import ReelCandidate
 
 _MAX_CODES = 32
+_CANONICAL_CODE_KEYS = ("code", "shortcode", "media_code")
 
 
 class JsonResponse(Protocol):
@@ -96,12 +97,17 @@ class FeedJsonCandidateCatalog:
             visited += 1
             value = stack.pop()
             if isinstance(value, dict):
-                code = value.get("code")
-                if isinstance(code, str) and SHORTCODE.fullmatch(code) and code not in self._seen:
-                    self._seen.add(code)
-                    self._codes.append((observation, code))
-                    if len(self._codes) > _MAX_CODES:
-                        self._codes.popleft()
+                for key in _CANONICAL_CODE_KEYS:
+                    code = value.get(key)
+                    if (
+                        isinstance(code, str)
+                        and SHORTCODE.fullmatch(code)
+                        and code not in self._seen
+                    ):
+                        self._seen.add(code)
+                        self._codes.append((observation, code))
+                        if len(self._codes) > _MAX_CODES:
+                            self._codes.popleft()
                 stack.extend(reversed(tuple(value.values())))
             elif isinstance(value, list):
                 stack.extend(reversed(value))

@@ -85,3 +85,25 @@ def test_catalog_reset_does_not_leak_candidates_across_feed_navigation():
 
     assert candidate is not None
     assert candidate.shortcode == "CURRENT_FEED_2"
+
+
+def test_catalog_accepts_only_valid_canonical_code_aliases():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    page.handler(
+        _Response(
+            {
+                "shortcode": "SHORTCODE_2",
+                "media_code": "MEDIA_CODE_3",
+                "unrelated_code": "NOT_COLLECTED_4",
+                "code": "INVALID.CODE",
+            }
+        )
+    )
+
+    first = catalog.next_from_current_feed("PREVIOUS")
+    second = catalog.next_from_current_feed("PREVIOUS")
+
+    assert first is not None and first.shortcode == "SHORTCODE_2"
+    assert second is not None and second.shortcode == "MEDIA_CODE_3"
+    assert catalog.next_from_current_feed("PREVIOUS") is None

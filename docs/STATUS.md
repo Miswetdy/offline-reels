@@ -15,9 +15,12 @@ uses a different canonical code only when the existing safe central-video DOM
 probe directly supplies it. It then prefers a fresh feed-JSON code and permits
 one unused candidate from that same authenticated feed queue. The candidate is
 consumed once; old-page values, persistence, input admission and retry bounds
-remain excluded. The latest bounded run found no feed-JSON code to reserve, so
-the next check is this stricter direct-DOM confirmation before any further
-queue fallback or 50-Reel PWA acceptance.
+remain excluded. The latest bounded run found neither a different safe-DOM
+candidate nor a `code` field to reserve; the catalog now recognizes only the
+equivalent canonical response aliases `shortcode` and `media_code` as well.
+Their values must still pass the same canonical regex and the two transition
+gates before reservation. A new bounded 3/3 handoff run remains required
+before any 50-Reel PWA acceptance.
 
 ## TASK-018 narrow feed-shell transition repair — 2026-09-06
 

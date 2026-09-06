@@ -20,9 +20,11 @@ observed after the input checkpoint.
 If and only if the media identity has changed stably and at least one
 authenticated JSON response arrived after the bounded input, it may instead
 reserve the next unused, different candidate from that same current-navigation
-catalog. The fallback is one-shot: a reserved code is removed from the queue,
-the queue is bounded, and candidates are never recovered from a prior browser
-page, URL parsing, DOM attributes, logs, or persistent storage.
+catalog. The catalog accepts only validated values under the canonical response
+keys `code`, `shortcode`, or `media_code`; no generic string/URL scanning is
+permitted. The fallback is one-shot: a reserved code is removed from the
+queue, the queue is bounded, and candidates are never recovered from a prior
+browser page, URL parsing, DOM attributes, logs, or persistent storage.
 
 The transition diagnostic records only the aggregate booleans
 `canonical_dom_confirmation_observed` and
