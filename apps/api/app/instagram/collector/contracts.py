@@ -85,6 +85,14 @@ class ScrollTargetDiagnostics:
     hit_test_visual_viewport_present: bool = False
     hit_test_visual_viewport_differs_from_layout: bool = False
     hit_test_endpoint_inside_visual_viewport: bool = False
+    hit_test_hit_contains_other_visible_video: bool = False
+    hit_test_hit_inside_other_visible_video: bool = False
+    hit_test_hit_shared_near_ancestor_other_video: bool = False
+    hit_test_hit_has_other_video_relation: bool = False
+    hit_test_hit_no_visible_video_relation: bool = False
+    hit_test_hit_direct_body_child: bool = False
+    hit_test_control_direct_body_child: bool = False
+    hit_test_hit_shell_semantic_ancestor: bool = False
 
 
 # Fixed allowlist shared by probe decoding and operator aggregation.
@@ -115,6 +123,14 @@ HIT_TEST_DIAGNOSTIC_FLAGS = (
     "hit_test_visual_viewport_present",
     "hit_test_visual_viewport_differs_from_layout",
     "hit_test_endpoint_inside_visual_viewport",
+    "hit_test_hit_contains_other_visible_video",
+    "hit_test_hit_inside_other_visible_video",
+    "hit_test_hit_shared_near_ancestor_other_video",
+    "hit_test_hit_has_other_video_relation",
+    "hit_test_hit_no_visible_video_relation",
+    "hit_test_hit_direct_body_child",
+    "hit_test_control_direct_body_child",
+    "hit_test_hit_shell_semantic_ancestor",
 )
 
 

@@ -289,3 +289,33 @@ def test_external_hit_without_video_in_stack_distinguishes_coordinate_evidence(p
     assert not result["hit_test_stack_video_below_hit"]
     assert result["hit_test_endpoint_inside_visual_viewport"]
     assert result["hit_test_visual_viewport_present"]
+
+
+def test_other_visible_video_layer_relation_is_reported_without_targeting_it(page):
+    page.set_content('''<style>html,body{margin:0;overflow:hidden}
+      #selected{position:fixed;inset:0;width:430px;height:800px}
+      #other-card{position:fixed;left:400px;top:0;width:430px;height:800px}
+      #other{width:430px;height:800px}.layer{position:fixed;inset:0;z-index:2}
+      </style><video id="selected"></video><div id="other-card"><video id="other"></video>
+      <button class="layer"></button></div>''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert not result["hit_testable"]
+    assert result["hit_test_hit_shared_near_ancestor_other_video"]
+    assert result["hit_test_hit_has_other_video_relation"]
+    assert not result["hit_test_hit_no_visible_video_relation"]
+
+
+def test_page_shell_layer_has_no_visible_video_relation(page):
+    page.set_content('''<style>html,body{margin:0;overflow:hidden}
+      video{position:fixed;inset:0;width:430px;height:800px}
+      main{position:fixed;inset:0}.layer{position:absolute;inset:0}
+      </style><video></video><main><button class="layer"></button></main>''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert not result["hit_testable"]
+    assert result["hit_test_hit_shell_semantic_ancestor"]
+    assert result["hit_test_hit_no_visible_video_relation"]
+    assert not result["hit_test_hit_has_other_video_relation"]

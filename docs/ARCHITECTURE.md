@@ -348,6 +348,13 @@ boolean evidence. The stack itself, element names, attributes and coordinates
 never leave the page. These aggregates distinguish evidence patterns; they do
 not authorize an alternate target.
 
+The local-layer diagnostic also compares the hit to non-selected visible videos
+using only containment, being-inside and a common ancestor capped at four
+levels. Direct-body-child and semantic page-shell-ancestor flags provide a
+separate shell evidence path. All flags may reflect different sampled hits;
+they describe relationships and never designate a card, shell or gesture
+target as trusted.
+
 Structural hit observations are independent of the category precedence. The
 fixed boolean allowlist includes control-on-hit versus inherited control,
 containment in either direction, sibling relationship and a common ancestor

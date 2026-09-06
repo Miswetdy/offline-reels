@@ -1,5 +1,20 @@
 # Status
 
+## TASK-016 local-card versus page-shell evidence
+
+The probe now separately records a hit's relationship to any other visible
+video: containment, being inside it, or a common ancestor within four levels.
+It also records direct-body-child and semantic page-shell-ancestor facts. A
+separate card-layer produces an other-video relationship; a shell-layer with no
+visible-video relationship produces page-shell evidence. These are structural
+observations only: neither permits targeting the layer.
+
+Local Chromium fixtures cover both patterns; touch is still withheld in each.
+Verification: 26 touch-target and 34 Stage-3B tests pass, with Ruff and diff
+checks clean. Next: obtain the aggregate relation flags from one bounded Stage
+10 run, then choose a repair supported by that evidence. The 3/3 and 50-Reel
+acceptance gates remain blocked.
+
 ## TASK-016 Linux stack and viewport evidence — 2026-09-06, d44d4c2
 
 The bounded Stage-10 target-3 run again committed one real source, confirmed

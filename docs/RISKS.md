@@ -290,6 +290,12 @@ interceptor is still not identified or demonstrated as a safe gesture target.
 Determine its bounded relationship to feed-card and page-shell layers before
 altering input targeting; retain direct endpoint and canonical JSON gates.
 
+The local-card diagnostic records a hit's bounded relation to non-selected
+visible videos separately from page-shell facts. A relationship may indicate a
+neighbouring card layer but does not prove ownership or make that layer a safe
+gesture target. Conversely, missing that relationship is not proof of a page
+shell. A bounded live result is required before changing the input path.
+
 The structural diagnostic build separates self/inherited controls and reports
 containment, sibling/shared-near-ancestor relationships and rectangle coverage
 independently of control precedence. Shared ancestry cannot establish that an

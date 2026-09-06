@@ -274,12 +274,21 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     hit_test_visual_viewport_present: Boolean(window.visualViewport),
     hit_test_visual_viewport_differs_from_layout: false,
     hit_test_endpoint_inside_visual_viewport: false,
+    hit_test_hit_contains_other_visible_video: false,
+    hit_test_hit_inside_other_visible_video: false,
+    hit_test_hit_shared_near_ancestor_other_video: false,
+    hit_test_hit_has_other_video_relation: false,
+    hit_test_hit_no_visible_video_relation: false,
+    hit_test_hit_direct_body_child: false,
+    hit_test_control_direct_body_child: false,
+    hit_test_hit_shell_semantic_ancestor: false,
   };
   const visual = window.visualViewport;
   if (visual) {
     diagnostics.hit_test_visual_viewport_differs_from_layout = visual.scale !== 1 || visual.offsetLeft !== 0 || visual.offsetTop !== 0 || Math.abs(visual.width - width) > 1 || Math.abs(visual.height - height) > 1;
   }
   const controls = 'button,a,input,select,textarea,[role="button"],[role="slider"],[contenteditable="true"]';
+  const shell = 'main,header,footer,nav,[role="main"],[role="navigation"],[role="banner"],[role="contentinfo"]';
   const coversVideo = (element) => {
     const r = element.getBoundingClientRect();
     return r.left <= selected.left && r.right >= selected.right && r.top <= selected.top && r.bottom >= selected.bottom;
@@ -292,6 +301,9 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     diagnostics.hit_test_hit_inside_video ||= selected.video.contains(hit);
     diagnostics.hit_test_hit_video_sibling ||= hit.parentElement === selected.video.parentElement;
     diagnostics.hit_test_hit_covers_visible_video ||= coversVideo(hit);
+    diagnostics.hit_test_hit_direct_body_child ||= hit.parentElement === document.body;
+    diagnostics.hit_test_control_direct_body_child ||= control?.parentElement === document.body;
+    diagnostics.hit_test_hit_shell_semantic_ancestor ||= Boolean(hit.closest(shell));
     for (let node = hit; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
       if (getComputedStyle(node).position === 'fixed') { diagnostics.hit_test_hit_fixed_ancestor = true; break; }
     }
@@ -306,6 +318,21 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     for (let depth = 0; depth < 4 && node && node !== document.body && node !== document.documentElement; depth++, node = node.parentElement) {
       if (node.contains(hit)) { diagnostics.hit_test_hit_shared_near_ancestor = true; break; }
     }
+    for (const other of visible) {
+      if (other.video === selected.video) continue;
+      const containsOther = hit.contains(other.video);
+      const insideOther = other.video.contains(hit);
+      let sharedNear = false;
+      for (let depth = 0, node = other.video.parentElement; depth < 4 && node && node !== document.body && node !== document.documentElement; depth++, node = node.parentElement) {
+        if (node.contains(hit)) { sharedNear = true; break; }
+      }
+      diagnostics.hit_test_hit_contains_other_visible_video ||= containsOther;
+      diagnostics.hit_test_hit_inside_other_visible_video ||= insideOther;
+      diagnostics.hit_test_hit_shared_near_ancestor_other_video ||= sharedNear;
+      diagnostics.hit_test_hit_has_other_video_relation ||= containsOther || insideOther || sharedNear;
+    }
+    const selectedRelation = hit.contains(selected.video) || selected.video.contains(hit) || hit.parentElement === selected.video.parentElement;
+    if (!selectedRelation && !diagnostics.hit_test_hit_has_other_video_relation) diagnostics.hit_test_hit_no_visible_video_relation = true;
   };
   const classify = (hit) => {
     if (hit === selected.video) return true;
