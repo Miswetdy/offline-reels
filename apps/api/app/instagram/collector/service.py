@@ -488,6 +488,20 @@ class CollectorEngine:
     ) -> tuple[ReelCandidate | None, int, str | None]:
         """One durable-commit-gated transition with at most one retry wheel."""
 
+        authenticated_source = getattr(self._feed, "next_from_authenticated_feed", None)
+        if callable(authenticated_source):
+            try:
+                next_candidate = authenticated_source(
+                    previous_shortcode,
+                    lambda: self._deadline_expired(deadline),
+                )
+            except TypeError:
+                next_candidate = authenticated_source(previous_shortcode)
+            if next_candidate is not None:
+                self._record(position, "feed_source_advance")
+                return next_candidate, 0, None
+            return None, 0, "AUTHENTICATED_FEED_EXHAUSTED"
+
         diagnostic = {
             "position": position,
             "scroll_attempt_count": 0,

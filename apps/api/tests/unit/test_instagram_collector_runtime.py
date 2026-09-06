@@ -233,6 +233,21 @@ def test_browser_feed_uses_embedded_queue_without_post_input_json() -> None:
     assert adapter.transition_diagnostics.canonical_queue_fallback_observed
 
 
+def test_browser_feed_reserves_embedded_candidate_without_page_input() -> None:
+    page = FakePage([candidate("ONE")], embedded_codes=["TWO"])
+    adapter = PlaywrightReelsFeed(
+        page,
+        context=_LiveLikeContext(page),
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=2),
+    )
+
+    assert adapter.current().shortcode == "ONE"
+    next_candidate = adapter.next_from_authenticated_feed("ONE")
+
+    assert next_candidate is not None and next_candidate.shortcode == "TWO"
+    assert page.mouse.actions == []
+
+
 def test_browser_feed_refreshes_only_after_stable_transition_and_empty_queue() -> None:
     page = FakePage(
         [candidate("ONE"), candidate("TWO")],

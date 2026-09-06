@@ -37,6 +37,19 @@ class Recorder:
         self.events.append(event)
 
 
+class SourceOnlyFixtureFeed(FixtureFeed):
+    def next_from_authenticated_feed(self, previous_shortcode: str, should_stop=None):
+        if should_stop is not None and should_stop():
+            return None
+        if self._index >= len(self._candidates) - 1:
+            return None
+        self._index += 1
+        return self._candidates[self._index]
+
+    def advance(self) -> None:
+        raise AssertionError("source-only feed must not send page input")
+
+
 @pytest.fixture
 def setup(tmp_path: Path):
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.sqlite3'}")
@@ -94,6 +107,21 @@ def test_commit_before_advance_order_and_final_item_no_extra_advance(setup) -> N
     with sessions() as session:
         assert len(session.scalars(select(InstagramNormalizationJob)).all()) == 2
         assert len(session.scalars(select(InstagramCollectionRunItem)).all()) == 2
+
+
+def test_source_only_feed_advances_after_durable_commit_without_scroll(setup) -> None:
+    sessions, account_id, _root = setup
+    recorder = Recorder()
+    summary = make_engine(
+        setup,
+        feed=SourceOnlyFixtureFeed(candidates(2)),
+        recorder=recorder,
+    ).collect(account_id, CollectionTrigger.MANUAL, 2)
+
+    assert summary.status == "completed"
+    assert summary.confirmed_advances == 1
+    assert "feed_source_advance" in recorder.events
+    assert "advance" not in recorder.events
 
 
 @pytest.mark.parametrize("failure", ["download", "validation", "storage"])

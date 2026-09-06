@@ -773,6 +773,36 @@ class PlaywrightReelsFeed:
             return {"pending_candidate_count": 0, "known_candidate_count": 0}
         return self._feed_json.queue_diagnostics()
 
+    def next_from_authenticated_feed(
+        self,
+        previous_shortcode: str,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> ReelCandidate | None:
+        """Reserve the next strict feed candidate without sending page input.
+
+        A canonical candidate is taken only from the bounded embedded JSON
+        queue.  Once empty, one fixed `/reels/` navigation may replenish it.
+        The rendered active card is consumed only for session/challenge checks;
+        it is never used as a source of identity for the returned candidate.
+        """
+
+        self._raise_if_closed()
+        self._raise_if_controlled_stop()
+        if self._feed_json is None or (should_stop is not None and should_stop()):
+            return None
+        candidate = self._feed_json.next_embedded_from_current_feed(previous_shortcode)
+        if candidate is not None:
+            self._feed_json.mark_used(candidate.shortcode)
+            return candidate
+        self.navigate_to_reels()
+        current = self._wait_for_initial_reel()
+        self._capture_embedded_feed_candidates()
+        self._feed_json.mark_used(current.shortcode)
+        candidate = self._feed_json.next_embedded_from_current_feed(previous_shortcode)
+        if candidate is not None:
+            self._feed_json.mark_used(candidate.shortcode)
+        return candidate
+
     def _wait_for_initial_reel(self) -> ReelCandidate:
         """Boundedly wait for the first async-rendered Reel without scrolling."""
         polls = max(1, int(self._limits.timeout_seconds / self._limits.polling_seconds))

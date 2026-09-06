@@ -876,6 +876,18 @@ queue followed by exactly one automatic replenishment. The next required gate
 is a no-download two-transition live acceptance of that automatic fallback;
 only then may a bounded durable-download run be attempted.
 
+## TASK-018 source-only Collector advance — 2026-09-06
+
+The Collector now prefers a strict authenticated feed candidate after each
+durable commit. This source-only path consumes the current bounded embedded
+queue and, if needed, performs one fixed `/reels/` refresh to replenish it. It
+does not send a swipe, keyboard event or pointer wheel, and it does not bind a
+returned ID to virtualized DOM media. If the strict queue cannot provide a
+candidate after that one refresh, it stops with `AUTHENTICATED_FEED_EXHAUSTED`
+instead of falling back to page input. Legacy fixture feeds retain their
+existing scroll-transition contract. Unit acceptance covers a durable
+source-only advance with no page input; Linux no-download acceptance is next.
+
 ## Next step
 
 Next, deploy and preflight the opt-in hardened Stage 10 login boundary. After a

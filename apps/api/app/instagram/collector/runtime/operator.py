@@ -42,6 +42,7 @@ class SafeEventTranscript:
             "publish",
             "db_commit",
             "cooldown",
+            "feed_source_advance",
             "advance",
             "advance_retry",
             "transition_confirmed",
