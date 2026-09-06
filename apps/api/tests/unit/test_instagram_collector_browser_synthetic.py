@@ -53,11 +53,11 @@ def test_local_synthetic_page_selects_central_video_and_confirms_scroll(tmp_path
 class _Response:
     headers = {"content-type": "application/json"}
 
-    def __init__(self, code: str) -> None:
-        self._code = code
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
 
     def json(self):
-        return {"code": self._code}
+        return self._payload
 
 
 class _TransitionPage:
@@ -85,7 +85,11 @@ class _TransitionPage:
 
     def observe_json(self, code: str) -> None:
         assert self._response_handler is not None
-        self._response_handler(_Response(code))
+        self._response_handler(_Response({"code": code}))
+
+    def observe_json_without_code(self) -> None:
+        assert self._response_handler is not None
+        self._response_handler(_Response({"feed": {"updated": True}}))
 
 
 def test_wait_for_next_requires_stable_media_then_post_transition_feed_json() -> None:
@@ -118,6 +122,25 @@ def test_wait_for_next_requires_stable_media_then_post_transition_feed_json() ->
     assert confirmed is not None and confirmed.shortcode == "CONFIRMED_2"
     assert feed.transition_diagnostics.stable_sample_count >= 2
     assert feed.transition_diagnostics.canonical_confirmation_observed is True
+
+
+def test_wait_for_next_uses_current_feed_queue_only_after_media_and_post_action_json() -> None:
+    page = _TransitionPage()
+    feed = PlaywrightReelsFeed(
+        page,
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.05, maximum_scroll_attempts=2),
+    )
+    page.observe_json("QUEUED_2")
+    feed._transition_media_identity = "OLD_MEDIA"
+    feed._transition_json_checkpoint = feed._feed_json.checkpoint()  # type: ignore[union-attr]
+    page.observe_json_without_code()
+
+    confirmed = feed.wait_for_next("OLD_CODE")
+
+    assert confirmed is not None and confirmed.shortcode == "QUEUED_2"
+    assert feed.transition_diagnostics.stable_media_identity_observed is True
+    assert feed.transition_diagnostics.post_action_json_observed is True
+    assert feed.transition_diagnostics.canonical_queue_fallback_observed is True
 
 
 class _TouchSession:

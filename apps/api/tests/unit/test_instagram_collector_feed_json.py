@@ -58,3 +58,30 @@ def test_catalog_only_returns_codes_observed_after_transition_checkpoint():
 
     assert candidate is not None
     assert candidate.shortcode == "FRESH_2"
+
+
+def test_catalog_reserves_preloaded_current_feed_candidate_only_on_explicit_fallback():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    page.handler(_Response({"code": "CURRENT_1"}))
+    page.handler(_Response({"code": "QUEUED_2"}))
+    checkpoint = catalog.checkpoint()
+
+    assert catalog.next_after("CURRENT_1", after_observation=checkpoint) is None
+    fallback = catalog.next_from_current_feed("CURRENT_1")
+
+    assert fallback is not None
+    assert fallback.shortcode == "QUEUED_2"
+
+
+def test_catalog_reset_does_not_leak_candidates_across_feed_navigation():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    page.handler(_Response({"code": "OLD_FEED_1"}))
+    catalog.reset_for_feed_navigation()
+    page.handler(_Response({"code": "CURRENT_FEED_2"}))
+
+    candidate = catalog.next_from_current_feed("PREVIOUS")
+
+    assert candidate is not None
+    assert candidate.shortcode == "CURRENT_FEED_2"

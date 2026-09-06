@@ -718,6 +718,8 @@ class PlaywrightReelsFeed:
     def navigate_to_reels(self) -> None:
         """Navigate only to the fixed feed URL; no page input or API call is made."""
         self._raise_if_closed()
+        if self._feed_json is not None:
+            self._feed_json.reset_for_feed_navigation()
         try:
             self._page.goto("https://www.instagram.com/reels/", wait_until="domcontentloaded")
         except Exception:
@@ -855,6 +857,7 @@ class PlaywrightReelsFeed:
         observed_different = False
         poll_count = unchanged_count = missing_count = 0
         stable_count = 0
+        queue_fallback_observed = False
         # A one-element holder keeps the identity strictly in process memory
         # while allowing the bounded sampler below to update it.
         stable_media_identity: list[str | None] = [None]
@@ -865,6 +868,7 @@ class PlaywrightReelsFeed:
 
         def sample() -> ReelCandidate | None:
             nonlocal observed_different, poll_count, unchanged_count, missing_count, stable_count
+            nonlocal queue_fallback_observed
             if should_stop is not None and should_stop():
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
                     poll_count=poll_count,
@@ -898,11 +902,14 @@ class PlaywrightReelsFeed:
                     self._feed_json is not None
                     and self._feed_json.observed_after(self._transition_json_checkpoint)
                 )
-                if stable_count >= 2 and self._feed_json is not None:
+                if stable_count >= 2 and post_action_json_observed and self._feed_json is not None:
                     candidate = self._feed_json.next_after(
                         previous_shortcode,
                         after_observation=self._transition_json_checkpoint,
                     )
+                    if candidate is None:
+                        candidate = self._feed_json.next_from_current_feed(previous_shortcode)
+                        queue_fallback_observed = candidate is not None
                 self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
             except CollectorRuntimeError as error:
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
@@ -942,6 +949,7 @@ class PlaywrightReelsFeed:
                     stable_media_identity_observed=True,
                     post_action_json_observed=post_action_json_observed,
                     canonical_confirmation_observed=True,
+                    canonical_queue_fallback_observed=queue_fallback_observed,
                 )
                 return candidate
             return None

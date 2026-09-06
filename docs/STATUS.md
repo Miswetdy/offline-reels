@@ -1,5 +1,22 @@
 # Status
 
+## TASK-018 authenticated feed-queue transition candidate — 2026-09-06
+
+The Stage-10 passive probe showed that the fixed full-viewport top hit is an
+unknown descendant rather than the exact semantic `main` shell, so ADR 020's
+narrow shell-swipe branch correctly remains unavailable. The previously
+validated bounded wheel/keyboard path can nevertheless produce a stable active
+media change and a new authenticated JSON response; the missing proof was only
+the canonical code mapping in mobile MSE DOM.
+
+ADR 021 therefore resets a bounded in-memory candidate catalog before fixed
+Reels navigation, prefers a fresh post-input canonical code, and permits one
+unused candidate from that same authenticated feed queue only after both the
+stable media and post-input JSON gates pass. The candidate is consumed once;
+old-page values, DOM/URL extraction, persistence, input admission and retry
+bounds remain excluded. Focused Collector tests pass; the next step is a new
+bounded Stage-10 3/3 handoff run before any 50-Reel PWA acceptance.
+
 ## TASK-018 narrow feed-shell transition repair — 2026-09-06
 
 The active-input probe now admits a native swipe through a semantic feed shell

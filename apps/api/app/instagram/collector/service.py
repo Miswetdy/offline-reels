@@ -499,6 +499,7 @@ class CollectorEngine:
             "stable_media_identity_observed": False,
             "post_action_json_observed": False,
             "canonical_confirmation_observed": False,
+            "canonical_queue_fallback_observed": False,
             "scroll_target_available": False,
             "scroll_target_in_viewport": False,
             "mouse_move_performed": False,
@@ -578,6 +579,7 @@ class CollectorEngine:
             "stable_media_identity_observed",
             "post_action_json_observed",
             "canonical_confirmation_observed",
+            "canonical_queue_fallback_observed",
         ):
             destination[key] = bool(destination[key] or getattr(sampling, key))
         if isinstance(sampling.stop_reason_code, str):

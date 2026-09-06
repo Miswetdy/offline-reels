@@ -41,6 +41,7 @@ class TransitionSamplingDiagnostics:
     stable_media_identity_observed: bool = False
     post_action_json_observed: bool = False
     canonical_confirmation_observed: bool = False
+    canonical_queue_fallback_observed: bool = False
     stop_reason_code: str | None = None
 
 

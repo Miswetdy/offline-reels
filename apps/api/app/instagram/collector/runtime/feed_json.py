@@ -42,13 +42,35 @@ class FeedJsonCandidateCatalog:
 
         return self._observation
 
+    def reset_for_feed_navigation(self) -> None:
+        """Forget candidates from an earlier page before fixed Reels navigation."""
+
+        self._codes.clear()
+        self._seen.clear()
+        self._observation = 0
+
     def next_after(
         self, previous_shortcode: str, *, after_observation: int = 0
     ) -> ReelCandidate | None:
-        while self._codes:
-            observation, code = self._codes.popleft()
+        for index, (observation, code) in enumerate(self._codes):
             if observation <= after_observation or code == previous_shortcode:
                 continue
+            del self._codes[index]
+            return ReelCandidate(code, f"https://www.instagram.com/reel/{code}/")
+        return None
+
+    def next_from_current_feed(self, previous_shortcode: str) -> ReelCandidate | None:
+        """Reserve one different candidate observed after the current Reels navigation.
+
+        This is used only after a stable media transition and a new post-input
+        JSON observation.  It cannot reuse a value from an older page because
+        navigation clears this bounded, in-memory catalog.
+        """
+
+        for index, (_, code) in enumerate(self._codes):
+            if code == previous_shortcode:
+                continue
+            del self._codes[index]
             return ReelCandidate(code, f"https://www.instagram.com/reel/{code}/")
         return None
 
