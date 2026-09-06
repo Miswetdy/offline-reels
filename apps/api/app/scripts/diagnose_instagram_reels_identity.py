@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from dataclasses import asdict
 from pathlib import Path
 from uuid import UUID
 
@@ -19,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Aggregate-only Instagram Reel identity diagnostic"
     )
     parser.add_argument("--account-id", default=os.environ["COLLECTOR_ACCOUNT_ID"], type=UUID)
+    parser.add_argument("--transition", action="store_true")
     arguments = parser.parse_args(argv)
     runtime = CollectorRuntimeSettings.from_environment()
     feed: PlaywrightReelsFeed | None = None
@@ -28,7 +30,13 @@ def main(argv: list[str] | None = None) -> int:
             runtime,
             repository_root=collector_repository_root(Path(__file__)),
         )
-        result = feed.identity_structure_diagnostics()
+        result = {"before": feed.identity_structure_diagnostics()}
+        if arguments.transition:
+            previous = feed.current()
+            feed.advance()
+            result["candidate_confirmed"] = feed.wait_for_next(previous.shortcode) is not None
+            result["after"] = feed.identity_structure_diagnostics()
+            result["transition"] = asdict(feed.transition_diagnostics)
     except CollectorRuntimeError as error:
         print(json.dumps({"phase": "identity-diagnostic", "reason_code": error.code.value}))
         return 1
