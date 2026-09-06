@@ -41,7 +41,7 @@ FROM base AS collector
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes \
-        tini xauth xvfb \
+        tini xauth xvfb x11vnc novnc websockify \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --extra collector \

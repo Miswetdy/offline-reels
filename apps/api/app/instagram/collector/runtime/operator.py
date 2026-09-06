@@ -73,6 +73,7 @@ def run_stage_3b(
     confirm: Callable[[], bool],
     wait_ready: Callable[[float], bool],
     account_id: UUID | None = None,
+    existing_feed: PlaywrightReelsFeed | None = None,
 ) -> tuple[CollectorSummary | None, SafeEventTranscript, str | None]:
     """Run exactly three Reels after explicit human readiness and confirmation."""
 
@@ -100,18 +101,17 @@ def run_stage_3b(
 
     transcript = SafeEventTranscript()
     transcript.account_id = account_id
-    feed: PlaywrightReelsFeed | None = None
+    feed: PlaywrightReelsFeed | None = existing_feed
     try:
-        feed = PlaywrightReelsFeed.open(
-            account_id,
-            runtime,
-            repository_root=repository_root,
-            allow_login_bootstrap=True,
-        )
-        if not wait_ready(runtime.operator_deadline_seconds):
-            _fail_claimed_run(
-                persistence, claim, RuntimeReasonCode.OPERATOR_TIMEOUT.value
+        if feed is None:
+            feed = PlaywrightReelsFeed.open(
+                account_id,
+                runtime,
+                repository_root=repository_root,
+                allow_login_bootstrap=True,
             )
+        if not wait_ready(runtime.operator_deadline_seconds):
+            _fail_claimed_run(persistence, claim, RuntimeReasonCode.OPERATOR_TIMEOUT.value)
             return None, transcript, RuntimeReasonCode.OPERATOR_TIMEOUT.value
         # current() rechecks auth/checkpoint and validates a central Reel.
         feed.current()

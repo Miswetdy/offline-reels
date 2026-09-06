@@ -1,5 +1,17 @@
 # Status
 
+## TASK-018 Collector same-process handoff implementation — 2026-09-06
+
+An opt-in `collector-handoff` implementation now retains one persistent
+Collector Chromium process while an operator resolves only the visible dialog
+through a private noVNC relay. The relay has a separate gateway, one-time
+token, signed HttpOnly cookie, fixed-origin checks, short TTL and explicit
+confirm/cancel state. Before confirmation the script creates no Collector
+persistence/storage adapters and makes no Collector input; expiry/cancel closes
+the browser fail-closed. The Stage-10 Compose profile has no published VNC,
+CDP, profile or control port. Focused gateway and handoff-state tests pass.
+Deployment and the required manual confirmation remain pending.
+
 ## TASK-018 Collector operator handoff — 2026-09-06
 
 The next implementation is an explicit one-time operator handoff to the same

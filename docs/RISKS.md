@@ -686,6 +686,14 @@ Before public production deployment:
 
 ## Linux Collector runtime
 
+## TASK-018 same-process handoff
+
+The handoff viewer is an operator-only, one-time private relay and not a
+general browser-control surface. Its raw launch secret is transient private
+volume data and must never be copied to logs, task results, commits or support
+dumps. A cancelled, expired or disconnected handoff must not be retried by
+starting a normal Collector run: start a fresh one-time handoff instead.
+
 - Stage 3C.2 proves a synthetic Linux container flow only. Chromium packaging,
   ffmpeg/ffprobe, PostgreSQL and MinIO have been exercised, but live Instagram
   session longevity, proxy/network policy and remote operator login remain

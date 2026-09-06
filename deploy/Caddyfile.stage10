@@ -24,6 +24,11 @@
 		reverse_proxy login-gateway:8080
 	}
 
+	@handoff path /handoff/*
+	handle @handoff {
+		reverse_proxy handoff-gateway:8080
+	}
+
 	handle {
 		reverse_proxy web:3000
 	}

@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import hmac
 from html import escape
+from pathlib import Path
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -24,6 +25,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from websockets.asyncio.client import connect as connect_websocket
 
 from app.db.session import create_session_factory
+from app.instagram.collector.runtime.handoff_state import HandoffStateStore
 from app.instagram.contracts import LoginSessionStatus
 from app.instagram.login_sessions import LoginSessionError, LoginSessionService
 
@@ -43,6 +45,7 @@ class LoginGatewaySettings(BaseSettings):
     browser_vnc_url: AnyHttpUrl = Field(
         default="http://login-browser:6080", validation_alias="LOGIN_BROWSER_VNC_URL"
     )
+    handoff_state_root: str | None = Field(default=None, validation_alias="HANDOFF_STATE_ROOT")
 
     @field_validator("gateway_origin")
     @classmethod
@@ -123,6 +126,11 @@ def create_login_gateway(
     app.state.session_factory = create_session_factory(settings)
     app.state.login_sessions = LoginSessionService(app.state.session_factory)
     app.state.browser = browser or BrowserController(settings)
+    app.state.handoffs = (
+        HandoffStateStore(Path(settings.handoff_state_root))
+        if settings.handoff_state_root
+        else None
+    )
 
     @app.get("/connect/{session_id}", response_class=HTMLResponse)
     async def connect(session_id: UUID, request: Request) -> HTMLResponse:
@@ -203,9 +211,10 @@ def create_login_gateway(
         _require_host(request, settings)
         _require_origin(request, settings)
         _require_session(request.cookies.get("login_gateway_session"), session_id, settings)
-        if (
-            app.state.login_sessions.status(session_id) is not LoginSessionStatus.ACTIVE
-            or not app.state.login_sessions.is_profile_check(session_id)
+        if app.state.login_sessions.status(
+            session_id
+        ) is not LoginSessionStatus.ACTIVE or not app.state.login_sessions.is_profile_check(
+            session_id
         ):
             raise HTTPException(status_code=409)
         if not await app.state.browser.verify_profile():
@@ -270,6 +279,97 @@ def create_login_gateway(
         except (OSError, WebSocketDisconnect):
             await websocket.close(code=1011)
 
+    # Handoff never calls BrowserController: it can relay pixels only to the
+    # already-running Collector process and stores no browser-facing state.
+    @app.get("/handoff/{session_id}", response_class=HTMLResponse)
+    async def handoff_connect(session_id: UUID, request: Request) -> HTMLResponse:
+        _require_host(request, settings)
+        if _handoff_store(app).state(session_id) == "pending":
+            return _handoff_start_page(session_id)
+        return _unavailable_page("Reconnect is required.")
+
+    @app.post("/handoff/{session_id}/activate")
+    async def handoff_activate(session_id: UUID, request: Request) -> Response:
+        _require_host(request, settings)
+        _require_origin(request, settings)
+        try:
+            body = await request.json()
+            token = body.get("launch_token") if isinstance(body, dict) else None
+            if (
+                not isinstance(token, str)
+                or _handoff_store(app).activate(session_id, token) != "active"
+            ):
+                raise ValueError
+        except ValueError:
+            raise HTTPException(status_code=409) from None
+        response = Response(status_code=204, headers=_security_headers())
+        response.set_cookie(
+            "handoff_gateway_session",
+            _sign_session(session_id, settings),
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            path=f"/handoff/{session_id}",
+            max_age=600,
+        )
+        return response
+
+    @app.get("/handoff/{session_id}/viewer", response_class=HTMLResponse)
+    async def handoff_viewer(session_id: UUID, request: Request) -> HTMLResponse:
+        _require_host(request, settings)
+        _require_handoff_session(request, session_id, settings)
+        if _handoff_store(app).state(session_id) != "active":
+            return _unavailable_page("Reconnect is required.")
+        return _handoff_viewer_page(session_id)
+
+    @app.post("/handoff/{session_id}/{decision}")
+    async def handoff_decision(session_id: UUID, decision: str, request: Request) -> Response:
+        _require_host(request, settings)
+        _require_origin(request, settings)
+        _require_handoff_session(request, session_id, settings)
+        if decision not in {"confirm", "cancel"}:
+            raise HTTPException(status_code=404)
+        expected = "confirmed" if decision == "confirm" else "cancelled"
+        if _handoff_store(app).resolve(session_id, confirmed=decision == "confirm") != expected:
+            raise HTTPException(status_code=409)
+        return Response(status_code=204, headers=_security_headers())
+
+    @app.get("/handoff/{session_id}/vnc/{asset_path:path}")
+    async def handoff_vnc_asset(session_id: UUID, asset_path: str, request: Request) -> Response:
+        _require_host(request, settings)
+        _require_handoff_session(request, session_id, settings)
+        if _handoff_store(app).state(session_id) != "active" or not _safe_asset(asset_path):
+            raise HTTPException(status_code=404)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            upstream = await client.get(f"{str(settings.browser_vnc_url).rstrip('/')}/{asset_path}")
+        if upstream.status_code != 200:
+            raise HTTPException(status_code=404)
+        headers = _security_headers(frame_ancestors="'self'")
+        headers["Content-Type"] = upstream.headers.get("content-type", "application/octet-stream")
+        return Response(upstream.content, headers=headers)
+
+    @app.websocket("/handoff/{session_id}/websockify")
+    async def handoff_websockify(session_id: UUID, websocket: WebSocket) -> None:
+        if (
+            not _websocket_allowed(websocket, session_id, settings)
+            or not _valid_cookie(
+                websocket.cookies.get("handoff_gateway_session"), session_id, settings
+            )
+            or _handoff_store(app).state(session_id) != "active"
+        ):
+            await websocket.close(code=4403)
+            return
+        await websocket.accept()
+        upstream_url = (
+            str(settings.browser_vnc_url).replace("http://", "ws://").replace("https://", "wss://")
+            + "/websockify"
+        )
+        try:
+            async with connect_websocket(upstream_url, origin=settings.origin) as upstream:
+                await _relay(websocket, upstream)
+        except (OSError, WebSocketDisconnect):
+            await websocket.close(code=1011)
+
     return app
 
 
@@ -308,6 +408,19 @@ def _require_host(request: Request, settings: LoginGatewaySettings) -> None:
 def _require_session(value: str | None, session_id: UUID, settings: LoginGatewaySettings) -> None:
     if not _valid_cookie(value, session_id, settings):
         raise HTTPException(status_code=403)
+
+
+def _require_handoff_session(
+    request: Request, session_id: UUID, settings: LoginGatewaySettings
+) -> None:
+    _require_session(request.cookies.get("handoff_gateway_session"), session_id, settings)
+
+
+def _handoff_store(app: FastAPI) -> HandoffStateStore:
+    store = app.state.handoffs
+    if store is None:
+        raise HTTPException(status_code=404)
+    return store
 
 
 def _require_origin(request: Request, settings: LoginGatewaySettings) -> None:
@@ -356,6 +469,21 @@ def _security_headers(frame_ancestors: str = "'none'") -> dict[str, str]:
     }
 
 
+def _handoff_start_page(session_id: UUID) -> HTMLResponse:
+    sid = escape(str(session_id))
+    html = f"""<!doctype html><meta name="viewport" content="width=device-width"><main><p id="s">Open protected viewer.</p><button id="b">Open</button></main><script>const t=location.hash.slice(1),b=document.querySelector('#b');history.replaceState(null,'',location.pathname);b.onclick=async()=>{{let r=await fetch('/handoff/{sid}/activate',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{launch_token:t}})}});if(r.ok)location.replace('/handoff/{sid}/viewer');else b.remove()}};</script>"""
+    return HTMLResponse(html, headers=_security_headers())
+
+
+def _handoff_viewer_page(session_id: UUID) -> HTMLResponse:
+    sid = escape(str(session_id))
+    query = urlencode(
+        {"autoconnect": "true", "resize": "remote", "path": f"handoff/{sid}/websockify"}
+    )
+    html = f"""<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,iframe{{margin:0;width:100%;height:100%;border:0;background:#000}}button{{position:fixed;bottom:16px;right:16px;padding:10px}}</style><iframe title="Private operator viewer" src="/handoff/{sid}/vnc/vnc.html?{query}"></iframe><button id="confirm">Continue collector</button><script>document.querySelector('#confirm').onclick=async()=>{{let r=await fetch('/handoff/{sid}/confirm',{{method:'POST'}});if(r.ok)document.body.textContent='Confirmed.'}};</script>"""
+    return HTMLResponse(html, headers=_security_headers(frame_ancestors="'self'"))
+
+
 def _layout_preview_page(session_id: UUID) -> HTMLResponse:
     """Static, credential-free reference screen for phone viewport acceptance."""
     sid = escape(str(session_id))
@@ -396,12 +524,12 @@ reauth.addEventListener('click',()=>location.assign('/remote/{sid}/interactive')
     return HTMLResponse(html, headers=_security_headers())
 
 
-def _full_bleed_remote_viewer_page(
-    session_id: UUID, *, inspection: bool = False
-) -> HTMLResponse:
+def _full_bleed_remote_viewer_page(session_id: UUID, *, inspection: bool = False) -> HTMLResponse:
     """Full-bleed, width-first mobile frame around maintained same-origin noVNC."""
     sid = escape(str(session_id))
-    query = urlencode({"autoconnect": "true", "resize": "scale", "path": f"remote/{sid}/websockify"})
+    query = urlencode(
+        {"autoconnect": "true", "resize": "scale", "path": f"remote/{sid}/websockify"}
+    )
     viewer_lifecycle = (
         "state.textContent='Откройте Instagram и вручную проверьте диалог.';showRemote();"
         if inspection
@@ -479,7 +607,9 @@ open.addEventListener('click',async()=>{{open.disabled=true;const r=await fetch(
 def _responsive_remote_viewer_page(session_id: UUID) -> HTMLResponse:
     """Phone-first shell using the maintained noVNC UI inside a same-origin iframe."""
     sid = escape(str(session_id))
-    query = urlencode({"autoconnect": "true", "resize": "scale", "path": f"remote/{sid}/websockify"})
+    query = urlencode(
+        {"autoconnect": "true", "resize": "scale", "path": f"remote/{sid}/websockify"}
+    )
     html = f"""<!doctype html><html lang=\"ru\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><title>Подключение Instagram</title><style>html,body,main{{height:100%;margin:0;background:#162033;color:#fff;font:16px system-ui}}main{{position:relative}}#viewer{{display:block;border:0;width:100%;height:100%;background:#000}}header,footer{{position:absolute;z-index:2;left:12px;right:12px;background:rgba(22,32,51,.92);border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.25)}}header{{top:calc(10px + env(safe-area-inset-top));padding:10px 12px}}footer{{bottom:calc(10px + env(safe-area-inset-bottom));padding:8px;display:flex;gap:8px}}#state{{font-weight:700}}button{{border:0;border-radius:10px;padding:10px 13px;background:#ea5701;color:#fff;font:inherit;font-weight:700}}button.secondary{{background:#334155}}button:disabled{{opacity:.55}}</style><main><iframe id=\"viewer\" title=\"Удалённый Chromium\" src=\"/remote/{sid}/vnc/vnc.html?{query}\"></iframe><header><div id=\"state\">Подготовка браузера…</div></header><footer><button id=\"open\">Открыть Instagram</button><button id=\"keyboard\" class=\"secondary\">Клавиатура</button></footer></main><script>const viewer=document.querySelector('#viewer'),state=document.querySelector('#state'),open=document.querySelector('#open'),keyboard=document.querySelector('#keyboard');viewer.addEventListener('load',()=>{{const doc=viewer.contentDocument;if(!doc)return;const style=doc.createElement('style');style.textContent='#noVNC_control_bar_anchor{{display:none!important}}html,body,#noVNC_container,#noVNC_screen{{width:100%!important;height:100%!important;margin:0!important;background:#000!important;border-radius:0!important}}';doc.head.append(style)}});keyboard.addEventListener('click',()=>{{viewer.contentDocument?.querySelector('#noVNC_keyboard_button')?.click()}});open.addEventListener('click',async()=>{{open.disabled=true;const r=await fetch('/remote/{sid}/open-instagram',{{method:'POST',credentials:'same-origin'}});state.textContent=r.ok?'Войдите в Instagram.':'Требуется повторное подключение.'}});const labels={{preparing:'Подготовка браузера…',login:'Войдите в Instagram.',challenge:'Завершите 2FA или CAPTCHA.',connected:'Instagram подключён.',expired:'Ссылка истекла.',cancelled:'Сессия отменена.',completed:'Instagram подключён.'}};async function poll(){{const r=await fetch('/remote/{sid}/state',{{cache:'no-store'}});if(!r.ok)return;const s=await r.json();state.textContent=labels[s.state]||'Требуется повторное подключение.';if(['connected','completed','expired','cancelled'].includes(s.state)){{viewer.remove();open.remove();keyboard.remove()}}}}poll();setInterval(poll,5000);</script></html>"""
     return HTMLResponse(html, headers=_security_headers())
 

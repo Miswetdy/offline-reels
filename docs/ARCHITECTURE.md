@@ -588,6 +588,17 @@ preserves this API/service boundary and remains gated by Linux sandbox and
 authenticated-profile acceptance.
 # Stage 6 management control plane
 
+## Stage 10 same-process Collector handoff
+
+`collector-handoff` is an opt-in one-shot boundary beside the normal Collector,
+not an API feature. It shares the account profile lock and retains its own
+headed Chromium process through an operator pause. `handoff-gateway` is the
+only public-path peer and reaches only an internal noVNC relay; it cannot reach
+CDP, the profile volume or browser controller. A private state volume carries
+only a hashed one-time grant and terminal state. The Collector constructs its
+database, Redis, MinIO and downloader adapters only after explicit confirmation
+and otherwise closes Chromium fail-closed.
+
 The management API is a separately authenticated FastAPI router backed only by
 PostgreSQL. A local operator CLI creates a short-lived one-time pairing
 challenge. A paired device receives a secure HTTP-only cookie; mutations also
