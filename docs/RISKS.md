@@ -265,6 +265,15 @@ endpoint gate remains in force. Local synthetic obstructions validate the
 reporting path but do not identify the VPS obstruction. A diagnostic live result
 is needed before selecting a repair or claiming multi-Reel collection.
 
+Linux evidence from `67d3833` now shows control and other-element hits at the
+sampled endpoints, with no direct selected-video hits and neither disabled
+pointer events nor native video controls. The run committed one source and
+failed transition confirmation. These categories aggregate samples and do not
+identify a particular overlay, its purpose, or a safe alternate input surface.
+Control classification includes interactive ancestors and takes precedence
+over structural categories. Establish the relationship to the active card
+before selecting an input repair; retain the endpoint and canonical JSON gates.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

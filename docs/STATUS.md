@@ -1,5 +1,21 @@
 # Status
 
+## TASK-016 Linux obstruction evidence — 2026-09-06, 67d3833
+
+Built the revision-tagged Collector and ran one bounded Stage-10 target-3 run
+with the existing AppArmor profile. One real source was committed; no advances
+were confirmed and the run terminated `TRANSITION_FAILED`.
+The probe evaluated successfully and found the selected video in viewport.
+Sampled hits included `control` and `other_element`; neither sampled start nor
+end hit the selected video. Pointer-events:none and native video controls were
+false. Touch was not dispatched. Wheel ran, but no stable media change or
+canonical confirmation followed; post-action JSON was observed.
+These aggregate categories identify the endpoint obstruction class, not the
+specific UI element or a safe alternate gesture target. The control classifier
+uses closest(), so an interactive ancestor also qualifies. Next: establish the
+obstructing surface's relationship to the active card using bounded safe
+structural diagnostics before choosing a repair. 3/3 and 50 remain blocked.
+
 ## TASK-016 endpoint obstruction diagnostics
 
 The next diagnostic build classifies failed endpoint hits using only fixed
