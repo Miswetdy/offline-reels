@@ -191,3 +191,16 @@ def test_catalog_classifies_non_json_responses_without_reading_them():
         "non_json_javascript": 1,
         "non_json_other": 1,
     }
+
+
+def test_catalog_accepts_only_bounded_valid_embedded_candidates():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    catalog.observe_embedded_candidates(["EMBEDDED_1", "bad value", "EMBEDDED_1", "EMBEDDED_2"])
+
+    first = catalog.next_from_current_feed("PREVIOUS")
+    second = catalog.next_from_current_feed("PREVIOUS")
+
+    assert first is not None and first.shortcode == "EMBEDDED_1"
+    assert second is not None and second.shortcode == "EMBEDDED_2"
+    assert catalog.next_from_current_feed("PREVIOUS") is None

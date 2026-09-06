@@ -27,11 +27,13 @@ class ResponsePage(Protocol):
 
 
 class AuthenticatedFeedSource:
-    """In-memory canonical candidates from authenticated GraphQL responses only.
+    """Bounded canonical candidates from authenticated Reels-page sources.
 
-    The first two same-session web-API JSON responses are inspected only for
-    aggregate schema evidence.  They never enter the candidate queue and their
-    fields, values, URLs and payloads are not retained.
+    JSON-response candidates are accepted only from GraphQL. Explicit embedded
+    JSON scripts on the authenticated `/reels/` document may add validated
+    candidates after the page has loaded. Other JSON and all non-JSON response
+    classes remain aggregate diagnostics only. Values are held only in the
+    process-local bounded queue and are never logged or persisted.
     """
 
     def __init__(self, page: ResponsePage) -> None:
@@ -101,6 +103,24 @@ class AuthenticatedFeedSource:
         """Whether any authenticated JSON response arrived after a boundary."""
 
         return self._observation > observation
+
+    def observe_embedded_candidates(self, payload: object) -> None:
+        """Add validated IDs from the current Reels document's JSON scripts.
+
+        The browser probe has already restricted this payload to explicit JSON
+        script types. Values from arbitrary inline JavaScript, DOM attributes,
+        URLs and response bodies never reach this method.
+        """
+
+        if not isinstance(payload, list):
+            return
+        for code in payload[:_MAX_CODES]:
+            if not isinstance(code, str) or not SHORTCODE.fullmatch(code) or code in self._seen:
+                continue
+            self._seen.add(code)
+            self._codes.append((0, code))
+            if len(self._codes) > _MAX_CODES:
+                self._codes.popleft()
 
     def source_class_counts(self) -> dict[str, int]:
         return dict(self._source_classes)

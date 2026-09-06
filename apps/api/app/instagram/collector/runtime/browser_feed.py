@@ -206,6 +206,43 @@ EMBEDDED_APPLICATION_DATA_PROBE = """
 }
 """
 
+# This is intentionally separate from the aggregate-only probe above. It is
+# used only by the bounded authenticated feed source after fixed Reels
+# navigation; candidate IDs remain process-local and are never diagnostic data.
+EMBEDDED_APPLICATION_CANDIDATES_PROBE = """
+() => {
+  const acceptedKeys = new Set(['code', 'shortcode', 'media_code']);
+  const candidates = [];
+  const seen = new Set();
+  for (const script of document.querySelectorAll('script[type]')) {
+    const type = (script.getAttribute('type') || '').trim().toLowerCase();
+    if (type !== 'application/json' && type !== 'application/ld+json') continue;
+    const text = script.textContent || '';
+    if (text.length > 2_000_000) continue;
+    let payload;
+    try { payload = JSON.parse(text); } catch { continue; }
+    const stack = [payload];
+    let visited = 0;
+    while (stack.length && visited < 20_000 && candidates.length < 32) {
+      visited += 1;
+      const value = stack.pop();
+      if (Array.isArray(value)) {
+        stack.push(...value);
+      } else if (value && typeof value === 'object') {
+        for (const [key, child] of Object.entries(value)) {
+          if (acceptedKeys.has(key) && typeof child === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(child) && !seen.has(child)) {
+            seen.add(child);
+            candidates.push(child);
+          }
+          stack.push(child);
+        }
+      }
+    }
+  }
+  return candidates;
+}
+"""
+
 PAUSE_PROBE = """
 () => {
   const midpoint = window.innerHeight / 2;
@@ -662,7 +699,9 @@ class PlaywrightReelsFeed:
         if self._closed:
             raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED)
         if self._context is not None:
-            return self._wait_for_initial_reel()
+            candidate = self._wait_for_initial_reel()
+            self._capture_embedded_feed_candidates()
+            return candidate
         self._raise_if_closed()
         self._raise_if_controlled_stop()
         return self._candidate_from_probe()
@@ -1002,6 +1041,7 @@ class PlaywrightReelsFeed:
                     and self._feed_json.observed_after(self._transition_json_checkpoint)
                 )
                 if stable_count >= 2 and post_action_json_observed and self._feed_json is not None:
+                    self._capture_embedded_feed_candidates()
                     candidate = self._candidate_or_none()
                     if candidate is not None and candidate.shortcode != previous_shortcode:
                         dom_confirmation_observed = True
@@ -1097,6 +1137,16 @@ class PlaywrightReelsFeed:
         except Exception:
             return None
         return result if isinstance(result, str) and 1 <= len(result) <= 128 else None
+
+    def _capture_embedded_feed_candidates(self) -> None:
+        if self._feed_json is None:
+            return
+        try:
+            self._feed_json.observe_embedded_candidates(
+                self._page.evaluate(EMBEDDED_APPLICATION_CANDIDATES_PROBE)
+            )
+        except Exception:
+            return
 
     def _media_changed(self, previous: str | None) -> bool:
         current = self._active_media_identity()

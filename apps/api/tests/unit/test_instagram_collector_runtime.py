@@ -16,6 +16,7 @@ from app.instagram.collector.contracts import ReelCandidate
 from app.instagram.collector.runtime.browser_feed import (
     ACTIVE_FEED_INPUT_TARGET_PROBE,
     ACTIVE_MEDIA_IDENTITY_PROBE,
+    EMBEDDED_APPLICATION_CANDIDATES_PROBE,
     EMBEDDED_APPLICATION_DATA_PROBE,
     IDENTITY_PROBE,
     IDENTITY_STRUCTURE_PROBE,
@@ -56,6 +57,8 @@ class FakePage:
         scroll_target: dict[str, object] | None = None,
         scroll_container: bool = False,
         media_identity_samples: list[str] | None = None,
+        embedded_codes: list[str] | None = None,
+        transition_response_code: str | None = None,
     ) -> None:
         self._candidates = candidates
         self._index = 0
@@ -82,6 +85,8 @@ class FakePage:
             "end_y": 120.0,
         }
         self._media_identity_samples = list(media_identity_samples or [])
+        self._embedded_codes = list(embedded_codes or [])
+        self._transition_response_code = transition_response_code
         self._input_performed = False
         self._response_handler = None
 
@@ -118,6 +123,8 @@ class FakePage:
                 "oversized_embedded_json_script_count": 1,
                 "embedded_tree_allowed_canonical_alias_values": 3,
             }
+        if expression == EMBEDDED_APPLICATION_CANDIDATES_PROBE:
+            return list(self._embedded_codes)
         if expression == PAUSE_PROBE:
             self.pause_calls += 1
             return True
@@ -151,7 +158,9 @@ class FakePage:
         if self._index < len(self._candidates) - 1:
             self._index += 1
             if self._response_handler is not None:
-                self._response_handler(_JsonResponse(self._candidates[self._index].shortcode))
+                self._response_handler(
+                    _JsonResponse(self._transition_response_code or self._candidates[self._index].shortcode)
+                )
 
 
 def feed(page: FakePage) -> PlaywrightReelsFeed:
@@ -172,6 +181,23 @@ def test_browser_feed_confirms_two_stable_samples_and_pauses_only_current() -> N
     assert page.mouse.moves == [(400.0, 300.0)]
     assert page.mouse.calls == [(0, 540)]
     assert page.mouse.actions == [("move", 400.0, 300.0), ("wheel", 0, 540)]
+
+
+def test_browser_feed_uses_embedded_queue_after_stable_transition() -> None:
+    page = FakePage(
+        [candidate("ONE"), candidate("TWO")],
+        embedded_codes=["TWO"],
+        transition_response_code="INVALID.CODE",
+        transition_samples=[None, None, None],
+    )
+    adapter = feed(page)
+
+    assert adapter.current().shortcode == "ONE"
+    adapter.advance()
+
+    next_candidate = adapter.wait_for_next("ONE")
+    assert next_candidate is not None and next_candidate.shortcode == "TWO"
+    assert adapter.transition_diagnostics.canonical_queue_fallback_observed
 
 
 def test_browser_feed_uses_bounded_pointer_wheel_when_scroll_container_is_unavailable() -> None:
