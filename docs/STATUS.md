@@ -1,5 +1,22 @@
 # Status
 
+## TASK-016 repeat after connected inspect viewer — 2026-09-06
+
+The operator confirmed that the repaired private viewer displayed a connected
+remote browser, opened Instagram, and manually handled the visible dialog. The
+one-time session was then cancelled and its link removed before a fresh bounded
+Stage-10 target-3 Collector run. It still committed one real source, confirmed
+zero advances and stopped `TRANSITION_FAILED` after its one retry.
+
+The preserved aggregate evidence is unchanged: the selected central video was
+available and in the viewport but not directly hit-testable; a focusable
+inherited role-button below a modal/dialog ancestor intercepted both endpoints,
+with the video present below the top point-stack hit. Touch was not dispatched.
+Post-action authenticated JSON was observed, but no stable media change or
+canonical confirmation followed. The download diagnostic reported a single
+output with cleaned partial artifacts; the 3/3 and 50-Reel acceptance gates
+remain blocked.
+
 ## TASK-016 inspect viewer connection state — 2026-09-06
 
 The first inspect attempt reached a black viewer and later displayed reconnect

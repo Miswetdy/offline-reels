@@ -51,6 +51,19 @@ same-origin noVNC Core с явным текстовым состоянием con
 должен сначала увидеть состояние connected в этом viewer и только затем вручную
 проверить dialog.
 
+После исправления viewer оператор подтвердил состояние connected, открыл
+Instagram и вручную обработал видимый dialog. Одноразовая сессия была закрыта,
+после чего новый bounded 3/3 run всё равно получил один durable source-коммит,
+ноль подтверждённых переходов и `TRANSITION_FAILED` после одного retry. Вновь
+зафиксирован тот же modal/dialog interceptor: video available/in-viewport, но
+не direct hit-testable; верхний hit — inherited focusable role-button, video
+находится ниже в point stack, поэтому touch не отправлен. Post-action JSON
+есть, stable media и canonical confirmation нет; download partial artifacts
+очищены. Это исключает чёрный viewer как объяснение, но не объясняет различие
+между ручным контекстом и Collector. Нельзя повышать лимит/retry, нажимать
+interceptor автоматически или начинать acceptance на 50 до evidence-backed
+исправления.
+
 Bounded Linux run `d5d3dc5` (2026-09-06) дал 1/3 source-коммит, 0 переходов
 и `TRANSITION_FAILED`, но установил причину. Верхнее препятствие — focusable
 `role=button`, найденный через interactive ancestor внутри modal/dialog

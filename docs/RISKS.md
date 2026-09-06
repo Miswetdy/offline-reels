@@ -333,6 +333,14 @@ noVNC Core client, while retaining the one-time signed gateway path and no
 automatic session completion. Verify that transport state before relying on
 manual dialog results.
 
+The repaired viewer subsequently showed a connected remote browser and the
+operator manually handled the dialog, yet a fresh bounded Collector run still
+observed the same modal/dialog endpoint interceptor and correctly withheld
+touch. This rules out the black viewer as the explanation for the prior result
+but does not identify why the dialog is visible to Collector after that manual
+action. Do not increase retries, target the interceptor, or begin the 50-Reel
+acceptance until an evidence-backed fix reconciles those contexts.
+
 The next diagnostic build records only aggregate role and interaction-state
 facts of that hit's already-detected interactive ancestor: native/ARIA control
 kind, disabled state, focusability, dialog/modal ancestry and
