@@ -15,6 +15,11 @@ case "${1:-help}" in
     exec xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24 -nolisten tcp" \
       uv run --no-sync python -m app.scripts.diagnose_instagram_reels_identity "$@"
     ;;
+  modal-lifecycle-diagnostic)
+    shift
+    exec xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24 -nolisten tcp" \
+      uv run --no-sync python -m app.scripts.diagnose_instagram_modal_lifecycle "$@"
+    ;;
   live)
     shift
     # A private X server retains the existing headed Collector behavior. It
@@ -23,7 +28,7 @@ case "${1:-help}" in
       uv run --no-sync python -m app.scripts.run_instagram_collector_live "$@"
     ;;
   help|--help|-h)
-    echo "usage: collector-entrypoint {fixture|sandbox-smoke|identity-diagnostic|live} [options]" >&2
+    echo "usage: collector-entrypoint {fixture|sandbox-smoke|identity-diagnostic|modal-lifecycle-diagnostic|live} [options]" >&2
     exit 0
     ;;
   *)

@@ -1,5 +1,17 @@
 # Status
 
+## TASK-017 modal lifecycle diagnostic implementation — 2026-09-06
+
+The Collector now has an explicit `modal-lifecycle-diagnostic` one-shot
+container profile. It opens the configured persistent profile, takes exactly
+five redacted passive hit-test snapshots around fixed two-second waits, and
+exits without touch, click, keyboard, wheel, downloader, database, Redis, or
+MinIO access. Its workspace result contains only fixed boolean fields, phase
+enums, a count, and a fail-closed reason code. The normal Collector's direct
+hit and JSON gates are unchanged. Next: run this diagnostic once on Stage 10;
+only a result with both direct endpoint hits at `before_collector_input` can
+admit the separate bounded 3/3 live attempt.
+
 ## TASK-017 modal lifecycle diagnostic specification — 2026-09-06
 
 `docs/tasks/017-collector-modal-lifecycle-diagnostic.md` defines a bounded,

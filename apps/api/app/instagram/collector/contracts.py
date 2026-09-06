@@ -106,6 +106,39 @@ class ScrollTargetDiagnostics:
     hit_test_control_touch_action_none: bool = False
 
 
+@dataclass(frozen=True)
+class ModalLifecycleSnapshot:
+    """One passive, aggregate-only observation of the central feed surface."""
+
+    central_video_found: bool = False
+    central_video_in_viewport: bool = False
+    direct_hit_start: bool = False
+    direct_hit_end: bool = False
+    video_below_top_point_stack_hit: bool = False
+    top_hit_interactive_or_control_inherited: bool = False
+    control_focusable: bool = False
+    control_role_button: bool = False
+    control_modal_or_dialog_ancestor: bool = False
+    control_disabled: bool = False
+    control_aria_disabled: bool = False
+    top_hit_fixed_ancestor: bool = False
+    top_hit_covers_viewport: bool = False
+    top_hit_covers_video: bool = False
+    visual_viewport_differs_from_layout: bool = False
+
+
+@dataclass(frozen=True)
+class ModalLifecycleDiagnosticResult:
+    """Redacted result for the diagnostic-only operator command."""
+
+    browser_launch_succeeded: bool
+    persistent_profile_configured: bool
+    reels_navigation_reached: bool
+    observation_count: int
+    reason_code: str | None
+    observations: tuple[tuple[str, ModalLifecycleSnapshot], ...]
+
+
 # Fixed allowlist shared by probe decoding and operator aggregation.
 HIT_TEST_DIAGNOSTIC_FLAGS = (
     "hit_test_start_video_observed",

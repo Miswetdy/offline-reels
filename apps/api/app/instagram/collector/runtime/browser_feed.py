@@ -13,6 +13,7 @@ from uuid import UUID
 from app.instagram.collector.canonical import InvalidReelCandidate, validate_candidate
 from app.instagram.collector.contracts import (
     HIT_TEST_DIAGNOSTIC_FLAGS,
+    ModalLifecycleSnapshot,
     ReelCandidate,
     ScrollTargetDiagnostics,
     TransitionSamplingDiagnostics,
@@ -455,6 +456,7 @@ class PlaywrightReelsFeed:
         context=None,
         playwright=None,
         profile_lock: ProfileLock | None = None,
+        observe_feed_json: bool = True,
     ) -> None:
         self._page = page
         self._limits = limits
@@ -470,10 +472,12 @@ class PlaywrightReelsFeed:
         self._transition_media_confirmed = False
         self._transition_json_checkpoint = 0
         self._force_pointer_wheel_next_advance = False
-        try:
-            self._feed_json = FeedJsonCandidateCatalog(page)
-        except Exception:
-            self._feed_json = None
+        self._feed_json = None
+        if observe_feed_json:
+            try:
+                self._feed_json = FeedJsonCandidateCatalog(page)
+            except Exception:
+                self._feed_json = None
 
     @classmethod
     def open(
@@ -483,6 +487,8 @@ class PlaywrightReelsFeed:
         *,
         repository_root: Path,
         allow_login_bootstrap: bool = False,
+        navigate_to_reels: bool = True,
+        observe_feed_json: bool = True,
     ) -> PlaywrightReelsFeed:
         settings.require_live(repository_root=repository_root)
         assert settings.profile_root is not None
@@ -516,7 +522,6 @@ class PlaywrightReelsFeed:
                 **launch_options,
             )
             page = context.pages[0] if context.pages else context.new_page()
-            page.goto("https://www.instagram.com/reels/", wait_until="domcontentloaded")
             feed = cls(
                 page,
                 limits=TransitionLimits(
@@ -527,7 +532,10 @@ class PlaywrightReelsFeed:
                 context=context,
                 playwright=playwright,
                 profile_lock=lock,
+                observe_feed_json=observe_feed_json,
             )
+            if navigate_to_reels:
+                feed.navigate_to_reels()
             if not allow_login_bootstrap:
                 feed._raise_if_controlled_stop()
             return feed
@@ -674,6 +682,64 @@ class PlaywrightReelsFeed:
                 except Exception:
                     pass
         return self._wait_for_media_transition(previous_identity, timeout_seconds=5.0)
+
+    def navigate_to_reels(self) -> None:
+        """Navigate only to the fixed feed URL; no page input or API call is made."""
+        self._raise_if_closed()
+        try:
+            self._page.goto("https://www.instagram.com/reels/", wait_until="domcontentloaded")
+        except Exception:
+            raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
+
+    def modal_lifecycle_snapshot(self) -> ModalLifecycleSnapshot:
+        """Passively inspect the existing direct-hit probe without retaining coordinates."""
+        self._raise_if_closed()
+        try:
+            payload = self._page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+        except Exception:
+            if self._page_is_closed():
+                raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
+            raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND) from None
+        if not isinstance(payload, dict) or type(payload.get("available")) is not bool:
+            raise CollectorRuntimeError(RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND)
+        return ModalLifecycleSnapshot(
+            central_video_found=payload["available"],
+            central_video_in_viewport=payload.get("in_viewport") is True,
+            direct_hit_start=payload.get("hit_test_start_video_observed") is True,
+            direct_hit_end=payload.get("hit_test_end_video_observed") is True,
+            video_below_top_point_stack_hit=payload.get("hit_test_stack_video_below_hit") is True,
+            top_hit_interactive_or_control_inherited=(
+                payload.get("hit_test_miss_control") is True
+                or payload.get("hit_test_control_inherited") is True
+            ),
+            control_focusable=payload.get("hit_test_control_focusable") is True,
+            control_role_button=payload.get("hit_test_control_role_button") is True,
+            control_modal_or_dialog_ancestor=payload.get(
+                "hit_test_control_modal_or_dialog_ancestor"
+            )
+            is True,
+            control_disabled=payload.get("hit_test_control_disabled") is True,
+            control_aria_disabled=payload.get("hit_test_control_aria_disabled") is True,
+            top_hit_fixed_ancestor=payload.get("hit_test_hit_fixed_ancestor") is True,
+            top_hit_covers_viewport=payload.get("hit_test_hit_covers_viewport") is True,
+            top_hit_covers_video=(
+                payload.get("hit_test_hit_covers_visible_video") is True
+                or payload.get("hit_test_control_covers_visible_video") is True
+            ),
+            visual_viewport_differs_from_layout=payload.get(
+                "hit_test_visual_viewport_differs_from_layout"
+            )
+            is True,
+        )
+
+    def modal_lifecycle_wait(self, seconds: float) -> None:
+        """A bounded passive wait used only by the modal diagnostic."""
+        self._raise_if_closed()
+        self._page.wait_for_timeout(seconds * 1000)
+
+    def raise_if_controlled_stop(self) -> None:
+        """Expose only safe authentication/challenge stop checks to diagnostics."""
+        self._raise_if_controlled_stop()
 
     def _pointer_wheel_advance(self) -> None:
         target = self._targeted_wheel_point()

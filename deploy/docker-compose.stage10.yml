@@ -229,6 +229,27 @@ services:
       - /collector/profile:rw,noexec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700
       - /collector/workspace:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700
 
+  # Explicit diagnostic-only browser run. It receives no database, Redis or
+  # MinIO credentials and its command has no collection/persistence ports.
+  collector-modal-lifecycle-diagnostic:
+    <<: [*collector_build, *collector_security]
+    profiles: [modal-lifecycle-diagnostic]
+    command: ["modal-lifecycle-diagnostic", "--account-id", "${COLLECTOR_ACCOUNT_ID:?COLLECTOR_ACCOUNT_ID must be set}"]
+    environment:
+      HOME: /collector/home
+      COLLECTOR_ENABLED: "true"
+      COLLECTOR_PROFILE_ROOT: /collector/profile
+      COLLECTOR_WORKSPACE_ROOT: /collector/workspace
+      COLLECTOR_HEADLESS: "false"
+      COLLECTOR_MAXIMUM_TARGET_COUNT: "3"
+      COLLECTOR_MAXIMUM_RUN_BYTES: "314572800"
+      COLLECTOR_EXPECTED_APPARMOR_PROFILE: offline-reels-collector
+    volumes:
+      - collector_profile_stage10:/collector/profile
+      - collector_workspace_stage10:/collector/workspace
+    networks:
+      - collector_egress
+
   collector:
     <<: [*collector_build, *collector_security]
     profiles: [collector]
