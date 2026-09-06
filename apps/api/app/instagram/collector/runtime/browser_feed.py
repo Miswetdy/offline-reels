@@ -127,6 +127,7 @@ IDENTITY_STRUCTURE_PROBE = """
   let nearbyReelAnchorCount = 0;
   let ancestorDataAttributeCount = 0;
   let boundCanonicalDataAttributeCount = 0;
+  const boundCanonicalDataValues = [];
   if (visible.length) {
     let node = visible[0].video;
     for (let depth = 0; depth < 8 && node; depth += 1) {
@@ -134,12 +135,19 @@ IDENTITY_STRUCTURE_PROBE = """
       ancestorDataAttributeCount += dataNames.length;
       for (const name of dataNames) {
         const value = node.getAttribute(name) || '';
-        if (/^[A-Za-z0-9_-]{1,64}$/.test(value)) boundCanonicalDataAttributeCount += 1;
+        if (/^[A-Za-z0-9_-]{1,64}$/.test(value)) {
+          boundCanonicalDataAttributeCount += 1;
+          boundCanonicalDataValues.push(value);
+        }
       }
       nearbyReelAnchorCount += [...node.querySelectorAll?.('a[href]') || []].filter(reelAnchor).length;
       node = node.parentElement;
     }
   }
+  const boundSignature = boundCanonicalDataValues.sort().join('\u0000');
+  const hadBoundSignature = typeof window.__offlineReelsBoundCanonicalSignature === 'string';
+  const boundCanonicalDataAttributeChanged = hadBoundSignature && window.__offlineReelsBoundCanonicalSignature !== boundSignature;
+  window.__offlineReelsBoundCanonicalSignature = boundSignature;
   return {
     video_count: videos.length,
     visible_video_count: visible.length,
@@ -148,6 +156,7 @@ IDENTITY_STRUCTURE_PROBE = """
     nearby_reel_anchor_count: nearbyReelAnchorCount,
     ancestor_data_attribute_count: ancestorDataAttributeCount,
     bound_canonical_data_attribute_count: boundCanonicalDataAttributeCount,
+    bound_canonical_data_attribute_changed: boundCanonicalDataAttributeChanged,
     location_is_specific_reel: validPath(location.pathname),
   };
 }
@@ -1287,6 +1296,7 @@ def _empty_identity_structure_diagnostics() -> dict[str, int | bool]:
         "nearby_reel_anchor_count": 0,
         "ancestor_data_attribute_count": 0,
         "bound_canonical_data_attribute_count": 0,
+        "bound_canonical_data_attribute_changed": False,
         "location_is_specific_reel": False,
     }
 
@@ -1305,6 +1315,9 @@ def _identity_structure_from_payload(payload: object) -> dict[str, int | bool]:
     ):
         safe[key] = _nonnegative_integer(payload.get(key))
     safe["central_video_present"] = payload.get("central_video_present") is True
+    safe["bound_canonical_data_attribute_changed"] = (
+        payload.get("bound_canonical_data_attribute_changed") is True
+    )
     safe["location_is_specific_reel"] = payload.get("location_is_specific_reel") is True
     return safe
 
