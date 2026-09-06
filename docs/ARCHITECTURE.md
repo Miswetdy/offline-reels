@@ -340,6 +340,14 @@ pairs; they never replace the same-pair two-endpoint acceptance condition.
 All observations are OR-merged across bounded attempts and cannot identify a
 specific DOM node or prove what caused Instagram's live input behavior.
 
+Structural hit observations are independent of the category precedence. The
+fixed boolean allowlist includes control-on-hit versus inherited control,
+containment in either direction, sibling relationship and a common ancestor
+within four levels of the video (excluding body/html). Hit and controlling
+ancestor bounding rectangles are compared with the visible video rectangle;
+only the full-coverage boolean is returned. These facts do not infer a card
+identity or gesture safety. Different true flags may describe different hits.
+
 Restrictions:
 
 - Instagram automation must be isolated from the rest of the system.

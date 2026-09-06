@@ -69,6 +69,15 @@ class ScrollTargetDiagnostics:
     hit_test_miss_other_element: bool = False
     hit_test_video_pointer_events_none: bool = False
     hit_test_video_native_controls: bool = False
+    hit_test_control_self: bool = False
+    hit_test_control_inherited: bool = False
+    hit_test_hit_contains_video: bool = False
+    hit_test_hit_inside_video: bool = False
+    hit_test_hit_video_sibling: bool = False
+    hit_test_hit_shared_near_ancestor: bool = False
+    hit_test_hit_covers_visible_video: bool = False
+    hit_test_control_contains_video: bool = False
+    hit_test_control_covers_visible_video: bool = False
 
 
 # Fixed allowlist shared by probe decoding and operator aggregation.
@@ -83,6 +92,15 @@ HIT_TEST_DIAGNOSTIC_FLAGS = (
     "hit_test_miss_other_element",
     "hit_test_video_pointer_events_none",
     "hit_test_video_native_controls",
+    "hit_test_control_self",
+    "hit_test_control_inherited",
+    "hit_test_hit_contains_video",
+    "hit_test_hit_inside_video",
+    "hit_test_hit_video_sibling",
+    "hit_test_hit_shared_near_ancestor",
+    "hit_test_hit_covers_visible_video",
+    "hit_test_control_contains_video",
+    "hit_test_control_covers_visible_video",
 )
 
 

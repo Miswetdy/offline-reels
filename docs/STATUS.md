@@ -1,5 +1,24 @@
 # Status
 
+## TASK-016 structural obstruction diagnostics
+
+The probe now reports structural boolean facts independently of the existing
+control-category precedence: self versus inherited control, hit containing or
+inside the video, sibling relationship, shared ancestor within four levels
+(excluding body/html), and full coverage of the visible video rectangle.
+The controlling ancestor is separately checked for containing the selected
+video and covering its visible rectangle. This distinguishes a sibling layer
+inside a shared interactive wrapper from a direct control or unrelated overlay.
+
+These are DOM relationships, not assertions about an Instagram card's purpose.
+Full coverage means bounding-rectangle coverage, not opaque visual occlusion.
+No raw DOM, identifiers, coordinates or attributes leave the probe. Touch still
+requires direct hits on the selected video at both endpoints. Next: collect
+these flags on Stage 10 before choosing a gesture repair; 3/3 and 50 are still
+unaccepted. Synthetic Chromium tests cover shared-control wrappers, direct
+controls, unrelated layers, partial coverage and controlling video ancestors.
+Verification: 56 touch-target/Stage-3B tests passed; Ruff and diff checks passed.
+
 ## TASK-016 Linux obstruction evidence — 2026-09-06, 67d3833
 
 Built the revision-tagged Collector and ran one bounded Stage-10 target-3 run

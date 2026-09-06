@@ -206,3 +206,51 @@ def test_hit_test_payload_allowlist_and_engine_merge():
     assert not evidence["hit_test_miss_null"]
     assert "private" not in str(evidence)
     assert all(type(evidence[key]) is bool for key in HIT_TEST_DIAGNOSTIC_FLAGS)
+
+
+@pytest.mark.parametrize("scenario", ["self-control", "shared-control", "outside", "small-control"])
+def test_obstruction_structure_is_independent_of_control_precedence(page, scenario):
+    page.set_content('''<style>
+      html,body{margin:0;overflow:hidden}
+      #card{position:fixed;inset:0}
+      video{width:430px;height:800px}
+      #cover{position:absolute;inset:0}
+      </style><div id="card"><video></video><div id="cover"></div></div>''')
+    page.evaluate('''scenario => {
+      const card = document.querySelector('#card'), cover = document.querySelector('#cover');
+      if (scenario === 'shared-control') card.setAttribute('role', 'button');
+      if (scenario === 'self-control' || scenario === 'small-control') {
+        cover.setAttribute('role', 'button');
+      }
+      if (scenario === 'outside') document.body.append(cover);
+      if (scenario === 'small-control') cover.style.top = '400px';
+    }''', scenario)
+    adapter = PlaywrightReelsFeed(page, limits=TransitionLimits(.01, .03, 2))
+    assert adapter._active_feed_input_target() is None
+    adapter._pointer_wheel_advance()
+    evidence = asdict(adapter.scroll_target_diagnostics)
+    assert evidence["hit_test_control_self"] == (scenario in {"self-control", "small-control"})
+    assert evidence["hit_test_control_inherited"] == (scenario == "shared-control")
+    assert evidence["hit_test_control_contains_video"] == (scenario == "shared-control")
+    assert evidence["hit_test_hit_video_sibling"] == (scenario != "outside")
+    assert evidence["hit_test_hit_shared_near_ancestor"] == (scenario != "outside")
+    assert evidence["hit_test_hit_covers_visible_video"] == (scenario != "small-control")
+    assert evidence["hit_test_control_covers_visible_video"] == (
+        scenario in {"self-control", "shared-control"}
+    )
+    assert not evidence["hit_test_hit_contains_video"]
+    assert not evidence["mobile_swipe_performed"]
+    assert all(type(value) is bool for value in evidence.values())
+
+
+def test_control_containing_video_reports_both_control_and_structure(page):
+    page.set_content('''<style>html,body{margin:0;overflow:hidden}
+      div{position:fixed;inset:0}video{width:430px;height:800px;pointer-events:none}
+      </style><div role="button"><video></video></div>''')
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+    assert not result["hit_testable"]
+    assert result["hit_test_miss_control"]
+    assert result["hit_test_control_self"]
+    assert result["hit_test_hit_contains_video"]
+    assert result["hit_test_control_contains_video"]
+    assert result["hit_test_hit_covers_visible_video"]

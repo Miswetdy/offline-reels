@@ -274,6 +274,14 @@ Control classification includes interactive ancestors and takes precedence
 over structural categories. Establish the relationship to the active card
 before selecting an input repair; retain the endpoint and canonical JSON gates.
 
+The structural diagnostic build separates self/inherited controls and reports
+containment, sibling/shared-near-ancestor relationships and rectangle coverage
+independently of control precedence. Shared ancestry cannot establish that an
+element belongs to a safe active-card gesture surface, and rectangle coverage
+does not establish visual opacity. Aggregates can combine different endpoint
+hits. The actual VPS obstruction remains unidentified until those observations
+are collected; no alternate input target or pointer-events change is enabled.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

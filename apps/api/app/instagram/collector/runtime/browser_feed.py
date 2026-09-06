@@ -258,11 +258,45 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     hit_test_miss_video_descendant: false, hit_test_miss_other_element: false,
     hit_test_video_pointer_events_none: getComputedStyle(selected.video).pointerEvents === 'none',
     hit_test_video_native_controls: selected.video.controls === true,
+    hit_test_control_self: false,
+    hit_test_control_inherited: false,
+    hit_test_hit_contains_video: false,
+    hit_test_hit_inside_video: false,
+    hit_test_hit_video_sibling: false,
+    hit_test_hit_shared_near_ancestor: false,
+    hit_test_hit_covers_visible_video: false,
+    hit_test_control_contains_video: false,
+    hit_test_control_covers_visible_video: false,
+  };
+  const controls = 'button,a,input,select,textarea,[role="button"],[role="slider"],[contenteditable="true"]';
+  const coversVideo = (element) => {
+    const r = element.getBoundingClientRect();
+    return r.left <= selected.left && r.right >= selected.right && r.top <= selected.top && r.bottom >= selected.bottom;
+  };
+  const observeStructure = (hit, control) => {
+    // Independent facts: control precedence must not hide structural relations.
+    diagnostics.hit_test_control_self ||= control === hit;
+    diagnostics.hit_test_control_inherited ||= control !== null && control !== hit;
+    diagnostics.hit_test_hit_contains_video ||= hit.contains(selected.video);
+    diagnostics.hit_test_hit_inside_video ||= selected.video.contains(hit);
+    diagnostics.hit_test_hit_video_sibling ||= hit.parentElement === selected.video.parentElement;
+    diagnostics.hit_test_hit_covers_visible_video ||= coversVideo(hit);
+    if (control) {
+      diagnostics.hit_test_control_contains_video ||= control.contains(selected.video);
+      diagnostics.hit_test_control_covers_visible_video ||= coversVideo(control);
+    }
+    // A bounded structural hint, not an inferred Instagram card identity.
+    let node = selected.video.parentElement;
+    for (let depth = 0; depth < 4 && node && node !== document.body && node !== document.documentElement; depth++, node = node.parentElement) {
+      if (node.contains(hit)) { diagnostics.hit_test_hit_shared_near_ancestor = true; break; }
+    }
   };
   const classify = (hit) => {
     if (hit === selected.video) return true;
+    const control = hit ? hit.closest(controls) : null;
+    if (hit) observeStructure(hit, control);
     if (!hit) diagnostics.hit_test_miss_null = true;
-    else if (hit.closest('button,a,input,select,textarea,[role="button"],[role="slider"],[contenteditable="true"]')) diagnostics.hit_test_miss_control = true;
+    else if (control) diagnostics.hit_test_miss_control = true;
     else if (hit instanceof HTMLVideoElement) diagnostics.hit_test_miss_other_video = true;
     else if (hit.contains(selected.video)) diagnostics.hit_test_miss_video_ancestor = true;
     else if (selected.video.contains(hit)) diagnostics.hit_test_miss_video_descendant = true;
