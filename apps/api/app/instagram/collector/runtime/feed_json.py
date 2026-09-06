@@ -32,6 +32,7 @@ class AuthenticatedFeedSource:
         self._seen: set[str] = set()
         self._observation = 0
         self._source_classes = {"graphql": 0, "web_api": 0, "other": 0}
+        self._schema_counts = {"media_nodes": 0, "canonical_shaped_values": 0}
         page.on("response", self._observe)
 
     def checkpoint(self) -> int:
@@ -84,6 +85,9 @@ class AuthenticatedFeedSource:
     def source_class_counts(self) -> dict[str, int]:
         return dict(self._source_classes)
 
+    def schema_counts(self) -> dict[str, int]:
+        return dict(self._schema_counts)
+
     def _observe(self, response: JsonResponse) -> None:
         try:
             content_type = response.headers.get("content-type", "").lower()
@@ -112,6 +116,16 @@ class AuthenticatedFeedSource:
             visited += 1
             value = stack.pop()
             if isinstance(value, dict):
+                is_media_node = isinstance(value.get("id"), str) and (
+                    "media" in str(value.get("__typename", "")).lower()
+                    or "video" in str(value.get("__typename", "")).lower()
+                )
+                if is_media_node:
+                    self._schema_counts["media_nodes"] += 1
+                    self._schema_counts["canonical_shaped_values"] += sum(
+                        isinstance(item, str) and SHORTCODE.fullmatch(item)
+                        for item in value.values()
+                    )
                 for key in _CANONICAL_CODE_KEYS:
                     code = value.get(key)
                     if (
