@@ -290,6 +290,13 @@ does not establish visual opacity. Aggregates can combine different endpoint
 hits. The actual VPS obstruction remains unidentified until those observations
 are collected; no alternate input target or pointer-events change is enabled.
 
+The next diagnostic split is external interception versus coordinate evidence.
+It uses fixed-ancestor/full-viewport facts and whether the selected video lies
+below the top hit in the local hit-test stack; visual/layout viewport divergence
+and endpoint inclusion are recorded separately. These values are aggregates
+only. They cannot identify an overlay or establish that an obscuring surface is
+safe to target, so the two-endpoint and canonical JSON gates remain mandatory.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

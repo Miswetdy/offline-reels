@@ -78,6 +78,13 @@ class ScrollTargetDiagnostics:
     hit_test_hit_covers_visible_video: bool = False
     hit_test_control_contains_video: bool = False
     hit_test_control_covers_visible_video: bool = False
+    hit_test_stack_contains_video: bool = False
+    hit_test_stack_video_below_hit: bool = False
+    hit_test_hit_fixed_ancestor: bool = False
+    hit_test_hit_covers_viewport: bool = False
+    hit_test_visual_viewport_present: bool = False
+    hit_test_visual_viewport_differs_from_layout: bool = False
+    hit_test_endpoint_inside_visual_viewport: bool = False
 
 
 # Fixed allowlist shared by probe decoding and operator aggregation.
@@ -101,6 +108,13 @@ HIT_TEST_DIAGNOSTIC_FLAGS = (
     "hit_test_hit_covers_visible_video",
     "hit_test_control_contains_video",
     "hit_test_control_covers_visible_video",
+    "hit_test_stack_contains_video",
+    "hit_test_stack_video_below_hit",
+    "hit_test_hit_fixed_ancestor",
+    "hit_test_hit_covers_viewport",
+    "hit_test_visual_viewport_present",
+    "hit_test_visual_viewport_differs_from_layout",
+    "hit_test_endpoint_inside_visual_viewport",
 )
 
 

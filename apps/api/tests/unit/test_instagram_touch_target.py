@@ -254,3 +254,38 @@ def test_control_containing_video_reports_both_control_and_structure(page):
     assert result["hit_test_hit_contains_video"]
     assert result["hit_test_control_contains_video"]
     assert result["hit_test_hit_covers_visible_video"]
+
+
+def test_fixed_viewport_overlay_keeps_video_below_in_hit_stack(page):
+    page.set_content('''<style>html,body{margin:0;overflow:hidden}
+      video{position:fixed;inset:0;width:430px;height:800px}
+      button{position:fixed;inset:0;width:430px;height:800px;z-index:2}
+      </style><video></video><button></button>''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert not result["hit_testable"]
+    assert result["hit_test_stack_contains_video"]
+    assert result["hit_test_stack_video_below_hit"]
+    assert result["hit_test_hit_fixed_ancestor"]
+    assert result["hit_test_hit_covers_viewport"]
+    assert result["hit_test_endpoint_inside_visual_viewport"]
+
+
+def test_external_hit_without_video_in_stack_distinguishes_coordinate_evidence(page):
+    page.set_content('''<style>html,body{margin:0;overflow:hidden}
+      video{position:fixed;inset:0;width:430px;height:800px}
+      </style><video></video><button id="outside"></button>''')
+    page.evaluate('''() => {
+      const outside = document.querySelector('#outside');
+      document.elementFromPoint = () => outside;
+      document.elementsFromPoint = () => [outside];
+    }''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert not result["hit_testable"]
+    assert not result["hit_test_stack_contains_video"]
+    assert not result["hit_test_stack_video_below_hit"]
+    assert result["hit_test_endpoint_inside_visual_viewport"]
+    assert result["hit_test_visual_viewport_present"]

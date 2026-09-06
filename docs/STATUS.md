@@ -1,5 +1,21 @@
 # Status
 
+## TASK-016 overlay versus viewport diagnostic evidence
+
+The hit-test probe now samples `elementsFromPoint()` for every bounded endpoint
+without returning stack elements. It records whether the selected video occurs
+below the top hit, and whether the hit has a fixed ancestor covering the layout
+viewport. It also records visual-viewport presence, layout/visual geometry
+divergence and whether sampled points are inside the visual viewport.
+
+A video below a fixed, viewport-covering hit is evidence of an external
+intercepting surface. An absent video from the stack together with visual/layout
+divergence is coordinate evidence, not an attribution to a particular element.
+Neither pattern enables input through an obstruction. Local Chromium fixtures
+cover both patterns; 58 touch-target/Stage-3B tests pass, along with Ruff and
+diff checks. Next: obtain these aggregates from the bounded Stage-10 run before
+selecting a concrete gesture repair. The 3/3 and 50-Reel gates remain blocked.
+
 ## TASK-016 Linux structural blocker evidence — 2026-09-06, db8a67c
 
 The bounded Stage-10 target-3 run committed one real source and stopped

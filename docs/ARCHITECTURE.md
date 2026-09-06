@@ -340,6 +340,14 @@ pairs; they never replace the same-pair two-endpoint acceptance condition.
 All observations are OR-merged across bounded attempts and cannot identify a
 specific DOM node or prove what caused Instagram's live input behavior.
 
+For each endpoint, the probe also inspects the bounded hit-test stack locally.
+It reports only whether the selected video is present and below the top hit,
+plus fixed-ancestor and viewport-coverage facts for the hit. Visual viewport
+presence, divergence from layout viewport, and point inclusion are separate
+boolean evidence. The stack itself, element names, attributes and coordinates
+never leave the page. These aggregates distinguish evidence patterns; they do
+not authorize an alternate target.
+
 Structural hit observations are independent of the category precedence. The
 fixed boolean allowlist includes control-on-hit versus inherited control,
 containment in either direction, sibling relationship and a common ancestor

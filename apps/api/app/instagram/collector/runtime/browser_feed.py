@@ -267,7 +267,18 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     hit_test_hit_covers_visible_video: false,
     hit_test_control_contains_video: false,
     hit_test_control_covers_visible_video: false,
+    hit_test_stack_contains_video: false,
+    hit_test_stack_video_below_hit: false,
+    hit_test_hit_fixed_ancestor: false,
+    hit_test_hit_covers_viewport: false,
+    hit_test_visual_viewport_present: Boolean(window.visualViewport),
+    hit_test_visual_viewport_differs_from_layout: false,
+    hit_test_endpoint_inside_visual_viewport: false,
   };
+  const visual = window.visualViewport;
+  if (visual) {
+    diagnostics.hit_test_visual_viewport_differs_from_layout = visual.scale !== 1 || visual.offsetLeft !== 0 || visual.offsetTop !== 0 || Math.abs(visual.width - width) > 1 || Math.abs(visual.height - height) > 1;
+  }
   const controls = 'button,a,input,select,textarea,[role="button"],[role="slider"],[contenteditable="true"]';
   const coversVideo = (element) => {
     const r = element.getBoundingClientRect();
@@ -281,6 +292,11 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     diagnostics.hit_test_hit_inside_video ||= selected.video.contains(hit);
     diagnostics.hit_test_hit_video_sibling ||= hit.parentElement === selected.video.parentElement;
     diagnostics.hit_test_hit_covers_visible_video ||= coversVideo(hit);
+    for (let node = hit; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      if (getComputedStyle(node).position === 'fixed') { diagnostics.hit_test_hit_fixed_ancestor = true; break; }
+    }
+    const hitRect = hit.getBoundingClientRect();
+    diagnostics.hit_test_hit_covers_viewport ||= hitRect.left <= 0 && hitRect.right >= width && hitRect.top <= 0 && hitRect.bottom >= height;
     if (control) {
       diagnostics.hit_test_control_contains_video ||= control.contains(selected.video);
       diagnostics.hit_test_control_covers_visible_video ||= coversVideo(control);
@@ -308,8 +324,18 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     const startY = top + (bottom - top) * startRatio;
     const endY = top + (bottom - top) * endRatio;
     // Independently sample both endpoints, including when the start is blocked.
-    const startHit = classify(document.elementFromPoint(x, startY));
-    const endHit = classify(document.elementFromPoint(x, endY));
+    const observePoint = (x, y) => {
+      if (!visual || (x >= visual.offsetLeft && x < visual.offsetLeft + visual.width && y >= visual.offsetTop && y < visual.offsetTop + visual.height)) diagnostics.hit_test_endpoint_inside_visual_viewport = true;
+      const stack = document.elementsFromPoint(x, y);
+      const videoIndex = stack.indexOf(selected.video);
+      if (videoIndex >= 0) {
+        diagnostics.hit_test_stack_contains_video = true;
+        if (videoIndex > 0) diagnostics.hit_test_stack_video_below_hit = true;
+      }
+      return classify(document.elementFromPoint(x, y));
+    };
+    const startHit = observePoint(x, startY);
+    const endHit = observePoint(x, endY);
     diagnostics.hit_test_start_video_observed ||= startHit;
     diagnostics.hit_test_end_video_observed ||= endHit;
     if (startHit && endHit) { gesture = [x, startY, endY]; break; }
