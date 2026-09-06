@@ -1,5 +1,20 @@
 # Status
 
+## TASK-018 authenticated JSON source-class discovery — 2026-09-06
+
+The bounded Stage-10 no-download run inspected the first two JSON responses in
+each observed current-session class: GraphQL, Web API and other. The aggregate
+count of valid strict canonical aliases was zero in every class. No response
+body, URL, field name, value, cookie or candidate was retained.
+
+There is therefore no evidence-backed source for a recommendation queue in
+this Linux presentation. The earlier local spike's `10/10` run proved that it
+could download ten generic catalog entries and separately observe nine media
+transitions, but it did not retain response provenance or prove a mapping to
+the active cards. A queue provider must not be introduced by widening the
+filter or reviving that unproven source. No downloader or persistence adapter
+was constructed by the diagnostic.
+
 ## TASK-018 Web API full-tree canonical-alias diagnostic — 2026-09-06
 
 The next Stage-10 no-download run examined the strict canonical alias allowlist
