@@ -1,5 +1,13 @@
 # Status
 
+## TASK-018 Collector operator handoff — 2026-09-06
+
+The next implementation is an explicit one-time operator handoff to the same
+running Collector Chromium process. It is specified in
+`docs/tasks/018-collector-operator-handoff-to-working-live-run.md`; work must
+continue through implementation, deploy and bounded verification, with only
+the operator's manual treatment of an unknown dialog as an allowed pause.
+
 ## TASK-018 Collector presentation alignment — 2026-09-06
 
 The Collector Xvfb and Chromium launch contract now matches the private
