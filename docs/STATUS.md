@@ -9,6 +9,11 @@ targeted and the direct-hit, native-touch and JSON gates are unchanged. Targeted
 runtime and diagnostic tests passed (35 passed, 2 skipped). Next: one passive
 modal-lifecycle run on Stage 10; only direct hits can admit a bounded live 3/3.
 
+The deployed passive run at `0b6ad30` retained the same blocker: both direct
+hits were false and the focusable role-button under modal/dialog ancestry
+persisted after the fixed waits. Presentation alignment is therefore not a
+repair. No live collection was started.
+
 ## TASK-017 Stage-10 diagnostic result — 2026-09-06
 
 One and only one `modal-lifecycle-diagnostic` run completed on Stage 10 from
