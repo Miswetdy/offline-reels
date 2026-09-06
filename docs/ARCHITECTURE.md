@@ -318,7 +318,7 @@ a different identity and a post-input authenticated JSON response. Candidates
 may come from authenticated GraphQL responses observed after the in-memory
 checkpoint or from the bounded current-navigation queue extracted from explicit
 `application/json`/`application/ld+json` scripts on the authenticated fixed
-`/reels/` document. The latter is a feed candidate, not a claimed DOM binding
+`/reels/` document under media-shaped ancestry. The latter is a feed candidate, not a claimed DOM binding
 to the visual card. DOM attributes, URLs, inline JavaScript, generic response
 bodies and non-JSON assets never supply candidates. If no gated candidate is
 available, the transition fails safely and may use only the existing one

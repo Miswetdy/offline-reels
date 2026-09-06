@@ -14,8 +14,9 @@ After fixed Reels navigation, `AuthenticatedFeedSource` may read only explicit
 `application/json` and `application/ld+json` scripts in the current
 authenticated document. It traverses each parsed payload with fixed size and
 node bounds, accepts only values under `code`, `shortcode` or `media_code` that
-pass the canonical shortcode validator, de-duplicates them, and retains at
-most 32 values only in process memory.
+pass the canonical shortcode validator and occur under an object carrying a
+media-shape marker, de-duplicates them, and retains at most 32 values only in
+process memory.
 
 The queue is independent of swipe. A candidate may be reserved only after the
 existing stable-media and post-input authenticated-JSON gates. It is not

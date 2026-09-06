@@ -1,5 +1,20 @@
 # Status
 
+## TASK-018 embedded media feed-queue acceptance — 2026-09-06
+
+The embedded-data discovery found 41 explicit JSON scripts in the authenticated
+fixed Reels document. Four strict canonical aliases were present, of which two
+occurred under media-shaped ancestry. The bounded provider now accepts only
+that latter subset. Its Stage-10 no-download acceptance passed: a stable media
+change, post-input JSON and queue fallback were all confirmed in two polling
+samples, without persistence or downloading.
+
+The first real bounded run with the earlier, broader embedded source committed
+one durable source and confirmed its first queue-backed transition, then
+correctly stopped on `DIRECT_DOWNLOAD_EXTRACTOR_FAILED` for the next candidate.
+The source was narrowed before any retry; the stricter real `3/3` run remains
+pending server reachability. No `3/3` or `10/10` acceptance is claimed.
+
 ## TASK-018 authenticated JSON source-class discovery — 2026-09-06
 
 The bounded Stage-10 no-download run inspected the first two JSON responses in
