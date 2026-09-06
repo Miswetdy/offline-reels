@@ -1,5 +1,22 @@
 # Status
 
+## TASK-016 bounded run after manual inspect — 2026-09-06
+
+The inspect session was closed and its one-time link removed before the next
+bounded Stage-10 target-3 run. That run still committed only one real source,
+confirmed zero advances and terminated `TRANSITION_FAILED`. Every preserved
+modal-interceptor fact remained present: a focusable inherited role-button
+under a modal/dialog ancestor, with the selected video below the top point-stack
+hit and no direct endpoint hit. Touch was withheld. There was neither stable
+media change nor canonical confirmation, though post-action JSON was observed.
+
+Therefore the manual inspect action did not change the state seen by Collector.
+The evidence does not distinguish a dialog that reappears for a new browser
+context from an action unrelated to that dialog. Do not run further collection
+attempts until an operator workflow can visibly confirm the feed dialog's state
+in the same persistent profile/context used by Collector. 3/3 and 50 remain
+blocked.
+
 ## TASK-016 private feed-dialog inspection viewer — 2026-09-06
 
 The login gateway now supports a one-time `inspect=1` launch for an explicitly

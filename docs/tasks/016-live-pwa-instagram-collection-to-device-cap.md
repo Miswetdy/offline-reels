@@ -27,6 +27,20 @@ viewer не публикует VNC/CDP/control service и не даёт Collecto
 dialog. После ручного действия сессию нужно закрыть, затем выполнить bounded
 3/3 как единственное доказательство результата.
 
+После completed inspect-session и удаления одноразовой ссылки следующий
+bounded Linux run снова дал 1/3 source-коммит, 0 переходов и
+`TRANSITION_FAILED`. Все признаки modal interceptor сохранились: focusable
+inherited role-button под modal/dialog ancestor, selected video ниже top
+point-stack hit и отсутствие direct endpoint hit; touch не отправлен. Stable
+media change и canonical confirmation отсутствуют, post-action JSON есть.
+
+Следовательно, ручное действие не изменило состояние, наблюдаемое Collector.
+Нельзя отличить dialog, который появляется заново в новом browser context, от
+действия, не связанного с ним. Новые live-download attempts приостанавливаются,
+пока operator workflow не сможет визуально подтвердить состояние dialog именно
+в persistent profile/context Collector. Endpoint hit-test, JSON-gate, лимиты,
+3/3 и 50 не меняются.
+
 Bounded Linux run `d5d3dc5` (2026-09-06) дал 1/3 source-коммит, 0 переходов
 и `TRANSITION_FAILED`, но установил причину. Верхнее препятствие — focusable
 `role=button`, найденный через interactive ancestor внутри modal/dialog

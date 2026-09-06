@@ -318,6 +318,14 @@ through the gateway, expires with the session, and deliberately does not poll
 or complete profile state. The operator must decide any dialog action manually;
 the next live run remains the only evidence of its effect.
 
+The first run after a completed manual inspect retained every modal-interceptor
+fact and failed before a touch dispatch. The inspection action therefore did
+not produce a demonstrable Collector-visible state change. It may have affected
+another browser context or the dialog may recur; the aggregate evidence cannot
+choose between those explanations. Further live downloads are paused until the
+operator workflow visibly verifies the dialog state in Collector's persistent
+profile context.
+
 The next diagnostic build records only aggregate role and interaction-state
 facts of that hit's already-detected interactive ancestor: native/ARIA control
 kind, disabled state, focusability, dialog/modal ancestry and
