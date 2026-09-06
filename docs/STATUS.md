@@ -1,5 +1,21 @@
 # Status
 
+## TASK-018 Web API canonical-alias acceptance diagnostic — 2026-09-06
+
+The follow-up isolated Stage-10 run inspected exactly two authenticated Web API
+JSON responses. It found 85 media-shaped structures and 340 canonical-shaped
+strings, but zero valid values under the strict existing canonical alias
+allowlist.  The output contained counts only: no key names, values, response
+bodies, URLs, cookies or candidates were retained.
+
+The active media nevertheless changed stably and post-input JSON was observed.
+Because the allowlist count was zero, Web API cannot safely become an
+`AuthenticatedFeedSource` with the present canonical-ID contract. It remains
+diagnostic-only; no downloader, database, Redis, MinIO or persistence adapter
+was constructed. The next investigation must establish a separately validated
+canonical-ID contract for a confirmed feed source, rather than widening the
+existing alias allowlist based on string shape alone.
+
 ## TASK-018 authenticated Web API schema discovery — 2026-09-06
 
 The isolated Stage-10 `identity-diagnostic --transition` inspected exactly two
@@ -11,11 +27,10 @@ structures: 83 such nodes and 332 canonical-shaped string values in total.
 The same bounded input again produced a stable different central-media identity
 and post-input JSON, but no admitted DOM, GraphQL or queue candidate.  No
 downloader, database, Redis, MinIO or persistence adapter was constructed.
-This is evidence that the authenticated Web API is a promising separate feed
-source, but not yet proof that any particular field is a validated canonical
-Reel ID.  The Web API remains diagnostic-only and cannot yet supply Collector
-candidates.  Next: a second aggregate-only schema check for the explicit
-canonical alias allowlist before considering a bounded provider.
+This is evidence that the authenticated Web API has feed-like media structure,
+but not proof that any particular field is a validated canonical Reel ID. The
+subsequent strict-alias check found no admissible value. The Web API remains
+diagnostic-only and cannot supply Collector candidates.
 
 ## TASK-018 authenticated GraphQL feed source — 2026-09-06
 
