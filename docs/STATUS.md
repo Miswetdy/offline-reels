@@ -10,7 +10,28 @@ confirm/cancel state. Before confirmation the script creates no Collector
 persistence/storage adapters and makes no Collector input; expiry/cancel closes
 the browser fail-closed. The Stage-10 Compose profile has no published VNC,
 CDP, profile or control port. Focused gateway and handoff-state tests pass.
-Deployment and the required manual confirmation remain pending.
+Deployment and the required manual confirmation have completed; live 3/3 acceptance remains pending.
+
+## TASK-018 deployed handoff acceptance — 2026-09-06
+
+The Stage-10 private viewer was deployed and an operator completed the
+same-process handoff. A gateway defect initially rejected the viewer WebSocket
+because it checked the login-flow cookie name rather than the handoff cookie;
+the gateway now checks its own signed `handoff_gateway_session`, with a focused
+regression test. The corrected viewer accepted the private WebSocket and the
+operator explicitly confirmed continuation.
+
+The resulting bounded live run is not accepted: it committed exactly one new
+durable source, performed its sole retry, confirmed zero transitions, and
+stopped fail-closed with `TRANSITION_FAILED`. Aggregate evidence shows a stable
+central-media change and post-action authenticated JSON, but no canonical
+confirmation for a different Reel. Native touch was correctly withheld because
+both endpoints hit a fixed semantic shell layer above the selected video rather
+than the video itself. No second download was attempted. A stale `running` run
+left by an earlier interrupted process was terminally marked failed without
+altering its already durable source. The Stage-10 PWA command flow and the
+50-Reel device-cap acceptance remain blocked until a safe, evidence-backed
+transition repair produces a real 3/3 run.
 
 ## TASK-018 Collector operator handoff — 2026-09-06
 
