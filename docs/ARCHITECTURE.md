@@ -314,11 +314,15 @@ bypass was introduced for that experiment.
 
 For a live card transition, the runtime retains only the centred media
 element's process-local identity. It first requires two stable observations of
-a different identity, then accepts a canonical candidate only from
-authenticated feed JSON observed after an in-memory response checkpoint made
-immediately before the input action. A DOM candidate or URL never proves a
-transition. If that JSON confirmation is absent, the transition fails safely
-and may use only the existing one pointer-wheel retry.
+a different identity and a post-input authenticated JSON response. Candidates
+may come from authenticated GraphQL responses observed after the in-memory
+checkpoint or from the bounded current-navigation queue extracted from explicit
+`application/json`/`application/ld+json` scripts on the authenticated fixed
+`/reels/` document. The latter is a feed candidate, not a claimed DOM binding
+to the visual card. DOM attributes, URLs, inline JavaScript, generic response
+bodies and non-JSON assets never supply candidates. If no gated candidate is
+available, the transition fails safely and may use only the existing one
+pointer-wheel retry.
 
 The first input is not a script-driven `scrollBy`: after aggregate-only
 geometry and hit-test validation, the runtime sends one bounded native CDP
