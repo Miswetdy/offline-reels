@@ -58,6 +58,10 @@ def test_login_browser_is_non_root_and_keeps_cdp_and_vnc_loopback_only() -> None
     assert "fcntl.LOCK_EX | fcntl.LOCK_NB" in service
     assert "LOGIN_BROWSER_EXPECTED_APPARMOR_PROFILE" in service
     assert "password" not in service.lower().replace("input[name=password]", "")
+    # Instagram can retain a valid session behind its one-tap account page.
+    # Keep that page visible for a human decision instead of treating it as a
+    # completed profile check.
+    assert "accounts\\\\/(?:login|onetap)" in service
 
 
 def test_stage4_has_explicit_profile_cleanup_and_no_windows_profile_reference() -> None:
