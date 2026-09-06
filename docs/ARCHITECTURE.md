@@ -331,6 +331,15 @@ Target evidence is retained across the input cascade, reset at the next
 advance, and OR-merged by the engine across the bounded attempts. These flags
 describe observations, not proof that Instagram accepted a transition.
 
+Endpoint diagnostics use an explicit boolean allowlist, never raw hit elements.
+Miss categories are null, semantic control, another video, selected-video
+ancestor/descendant, and other element (in that precedence). The probe also
+reports the selected video's pointer-events:none and native-controls flags.
+Start/end-hit booleans indicate any observed hit, possibly across different
+pairs; they never replace the same-pair two-endpoint acceptance condition.
+All observations are OR-merged across bounded attempts and cannot identify a
+specific DOM node or prove what caused Instagram's live input behavior.
+
 Restrictions:
 
 - Instagram automation must be isolated from the rest of the system.

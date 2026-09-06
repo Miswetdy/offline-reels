@@ -258,6 +258,13 @@ hit-testing remains unknown; do not infer an overlay identity from boolean
 diagnostics or relax endpoint checks. Investigate with safe aggregate evidence
 before another repair and 3/3 verification.
 
+The diagnostic build now distinguishes fixed endpoint blocker categories and
+selected-video pointer-event/native-control state. A control or ancestor hit
+does not establish that it is a safe gesture surface; the strict video-only
+endpoint gate remains in force. Local synthetic obstructions validate the
+reporting path but do not identify the VPS obstruction. A diagnostic live result
+is needed before selecting a repair or claiming multi-Reel collection.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

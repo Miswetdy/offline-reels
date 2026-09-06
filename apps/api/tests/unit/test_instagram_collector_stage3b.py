@@ -16,6 +16,7 @@ from app.db.models.instagram import (
     InstagramReel,
 )
 from app.instagram.collector.contracts import (
+    HIT_TEST_DIAGNOSTIC_FLAGS,
     CancelRunOutcome,
     ReelCandidate,
     ScrollTargetDiagnostics,
@@ -216,6 +217,7 @@ def test_retry_scroll_confirms_second_transition_without_repeating_download_or_c
                 "active_feed_probe_evaluated": False,
                 "active_feed_probe_failed": False,
                 "active_feed_central_video_missing": False,
+                **dict.fromkeys(HIT_TEST_DIAGNOSTIC_FLAGS, False),
             "stop_reason_code": None,
         },
         {
@@ -240,6 +242,7 @@ def test_retry_scroll_confirms_second_transition_without_repeating_download_or_c
                 "active_feed_probe_evaluated": False,
                 "active_feed_probe_failed": False,
                 "active_feed_central_video_missing": False,
+                **dict.fromkeys(HIT_TEST_DIAGNOSTIC_FLAGS, False),
             "stop_reason_code": None,
         },
     ]

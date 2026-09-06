@@ -59,6 +59,31 @@ class ScrollTargetDiagnostics:
     active_feed_probe_evaluated: bool = False
     active_feed_probe_failed: bool = False
     active_feed_central_video_missing: bool = False
+    hit_test_start_video_observed: bool = False
+    hit_test_end_video_observed: bool = False
+    hit_test_miss_null: bool = False
+    hit_test_miss_control: bool = False
+    hit_test_miss_other_video: bool = False
+    hit_test_miss_video_ancestor: bool = False
+    hit_test_miss_video_descendant: bool = False
+    hit_test_miss_other_element: bool = False
+    hit_test_video_pointer_events_none: bool = False
+    hit_test_video_native_controls: bool = False
+
+
+# Fixed allowlist shared by probe decoding and operator aggregation.
+HIT_TEST_DIAGNOSTIC_FLAGS = (
+    "hit_test_start_video_observed",
+    "hit_test_end_video_observed",
+    "hit_test_miss_null",
+    "hit_test_miss_control",
+    "hit_test_miss_other_video",
+    "hit_test_miss_video_ancestor",
+    "hit_test_miss_video_descendant",
+    "hit_test_miss_other_element",
+    "hit_test_video_pointer_events_none",
+    "hit_test_video_native_controls",
+)
 
 
 class FeedPort(Protocol):

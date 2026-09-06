@@ -11,6 +11,7 @@ from app.instagram.collector.canonical import (
     validate_candidate,
 )
 from app.instagram.collector.contracts import (
+    HIT_TEST_DIAGNOSTIC_FLAGS,
     CollectorUnitOfWorkPort,
     DownloaderPort,
     EventRecorder,
@@ -509,6 +510,7 @@ class CollectorEngine:
             "active_feed_probe_evaluated": False,
             "active_feed_probe_failed": False,
             "active_feed_central_video_missing": False,
+            **dict.fromkeys(HIT_TEST_DIAGNOSTIC_FLAGS, False),
             "stop_reason_code": None,
         }
         for attempt in (1, 2):
@@ -603,6 +605,7 @@ class CollectorEngine:
             "active_feed_probe_evaluated",
             "active_feed_probe_failed",
             "active_feed_central_video_missing",
+            *HIT_TEST_DIAGNOSTIC_FLAGS,
         ):
             destination[key] = bool(destination[key] or getattr(target, key))
 

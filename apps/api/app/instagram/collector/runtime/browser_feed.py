@@ -12,6 +12,7 @@ from uuid import UUID
 
 from app.instagram.collector.canonical import InvalidReelCandidate, validate_candidate
 from app.instagram.collector.contracts import (
+    HIT_TEST_DIAGNOSTIC_FLAGS,
     ReelCandidate,
     ScrollTargetDiagnostics,
     TransitionSamplingDiagnostics,
@@ -250,15 +251,38 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
   // inside this browser process and never appear in diagnostics or results.
   const xValues = [.32, .5, .68].map((ratio) => left + (right - left) * ratio);
   const yPairs = [[.76, .28], [.68, .22], [.62, .18]];
+  const diagnostics = {
+    hit_test_start_video_observed: false, hit_test_end_video_observed: false,
+    hit_test_miss_null: false, hit_test_miss_control: false,
+    hit_test_miss_other_video: false, hit_test_miss_video_ancestor: false,
+    hit_test_miss_video_descendant: false, hit_test_miss_other_element: false,
+    hit_test_video_pointer_events_none: getComputedStyle(selected.video).pointerEvents === 'none',
+    hit_test_video_native_controls: selected.video.controls === true,
+  };
+  const classify = (hit) => {
+    if (hit === selected.video) return true;
+    if (!hit) diagnostics.hit_test_miss_null = true;
+    else if (hit.closest('button,a,input,select,textarea,[role="button"],[role="slider"],[contenteditable="true"]')) diagnostics.hit_test_miss_control = true;
+    else if (hit instanceof HTMLVideoElement) diagnostics.hit_test_miss_other_video = true;
+    else if (hit.contains(selected.video)) diagnostics.hit_test_miss_video_ancestor = true;
+    else if (selected.video.contains(hit)) diagnostics.hit_test_miss_video_descendant = true;
+    else diagnostics.hit_test_miss_other_element = true;
+    return false;
+  };
   let gesture = null;
   for (const x of xValues) for (const [startRatio, endRatio] of yPairs) {
     const startY = top + (bottom - top) * startRatio;
     const endY = top + (bottom - top) * endRatio;
-    if (document.elementFromPoint(x, startY) === selected.video && document.elementFromPoint(x, endY) === selected.video) { gesture = [x, startY, endY]; break; }
+    // Independently sample both endpoints, including when the start is blocked.
+    const startHit = classify(document.elementFromPoint(x, startY));
+    const endHit = classify(document.elementFromPoint(x, endY));
+    diagnostics.hit_test_start_video_observed ||= startHit;
+    diagnostics.hit_test_end_video_observed ||= endHit;
+    if (startHit && endHit) { gesture = [x, startY, endY]; break; }
   }
-  if (!gesture) return { available: true, in_viewport: true, hit_testable: false };
+  if (!gesture) return { available: true, in_viewport: true, hit_testable: false, ...diagnostics };
   const [x, startY, endY] = gesture;
-  return { available: true, in_viewport: true, hit_testable: true, x, start_y: startY, end_y: endY };
+  return { available: true, in_viewport: true, hit_testable: true, x, start_y: startY, end_y: endY, ...diagnostics };
 }
 """
 
@@ -928,6 +952,7 @@ class PlaywrightReelsFeed:
         self._scroll_target_diagnostics = replace(
             self._scroll_target_diagnostics,
             active_feed_probe_evaluated=True,
+            **{key: payload.get(key) is True for key in HIT_TEST_DIAGNOSTIC_FLAGS},
             active_feed_central_video_missing=payload["available"] is False,
             active_feed_target_available=payload["available"],
         )

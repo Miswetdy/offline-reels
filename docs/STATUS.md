@@ -1,5 +1,26 @@
 # Status
 
+## TASK-016 endpoint obstruction diagnostics
+
+The next diagnostic build classifies failed endpoint hits using only fixed
+boolean fields: null, control, other video, ancestor/descendant of the selected
+video, or other element. It also reports pointer-events:none and native controls
+on the selected video, and whether any sampled start/end hit the video. Both
+endpoints are evaluated independently; previously a failed start short-circuited
+the end check. A gesture still requires both endpoints of the same pair to hit
+the selected video. The nine candidate pairs and input/JSON limits are unchanged.
+
+These flags survive wheel fallback and engine aggregation. No tag names,
+attributes, text, coordinates or DOM contents enter the operator result. Local
+Chromium fixtures cover controls, generic overlays, another video, disabled
+pointer events, null hits and separately blocked start/end points. The cause on
+VPS remains unknown until this build produces aggregate evidence; 3/3 and 50
+acceptance remain blocked. Use that evidence to choose an input repair rather
+than treating a blocker category as permission to target it.
+
+Verification: 51 tests passed in the touch-target and Stage-3B suites, including
+actual Chromium probe evaluation. Ruff and `git diff --check` passed.
+
 ## TASK-016 Linux verification of 2ebce26 — 2026-09-06
 
 Built and ran the explicitly tagged Collector image on Stage 10 with its
