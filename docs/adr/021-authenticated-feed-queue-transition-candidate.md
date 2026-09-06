@@ -12,8 +12,10 @@ already supplied unused, canonical candidates before that checkpoint.
 ## Decision
 
 The Collector resets its bounded in-memory feed candidate catalog immediately
-before navigating to the fixed `/reels/` URL. It continues to prefer a
-different canonical code observed after the input checkpoint.
+before navigating to the fixed `/reels/` URL. After both the stable-media and
+post-input JSON gates pass, it first prefers a different canonical code from
+the existing safe central-video DOM probe, then a different canonical code
+observed after the input checkpoint.
 
 If and only if the media identity has changed stably and at least one
 authenticated JSON response arrived after the bounded input, it may instead
@@ -22,7 +24,8 @@ catalog. The fallback is one-shot: a reserved code is removed from the queue,
 the queue is bounded, and candidates are never recovered from a prior browser
 page, URL parsing, DOM attributes, logs, or persistent storage.
 
-The transition diagnostic records only the aggregate boolean
+The transition diagnostic records only the aggregate booleans
+`canonical_dom_confirmation_observed` and
 `canonical_queue_fallback_observed`. Native-touch admission, wheel/keyboard
 fallbacks, timeouts, retry bounds, source validation and durable persistence
 are unchanged.

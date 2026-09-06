@@ -857,6 +857,7 @@ class PlaywrightReelsFeed:
         observed_different = False
         poll_count = unchanged_count = missing_count = 0
         stable_count = 0
+        dom_confirmation_observed = False
         queue_fallback_observed = False
         # A one-element holder keeps the identity strictly in process memory
         # while allowing the bounded sampler below to update it.
@@ -868,7 +869,7 @@ class PlaywrightReelsFeed:
 
         def sample() -> ReelCandidate | None:
             nonlocal observed_different, poll_count, unchanged_count, missing_count, stable_count
-            nonlocal queue_fallback_observed
+            nonlocal dom_confirmation_observed, queue_fallback_observed
             if should_stop is not None and should_stop():
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
                     poll_count=poll_count,
@@ -903,10 +904,14 @@ class PlaywrightReelsFeed:
                     and self._feed_json.observed_after(self._transition_json_checkpoint)
                 )
                 if stable_count >= 2 and post_action_json_observed and self._feed_json is not None:
-                    candidate = self._feed_json.next_after(
-                        previous_shortcode,
-                        after_observation=self._transition_json_checkpoint,
-                    )
+                    candidate = self._candidate_or_none()
+                    if candidate is not None and candidate.shortcode != previous_shortcode:
+                        dom_confirmation_observed = True
+                    else:
+                        candidate = self._feed_json.next_after(
+                            previous_shortcode,
+                            after_observation=self._transition_json_checkpoint,
+                        )
                     if candidate is None:
                         candidate = self._feed_json.next_from_current_feed(previous_shortcode)
                         queue_fallback_observed = candidate is not None
@@ -949,6 +954,7 @@ class PlaywrightReelsFeed:
                     stable_media_identity_observed=True,
                     post_action_json_observed=post_action_json_observed,
                     canonical_confirmation_observed=True,
+                    canonical_dom_confirmation_observed=dom_confirmation_observed,
                     canonical_queue_fallback_observed=queue_fallback_observed,
                 )
                 return candidate
@@ -1090,7 +1096,10 @@ class PlaywrightReelsFeed:
         try:
             return self._candidate_from_probe()
         except CollectorRuntimeError as error:
-            if error.code is RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND:
+            if error.code in {
+                RuntimeReasonCode.ACTIVE_REEL_NOT_FOUND,
+                RuntimeReasonCode.INVALID_REEL_CANDIDATE,
+            }:
                 return None
             raise
 

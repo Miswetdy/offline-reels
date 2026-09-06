@@ -10,12 +10,14 @@ media change and a new authenticated JSON response; the missing proof was only
 the canonical code mapping in mobile MSE DOM.
 
 ADR 021 therefore resets a bounded in-memory candidate catalog before fixed
-Reels navigation, prefers a fresh post-input canonical code, and permits one
-unused candidate from that same authenticated feed queue only after both the
-stable media and post-input JSON gates pass. The candidate is consumed once;
-old-page values, DOM/URL extraction, persistence, input admission and retry
-bounds remain excluded. Focused Collector tests pass; the next step is a new
-bounded Stage-10 3/3 handoff run before any 50-Reel PWA acceptance.
+Reels navigation and, after both stable-media and post-input JSON gates, first
+uses a different canonical code only when the existing safe central-video DOM
+probe directly supplies it. It then prefers a fresh feed-JSON code and permits
+one unused candidate from that same authenticated feed queue. The candidate is
+consumed once; old-page values, persistence, input admission and retry bounds
+remain excluded. The latest bounded run found no feed-JSON code to reserve, so
+the next check is this stricter direct-DOM confirmation before any further
+queue fallback or 50-Reel PWA acceptance.
 
 ## TASK-018 narrow feed-shell transition repair — 2026-09-06
 

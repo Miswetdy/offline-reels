@@ -7,6 +7,7 @@ import pytest
 from app.instagram.collector.runtime.browser_feed import (
     ACTIVE_FEED_INPUT_TARGET_PROBE,
     ACTIVE_MEDIA_IDENTITY_PROBE,
+    IDENTITY_PROBE,
     STATE_PROBE,
     PlaywrightReelsFeed,
     TransitionLimits,
@@ -61,8 +62,9 @@ class _Response:
 
 
 class _TransitionPage:
-    def __init__(self) -> None:
+    def __init__(self, *, dom_shortcode: str | None = None) -> None:
         self.closed = False
+        self.dom_shortcode = dom_shortcode
         self.identities = iter(("NEW_MEDIA", "NEW_MEDIA", "NEW_MEDIA"))
         self._response_handler = None
 
@@ -75,6 +77,17 @@ class _TransitionPage:
             return next(self.identities, "NEW_MEDIA")
         if expression == STATE_PROBE:
             return {"login": False, "checkpoint": False, "limited": False}
+        if expression == IDENTITY_PROBE:
+            payload = {
+                "video_count": 1,
+                "visible_video_count": 1,
+                "central_video_present": True,
+                "extraction_strategy": "video_anchor",
+            }
+            if self.dom_shortcode is not None:
+                payload["shortcode"] = self.dom_shortcode
+                payload["canonical_url"] = f"https://www.instagram.com/reel/{self.dom_shortcode}/"
+            return payload
         raise AssertionError("unexpected probe")
 
     def wait_for_timeout(self, timeout: float) -> None:
@@ -141,6 +154,24 @@ def test_wait_for_next_uses_current_feed_queue_only_after_media_and_post_action_
     assert feed.transition_diagnostics.stable_media_identity_observed is True
     assert feed.transition_diagnostics.post_action_json_observed is True
     assert feed.transition_diagnostics.canonical_queue_fallback_observed is True
+
+
+def test_wait_for_next_prefers_different_safe_dom_candidate_after_json_gate() -> None:
+    page = _TransitionPage(dom_shortcode="DOM_CONFIRMED_2")
+    feed = PlaywrightReelsFeed(
+        page,
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.05, maximum_scroll_attempts=2),
+    )
+    feed._transition_media_identity = "OLD_MEDIA"
+    feed._transition_json_checkpoint = feed._feed_json.checkpoint()  # type: ignore[union-attr]
+    page.observe_json_without_code()
+
+    confirmed = feed.wait_for_next("OLD_CODE")
+
+    assert confirmed is not None and confirmed.shortcode == "DOM_CONFIRMED_2"
+    assert feed.transition_diagnostics.post_action_json_observed is True
+    assert feed.transition_diagnostics.canonical_dom_confirmation_observed is True
+    assert feed.transition_diagnostics.canonical_queue_fallback_observed is False
 
 
 class _TouchSession:
