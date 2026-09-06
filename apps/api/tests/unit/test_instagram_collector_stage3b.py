@@ -212,6 +212,10 @@ def test_retry_scroll_confirms_second_transition_without_repeating_download_or_c
                 "active_feed_target_in_viewport": False,
                 "active_feed_target_hit_testable": False,
                 "mobile_swipe_performed": False,
+                "active_feed_probe_attempted": False,
+                "active_feed_probe_evaluated": False,
+                "active_feed_probe_failed": False,
+                "active_feed_central_video_missing": False,
             "stop_reason_code": None,
         },
         {
@@ -232,6 +236,10 @@ def test_retry_scroll_confirms_second_transition_without_repeating_download_or_c
                 "active_feed_target_in_viewport": False,
                 "active_feed_target_hit_testable": False,
                 "mobile_swipe_performed": False,
+                "active_feed_probe_attempted": False,
+                "active_feed_probe_evaluated": False,
+                "active_feed_probe_failed": False,
+                "active_feed_central_video_missing": False,
             "stop_reason_code": None,
         },
     ]

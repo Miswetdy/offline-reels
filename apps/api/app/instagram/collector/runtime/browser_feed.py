@@ -4,7 +4,7 @@
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
@@ -146,16 +146,21 @@ PAUSE_PROBE = """
 }
 """
 
-ACTIVE_MEDIA_IDENTITY_PROBE = """
-() => {
+_CENTRAL_MEDIA_SELECTION = """
+  const width = innerWidth, height = innerHeight;
   const visible = [...document.querySelectorAll('video')].map((video) => {
     const rect = video.getBoundingClientRect();
-    const area = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) * Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
-    return { video, area, distance: Math.abs((rect.top + rect.bottom) / 2 - innerHeight / 2) };
-  // Keep this selection aligned with IDENTITY_PROBE: a partially visible
-  // preloaded card must not be mistaken for the centred feed item merely
-  // because it has a slightly larger visible area during a transition.
+    const left = Math.max(0, rect.left), right = Math.min(width, rect.right);
+    const top = Math.max(0, rect.top), bottom = Math.min(height, rect.bottom);
+    const style = getComputedStyle(video);
+    const area = style.visibility === 'hidden' || style.visibility === 'collapse' || style.display === 'none' || Number(style.opacity) === 0
+      ? 0 : Math.max(0, right - left) * Math.max(0, bottom - top);
+    const distance = Math.hypot((rect.left + rect.right) / 2 - width / 2, (rect.top + rect.bottom) / 2 - height / 2);
+    return { video, left, right, top, bottom, area, distance };
   }).filter((item) => item.area > 0).sort((a, b) => a.distance - b.distance || b.area - a.area);
+"""
+
+ACTIVE_MEDIA_IDENTITY_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
   if (!visible.length) return null;
   // Collector pauses the current Reel while its separate downloader runs.
   // Restore muted playback before testing an input transition; this is the
@@ -219,16 +224,7 @@ SCROLL_CONTAINER_PROBE = """
 """
 
 
-ACTIVE_FEED_INPUT_TARGET_PROBE = """
-() => {
-  const width = innerWidth, height = innerHeight;
-  const midpoint = { x: width / 2, y: height / 2 };
-  const visible = [...document.querySelectorAll('video')].map((video) => {
-    const rect = video.getBoundingClientRect();
-    const left = Math.max(0, rect.left), right = Math.min(width, rect.right);
-    const top = Math.max(0, rect.top), bottom = Math.min(height, rect.bottom);
-    return { video, left, right, top, bottom, area: Math.max(0, right - left) * Math.max(0, bottom - top), distance: Math.hypot((left + right) / 2 - midpoint.x, (top + bottom) / 2 - midpoint.y) };
-  }).filter((item) => item.area > 0).sort((a, b) => a.distance - b.distance || b.area - a.area);
+ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
   if (!visible.length) return { available: false };
   const selected = visible[0];
   let owner = null;
@@ -475,6 +471,7 @@ class PlaywrightReelsFeed:
         self._raise_if_closed()
         if self._scroll_attempts >= self._limits.maximum_scroll_attempts:
             raise CollectorRuntimeError(RuntimeReasonCode.TRANSITION_TIMEOUT)
+        self._scroll_target_diagnostics = ScrollTargetDiagnostics()
         self._transition_media_identity = self._active_media_identity()
         self._transition_media_confirmed = False
         self._transition_json_checkpoint = (
@@ -520,7 +517,8 @@ class PlaywrightReelsFeed:
             session.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": start_y, "id": 1}]})
             session.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": end_y, "id": 1}]})
             session.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-            self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+            self._scroll_target_diagnostics = replace(
+                self._scroll_target_diagnostics,
                 active_feed_target_available=True,
                 active_feed_target_in_viewport=True,
                 active_feed_target_hit_testable=True,
@@ -549,7 +547,8 @@ class PlaywrightReelsFeed:
             # element's geometric centre and ignore a wheel sent there.
             self._page.mouse.move(target[2] / 2, target[3] / 2)
             self._page.mouse.wheel(0, int(target[3] * 0.9))
-            self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+            self._scroll_target_diagnostics = replace(
+                self._scroll_target_diagnostics,
                 scroll_target_available=True,
                 scroll_target_in_viewport=True,
                 mouse_move_performed=True,
@@ -888,7 +887,6 @@ class PlaywrightReelsFeed:
             return True
 
     def _targeted_wheel_point(self) -> tuple[float, float, float, float] | None:
-        self._scroll_target_diagnostics = ScrollTargetDiagnostics()
         try:
             payload = self._page.evaluate(SCROLL_TARGET_PROBE)
         except Exception:
@@ -897,7 +895,7 @@ class PlaywrightReelsFeed:
             return None
         if not isinstance(payload, dict) or payload.get("available") is not True:
             return None
-        self._scroll_target_diagnostics = ScrollTargetDiagnostics(scroll_target_available=True)
+        self._scroll_target_diagnostics = replace(self._scroll_target_diagnostics, scroll_target_available=True)
         if payload.get("in_viewport") is not True:
             return None
         values = tuple(payload.get(key) for key in ("x", "y", "width", "height"))
@@ -908,30 +906,37 @@ class PlaywrightReelsFeed:
             return None
         if width <= 0 or height <= 0 or not (0 <= x < width and 0 <= y < height):
             return None
-        self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+        self._scroll_target_diagnostics = replace(
+            self._scroll_target_diagnostics,
             scroll_target_available=True,
             scroll_target_in_viewport=True,
         )
         return x, y, width, height
 
     def _active_feed_input_target(self) -> tuple[float, float, float] | None:
-        self._scroll_target_diagnostics = ScrollTargetDiagnostics()
+        self._scroll_target_diagnostics = replace(self._scroll_target_diagnostics, active_feed_probe_attempted=True)
         try:
             payload = self._page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
         except Exception:
+            self._scroll_target_diagnostics = replace(self._scroll_target_diagnostics, active_feed_probe_failed=True)
             if self._page_is_closed():
                 raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED) from None
             return None
-        if not isinstance(payload, dict) or payload.get("available") is not True:
+        if not isinstance(payload, dict) or type(payload.get("available")) is not bool:
+            self._scroll_target_diagnostics = replace(self._scroll_target_diagnostics, active_feed_probe_failed=True)
+            return None
+        self._scroll_target_diagnostics = replace(
+            self._scroll_target_diagnostics,
+            active_feed_probe_evaluated=True,
+            active_feed_central_video_missing=payload["available"] is False,
+            active_feed_target_available=payload["available"],
+        )
+        if payload["available"] is False:
             return None
         if payload.get("in_viewport") is not True:
-            self._scroll_target_diagnostics = ScrollTargetDiagnostics(active_feed_target_available=True)
             return None
+        self._scroll_target_diagnostics = replace(self._scroll_target_diagnostics, active_feed_target_in_viewport=True)
         if payload.get("hit_testable") is not True:
-            self._scroll_target_diagnostics = ScrollTargetDiagnostics(
-                active_feed_target_available=True,
-                active_feed_target_in_viewport=True,
-            )
             return None
         values = tuple(payload.get(key) for key in ("x", "start_y", "end_y"))
         if any(isinstance(value, bool) or not isinstance(value, int | float) for value in values):
@@ -939,7 +944,10 @@ class PlaywrightReelsFeed:
         x, start_y, end_y = (float(value) for value in values)
         if not all(math.isfinite(value) for value in (x, start_y, end_y)):
             return None
-        self._scroll_target_diagnostics = ScrollTargetDiagnostics(
+        if not (x >= 0 and 0 <= end_y < start_y):
+            return None
+        self._scroll_target_diagnostics = replace(
+            self._scroll_target_diagnostics,
             active_feed_target_available=True,
             active_feed_target_in_viewport=True,
             active_feed_target_hit_testable=True,

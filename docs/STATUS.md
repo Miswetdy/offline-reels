@@ -1,5 +1,27 @@
 # Status
 
+## TASK-016 probe diagnosis and selection repair
+
+Local regressions reproduced two defects in the previous native-touch build:
+wheel fallback reset the entire target diagnostic record, erasing even a
+successful touch dispatch; media identity and touch discovery could select
+different videos because their centre-distance formulas differed. Consequently
+the all-false live target flags alone did not establish that no touch was sent.
+The actual live input outcome remains unverified.
+
+Both probes now embed one shared visible-central-video selector. Target
+diagnostics survive fallback until the engine merges the attempt, with separate
+boolean attempted/evaluated/failed/central-video-missing fields. Existing
+endpoint hit-tests, JSON confirmation and bounded run limits remain enforced.
+Tests execute the actual probes in installed Chromium on local fixtures and
+exercise failed/missing/overlay outcomes through wheel and engine diagnostics.
+Verification: the focused probe and Stage-3B suite passed 43 tests, including
+real Chromium probe execution; Ruff and `git diff --check` passed. The broader
+runtime/gate run passed its other checks; its diagnostic-schema expectation
+was updated and verified by the focused rerun.
+Next: deploy this repair and run bounded Linux 3/3; retain the 50-Reel gate until
+the required native-touch and new canonical JSON evidence passes.
+
 ## Stage 10 Linux staging preparation
 
 Stage 10 repository preparation now provides a reproducible Ubuntu 24.04

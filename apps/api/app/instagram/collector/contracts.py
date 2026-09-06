@@ -55,6 +55,10 @@ class ScrollTargetDiagnostics:
     active_feed_target_in_viewport: bool = False
     active_feed_target_hit_testable: bool = False
     mobile_swipe_performed: bool = False
+    active_feed_probe_attempted: bool = False
+    active_feed_probe_evaluated: bool = False
+    active_feed_probe_failed: bool = False
+    active_feed_central_video_missing: bool = False
 
 
 class FeedPort(Protocol):

@@ -323,6 +323,14 @@ the browser process. The operator result exposes only boolean facts for the
 validated target, native swipe, stable media identity and post-action JSON;
 neither coordinates nor browser content are retained.
 
+Active-media identity and native-touch discovery embed the same selector:
+visible viewport intersection, full-element two-dimensional centre distance,
+then visible area as the tie-breaker. Probe attempted/evaluated/failed and
+central-video-missing flags distinguish calculation failure from missing media.
+Target evidence is retained across the input cascade, reset at the next
+advance, and OR-merged by the engine across the bounded attempts. These flags
+describe observations, not proof that Instagram accepted a transition.
+
 Restrictions:
 
 - Instagram automation must be isolated from the rest of the system.

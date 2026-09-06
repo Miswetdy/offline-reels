@@ -505,6 +505,10 @@ class CollectorEngine:
             "active_feed_target_in_viewport": False,
             "active_feed_target_hit_testable": False,
             "mobile_swipe_performed": False,
+            "active_feed_probe_attempted": False,
+            "active_feed_probe_evaluated": False,
+            "active_feed_probe_failed": False,
+            "active_feed_central_video_missing": False,
             "stop_reason_code": None,
         }
         for attempt in (1, 2):
@@ -595,6 +599,10 @@ class CollectorEngine:
             "active_feed_target_in_viewport",
             "active_feed_target_hit_testable",
             "mobile_swipe_performed",
+            "active_feed_probe_attempted",
+            "active_feed_probe_evaluated",
+            "active_feed_probe_failed",
+            "active_feed_central_video_missing",
         ):
             destination[key] = bool(destination[key] or getattr(target, key))
 

@@ -242,6 +242,14 @@ must be exposed only as safe aggregate state, and target selection must stay
 aligned with media selection. Until then, the native-gesture repair remains
 unproven and the 50-Reel acceptance is blocked.
 
+Subsequent local diagnosis reproduced diagnostic erasure: a wheel fallback
+overwrote earlier target and touch-dispatch facts. Thus the historical all-false
+flags cannot alone prove that touch was absent. The repair preserves those
+facts and separates probe failure from no visible video. Actual Chromium
+fixtures also reproduced and now cover differing media/target selection. A new
+Linux run is still required to establish live behavior; these local checks do
+not establish 3/3 collection or authorize counting earlier media toward 50.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity
