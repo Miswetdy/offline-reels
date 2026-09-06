@@ -705,6 +705,8 @@ class PlaywrightReelsFeed:
         if self._context is not None:
             candidate = self._wait_for_initial_reel()
             self._capture_embedded_feed_candidates()
+            if self._feed_json is not None:
+                self._feed_json.mark_used(candidate.shortcode)
             return candidate
         self._raise_if_closed()
         self._raise_if_controlled_stop()
@@ -1087,6 +1089,8 @@ class PlaywrightReelsFeed:
             elif candidate is None:
                 missing_count += 1
             else:
+                if self._feed_json is not None:
+                    self._feed_json.mark_used(candidate.shortcode)
                 self._transition_media_confirmed = False
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
                     poll_count=poll_count,

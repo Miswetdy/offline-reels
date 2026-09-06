@@ -124,6 +124,16 @@ class AuthenticatedFeedSource:
             if len(self._codes) > _MAX_CODES:
                 self._codes.popleft()
 
+    def mark_used(self, shortcode: str) -> None:
+        """Prevent the current or already-reserved Reel from re-entering the queue."""
+
+        if not SHORTCODE.fullmatch(shortcode):
+            return
+        self._seen.add(shortcode)
+        self._codes = deque(
+            (observation, code) for observation, code in self._codes if code != shortcode
+        )
+
     def source_class_counts(self) -> dict[str, int]:
         return dict(self._source_classes)
 

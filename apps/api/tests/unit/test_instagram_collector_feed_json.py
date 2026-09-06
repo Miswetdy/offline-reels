@@ -204,3 +204,15 @@ def test_catalog_accepts_only_bounded_valid_embedded_candidates():
     assert first is not None and first.shortcode == "EMBEDDED_1"
     assert second is not None and second.shortcode == "EMBEDDED_2"
     assert catalog.next_from_current_feed("PREVIOUS") is None
+
+
+def test_catalog_removes_current_embedded_candidate_before_reservation():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    catalog.observe_embedded_candidates(["CURRENT_1", "NEXT_2"])
+    catalog.mark_used("CURRENT_1")
+
+    candidate = catalog.next_from_current_feed("CURRENT_1")
+
+    assert candidate is not None and candidate.shortcode == "NEXT_2"
+    assert catalog.next_from_current_feed("NEXT_2") is None
