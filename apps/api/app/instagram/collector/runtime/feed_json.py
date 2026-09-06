@@ -31,6 +31,7 @@ class FeedJsonCandidateCatalog:
         self._codes: deque[tuple[int, str]] = deque()
         self._seen: set[str] = set()
         self._observation = 0
+        self._source_classes = {"graphql": 0, "web_api": 0, "other": 0}
         page.on("response", self._observe)
 
     def checkpoint(self) -> int:
@@ -80,12 +81,24 @@ class FeedJsonCandidateCatalog:
 
         return self._observation > observation
 
+    def source_class_counts(self) -> dict[str, int]:
+        return dict(self._source_classes)
+
     def _observe(self, response: JsonResponse) -> None:
         try:
             content_type = response.headers.get("content-type", "").lower()
             if "json" not in content_type:
                 return
             self._observation += 1
+            url = str(getattr(response, "url", "")).lower()
+            source_class = (
+                "graphql"
+                if "graphql" in url
+                else "web_api"
+                if "/api/" in url
+                else "other"
+            )
+            self._source_classes[source_class] += 1
             self._collect(response.json(), observation=self._observation)
         except Exception:
             return

@@ -37,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
             result["candidate_confirmed"] = feed.wait_for_next(previous.shortcode) is not None
             result["after"] = feed.identity_structure_diagnostics()
             result["transition"] = asdict(feed.transition_diagnostics)
+        result["authenticated_json_source_classes"] = feed.feed_source_diagnostics()
     except CollectorRuntimeError as error:
         print(json.dumps({"phase": "identity-diagnostic", "reason_code": error.code.value}))
         return 1

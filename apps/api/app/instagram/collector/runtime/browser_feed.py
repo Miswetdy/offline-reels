@@ -639,6 +639,11 @@ class PlaywrightReelsFeed:
                 self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
         return result
 
+    def feed_source_diagnostics(self) -> dict[str, int]:
+        if self._feed_json is None:
+            return {"graphql": 0, "web_api": 0, "other": 0}
+        return self._feed_json.source_class_counts()
+
     def _wait_for_initial_reel(self) -> ReelCandidate:
         """Boundedly wait for the first async-rendered Reel without scrolling."""
         polls = max(1, int(self._limits.timeout_seconds / self._limits.polling_seconds))
