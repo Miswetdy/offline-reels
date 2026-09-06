@@ -1,14 +1,32 @@
 # Status
 
+## TASK-018 authenticated Web API schema discovery — 2026-09-06
+
+The isolated Stage-10 `identity-diagnostic --transition` inspected exactly two
+JSON Web API responses from the existing authenticated browser context.  It
+retained no response body, URL, field name, field value, cookie or candidate;
+it emitted only aggregate counts.  Both responses contained media-shaped
+structures: 83 such nodes and 332 canonical-shaped string values in total.
+
+The same bounded input again produced a stable different central-media identity
+and post-input JSON, but no admitted DOM, GraphQL or queue candidate.  No
+downloader, database, Redis, MinIO or persistence adapter was constructed.
+This is evidence that the authenticated Web API is a promising separate feed
+source, but not yet proof that any particular field is a validated canonical
+Reel ID.  The Web API remains diagnostic-only and cannot yet supply Collector
+candidates.  Next: a second aggregate-only schema check for the explicit
+canonical alias allowlist before considering a bounded provider.
+
 ## TASK-018 authenticated GraphQL feed source — 2026-09-06
 
 `AuthenticatedFeedSource` is now an isolated, bounded in-memory provider. It
 subscribes only to JSON GraphQL responses of the current authenticated browser
-context; web API and other response classes are counted only as aggregates and
-are discarded before parsing. It admits only validated canonical aliases and
-consumes each candidate once. Swipe remains a media-transition signal and is
-not an ID source. Focused source and Chromium transition tests pass; a live
-no-download source acceptance remains required before it can enable collection.
+context for candidates. The first two Web API responses may be inspected only
+for aggregate schema evidence and are then discarded; they cannot enter the
+queue. It admits only validated canonical aliases and consumes each candidate
+once. Swipe remains a media-transition signal and is not an ID source. Focused
+source and Chromium transition tests pass; a live no-download source
+acceptance remains required before it can enable collection.
 
 ## TASK-018 no-download transition identity diagnostic — 2026-09-06
 
