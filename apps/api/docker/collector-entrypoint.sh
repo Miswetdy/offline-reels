@@ -30,7 +30,7 @@ case "${1:-help}" in
   handoff)
     shift
     exec xvfb-run --auto-servernum --server-args="-screen 0 430x800x24 -nolisten tcp" \
-      sh -c 'x11vnc -display "$DISPLAY" -localhost -forever -shared -nopw >/dev/null 2>&1 & websockify --web=/usr/share/novnc 6080 localhost:5900 >/dev/null 2>&1 & exec uv run --no-sync python -m app.scripts.run_instagram_collector_handoff "$@"' sh "$@"
+      sh -c 'x11vnc -display "$DISPLAY" -forever -shared -nopw >/dev/null 2>&1 & websockify --web=/usr/share/novnc 6080 localhost:5900 >/dev/null 2>&1 & exec uv run --no-sync python -m app.scripts.run_instagram_collector_handoff "$@"' sh "$@"
     ;;
   help|--help|-h)
     echo "usage: collector-entrypoint {fixture|sandbox-smoke|identity-diagnostic|modal-lifecycle-diagnostic|live|handoff} [options]" >&2
