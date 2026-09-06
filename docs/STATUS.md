@@ -1,5 +1,14 @@
 # Status
 
+## TASK-018 Collector presentation alignment — 2026-09-06
+
+The Collector Xvfb and Chromium launch contract now matches the private
+operator browser's 430x800 headed presentation, window placement, kiosk mode
+and 0.9 device scale factor. This changes rendering context only: no modal is
+targeted and the direct-hit, native-touch and JSON gates are unchanged. Targeted
+runtime and diagnostic tests passed (35 passed, 2 skipped). Next: one passive
+modal-lifecycle run on Stage 10; only direct hits can admit a bounded live 3/3.
+
 ## TASK-017 Stage-10 diagnostic result — 2026-09-06
 
 One and only one `modal-lifecycle-diagnostic` run completed on Stage 10 from

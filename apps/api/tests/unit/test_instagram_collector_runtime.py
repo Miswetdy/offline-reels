@@ -752,6 +752,12 @@ def test_browser_open_preserves_controlled_stop_despite_cleanup_failures(tmp_pat
     assert playwright.launch_options[1]["is_mobile"] is True
     assert playwright.launch_options[1]["has_touch"] is True
     assert "Android 13; Pixel 7" in playwright.launch_options[1]["user_agent"]
+    assert playwright.launch_options[1]["args"] == [
+        "--window-size=430,800",
+        "--window-position=0,0",
+        "--force-device-scale-factor=0.9",
+        "--kiosk",
+    ]
     assert "env" not in playwright.launch_options[1]
     assert context.close_calls == 1
     assert playwright.stop_calls == 1

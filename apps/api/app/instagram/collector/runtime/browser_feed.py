@@ -28,6 +28,16 @@ MOBILE_INSTAGRAM_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
 )
 
+# Keep the headed Collector presentation aligned with the only supported
+# operator login browser.  This is a rendering contract, not an interaction
+# workaround: it neither targets nor changes an Instagram modal.
+MOBILE_PRESENTATION_ARGS = (
+    "--window-size=430,800",
+    "--window-position=0,0",
+    "--force-device-scale-factor=0.9",
+    "--kiosk",
+)
+
 IDENTITY_PROBE = """
 () => {
   const validPath = (pathname) => /^\\/reels?\\/([A-Za-z0-9_-]{1,64})\\/$/.exec(pathname || '');
@@ -513,6 +523,7 @@ class PlaywrightReelsFeed:
                 "viewport": {"width": 430, "height": 800},
                 "is_mobile": True,
                 "has_touch": True,
+                "args": list(MOBILE_PRESENTATION_ARGS),
             }
             context = playwright.chromium.launch_persistent_context(
                 str(profile),

@@ -12,19 +12,19 @@ case "${1:-help}" in
     ;;
   identity-diagnostic)
     shift
-    exec xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24 -nolisten tcp" \
+    exec xvfb-run --auto-servernum --server-args="-screen 0 430x800x24 -nolisten tcp" \
       uv run --no-sync python -m app.scripts.diagnose_instagram_reels_identity "$@"
     ;;
   modal-lifecycle-diagnostic)
     shift
-    exec xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24 -nolisten tcp" \
+    exec xvfb-run --auto-servernum --server-args="-screen 0 430x800x24 -nolisten tcp" \
       uv run --no-sync python -m app.scripts.diagnose_instagram_modal_lifecycle "$@"
     ;;
   live)
     shift
     # A private X server retains the existing headed Collector behavior. It
     # listens on no TCP socket and is never exposed outside the container.
-    exec xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24 -nolisten tcp" \
+    exec xvfb-run --auto-servernum --server-args="-screen 0 430x800x24 -nolisten tcp" \
       uv run --no-sync python -m app.scripts.run_instagram_collector_live "$@"
     ;;
   help|--help|-h)
