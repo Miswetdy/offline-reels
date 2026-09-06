@@ -1,5 +1,20 @@
 # Status
 
+## TASK-018 Web API full-tree canonical-alias diagnostic — 2026-09-06
+
+The next Stage-10 no-download run examined the strict canonical alias allowlist
+through the entire tree of exactly two authenticated Web API JSON responses,
+not only their media-shaped nodes. The count was still zero. The run retained
+and emitted only aggregate counts; no field names, values, bodies, URLs,
+cookies or candidates were retained.
+
+This rules out those two Web API responses as a direct reproduction of the
+local spike's generic JSON catalog. It does not rule out another authenticated
+JSON response class. Web API remains diagnostic-only and no persistence or
+download adapter was constructed. Next: locate the response class supplying
+the spike-compatible valid aliases using the same bounded aggregate-only
+method before designing a queue provider.
+
 ## TASK-018 Web API canonical-alias acceptance diagnostic — 2026-09-06
 
 The follow-up isolated Stage-10 run inspected exactly two authenticated Web API
