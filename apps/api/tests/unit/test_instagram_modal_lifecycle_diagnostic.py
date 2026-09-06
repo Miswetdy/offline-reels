@@ -92,6 +92,8 @@ def test_snapshot_redacts_probe_coordinates_and_unknown_fields():
     assert values["central_video_found"]
     assert values["direct_hit_start"]
     assert values["top_hit_interactive_or_control_inherited"]
+    assert not values["top_hit_is_exact_shell_surface"]
+    assert not values["top_hit_shell_surface_eligible"]
     assert "x" not in values and "private_dom" not in values
     assert all(type(value) is bool for value in values.values())
 

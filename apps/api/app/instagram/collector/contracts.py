@@ -126,6 +126,8 @@ class ModalLifecycleSnapshot:
     top_hit_fixed_ancestor: bool = False
     top_hit_covers_viewport: bool = False
     top_hit_covers_video: bool = False
+    top_hit_is_exact_shell_surface: bool = False
+    top_hit_shell_surface_eligible: bool = False
     visual_viewport_differs_from_layout: bool = False
 
 

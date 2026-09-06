@@ -758,6 +758,10 @@ class PlaywrightReelsFeed:
                 payload.get("hit_test_hit_covers_visible_video") is True
                 or payload.get("hit_test_control_covers_visible_video") is True
             ),
+            top_hit_is_exact_shell_surface=payload.get("hit_test_hit_is_shell_surface") is True,
+            top_hit_shell_surface_eligible=(
+                payload.get("hit_test_shell_surface_eligible") is True
+            ),
             visual_viewport_differs_from_layout=payload.get(
                 "hit_test_visual_viewport_differs_from_layout"
             )
