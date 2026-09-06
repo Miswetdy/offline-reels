@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--transition", action="store_true")
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--refresh-fallback", action="store_true")
+    parser.add_argument("--source-only", action="store_true")
     arguments = parser.parse_args(argv)
     runtime = CollectorRuntimeSettings.from_environment()
     feed: PlaywrightReelsFeed | None = None
@@ -59,6 +60,18 @@ def main(argv: list[str] | None = None) -> int:
             result["first_transition_candidate_confirmed"] = first is not None
             result["refresh_fallback_candidate_confirmed"] = second is not None
             result["refresh_fallback_transition"] = asdict(feed.transition_diagnostics)
+        if arguments.source_only:
+            current = feed.current()
+            first = feed.next_from_authenticated_feed(current.shortcode)
+            second = (
+                feed.next_from_authenticated_feed(first.shortcode)
+                if first is not None
+                else None
+            )
+            result["source_only_candidate_count"] = sum(
+                candidate is not None for candidate in (first, second)
+            )
+            result["source_only_queue"] = feed.feed_queue_diagnostics()
         result["authenticated_json_source_classes"] = feed.feed_source_diagnostics()
     except CollectorRuntimeError as error:
         print(json.dumps({"phase": "identity-diagnostic", "reason_code": error.code.value}))
