@@ -12,6 +12,7 @@ from app.instagram.collector.contracts import ReelCandidate
 _MAX_CODES = 32
 _CANONICAL_CODE_KEYS = ("code", "shortcode", "media_code")
 _MAX_WEB_API_SCHEMA_RESPONSES = 2
+_MAX_JSON_SCHEMA_RESPONSES_PER_CLASS = 2
 
 
 class JsonResponse(Protocol):
@@ -46,6 +47,10 @@ class AuthenticatedFeedSource:
             "web_api_allowed_canonical_alias_values": 0,
             "web_api_tree_allowed_canonical_alias_values": 0,
             "web_api_schema_responses": 0,
+            "graphql_tree_allowed_canonical_alias_values": 0,
+            "graphql_schema_responses": 0,
+            "other_tree_allowed_canonical_alias_values": 0,
+            "other_schema_responses": 0,
         }
         page.on("response", self._observe)
 
@@ -119,9 +124,11 @@ class AuthenticatedFeedSource:
             if source_class == "web_api":
                 self._inspect_web_api_schema_response(response)
                 return
-            if source_class != "graphql":
+            if source_class == "other":
+                self._inspect_other_schema_response(response)
                 return
             payload = response.json()
+            self._inspect_graphql_schema(payload)
             self._observation += 1
             self._collect(payload, observation=self._observation)
         except Exception:
@@ -191,6 +198,34 @@ class AuthenticatedFeedSource:
                         )
                         for key in _CANONICAL_CODE_KEYS
                     )
+                stack.extend(reversed(tuple(value.values())))
+            elif isinstance(value, list):
+                stack.extend(reversed(value))
+
+    def _inspect_graphql_schema(self, payload: object) -> None:
+        self._inspect_tree_aliases("graphql", payload)
+
+    def _inspect_other_schema_response(self, response: JsonResponse) -> None:
+        self._inspect_tree_aliases("other", response.json())
+
+    def _inspect_tree_aliases(self, source_class: str, payload: object) -> None:
+        response_key = f"{source_class}_schema_responses"
+        alias_key = f"{source_class}_tree_allowed_canonical_alias_values"
+        if self._schema_counts[response_key] >= _MAX_JSON_SCHEMA_RESPONSES_PER_CLASS:
+            return
+        self._schema_counts[response_key] += 1
+        stack, visited = [payload], 0
+        while stack and visited < 20_000:
+            visited += 1
+            value = stack.pop()
+            if isinstance(value, dict):
+                self._schema_counts[alias_key] += sum(
+                    bool(
+                        isinstance(value.get(key), str)
+                        and SHORTCODE.fullmatch(value[key])
+                    )
+                    for key in _CANONICAL_CODE_KEYS
+                )
                 stack.extend(reversed(tuple(value.values())))
             elif isinstance(value, list):
                 stack.extend(reversed(value))

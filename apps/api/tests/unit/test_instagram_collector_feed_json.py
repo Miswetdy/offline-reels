@@ -147,5 +147,33 @@ def test_catalog_inspects_only_two_web_api_responses_as_aggregate_schema():
         "web_api_allowed_canonical_alias_values": 2,
         "web_api_tree_allowed_canonical_alias_values": 4,
         "web_api_schema_responses": 2,
+        "graphql_tree_allowed_canonical_alias_values": 0,
+        "graphql_schema_responses": 0,
+        "other_tree_allowed_canonical_alias_values": 0,
+        "other_schema_responses": 0,
+    }
+    assert catalog.next_from_current_feed("PREVIOUS") is None
+
+
+def test_catalog_inspects_only_two_other_json_responses_as_aggregate_schema():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+
+    for code in ("OTHER_JSON_1", "OTHER_JSON_2", "OTHER_JSON_3"):
+        page.handler(_Response({"code": code}, url="https://www.instagram.com/data/"))
+
+    assert catalog.source_class_counts() == {"graphql": 0, "web_api": 0, "other": 3}
+    assert catalog.schema_counts() == {
+        "media_nodes": 0,
+        "canonical_shaped_values": 0,
+        "web_api_media_nodes": 0,
+        "web_api_canonical_shaped_values": 0,
+        "web_api_allowed_canonical_alias_values": 0,
+        "web_api_tree_allowed_canonical_alias_values": 0,
+        "web_api_schema_responses": 0,
+        "graphql_tree_allowed_canonical_alias_values": 0,
+        "graphql_schema_responses": 0,
+        "other_tree_allowed_canonical_alias_values": 2,
+        "other_schema_responses": 2,
     }
     assert catalog.next_from_current_feed("PREVIOUS") is None
