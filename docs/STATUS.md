@@ -1,5 +1,20 @@
 # Status
 
+## TASK-016 Linux verification of 2ebce26 — 2026-09-06
+
+Built and ran the explicitly tagged Collector image on Stage 10 with its
+existing AppArmor profile and bounded target of three. The run committed one
+real source and terminated `TRANSITION_FAILED` with zero confirmed advances.
+Preserved diagnostics show probe attempted/evaluated, no probe failure, central
+video present and in viewport, but endpoint hit-testing unsuccessful. No touch
+was dispatched. Keyboard/wheel produced no stable media change; post-action
+JSON was observed without canonical confirmation. This does not pass 3/3.
+Next: diagnose why the selected endpoint pairs fail hit-testing using safe
+aggregate facts, retain both endpoint checks and JSON gate, then repeat 3/3
+after an evidence-backed repair. The 50-Reel acceptance remains blocked.
+Historical all-false diagnostics below cannot establish absent touch because
+the earlier wheel fallback erased those facts.
+
 ## TASK-016 probe diagnosis and selection repair
 
 Local regressions reproduced two defects in the previous native-touch build:

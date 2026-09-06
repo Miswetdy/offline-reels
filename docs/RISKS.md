@@ -250,6 +250,14 @@ fixtures also reproduced and now cover differing media/target selection. A new
 Linux run is still required to establish live behavior; these local checks do
 not establish 3/3 collection or authorize counting earlier media toward 50.
 
+The bounded Linux run of `2ebce26` on 2026-09-06 now establishes successful
+probe evaluation and a visible central target, but failed endpoint hit-tests
+and no touch dispatch. It stopped after one source with no confirmed advances
+or stable media change, despite post-action JSON activity. The cause of failed
+hit-testing remains unknown; do not infer an overlay identity from boolean
+diagnostics or relax endpoint checks. Investigate with safe aggregate evidence
+before another repair and 3/3 verification.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity
