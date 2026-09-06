@@ -1,5 +1,21 @@
 # Status
 
+## TASK-018 no-download transition identity diagnostic — 2026-09-06
+
+The explicit no-download diagnostic performed one bounded transition with no
+downloader or persistence adapters. Before and after the transition the page
+had a specific Reel path and a central visible video, but zero page/nearby Reel
+anchors; the rendered video pool grew from two to seven while only two remained
+visible. One shallow ancestor data attribute remained, but no value or name was
+retained. The active media changed stably and post-action JSON arrived, yet no
+different safe-DOM candidate or canonical JSON candidate was confirmed.
+
+This proves that virtualization changes the rendered media without exposing a
+currently admissible canonical binding through the present URL, anchor, or JSON
+candidate sources. The next diagnostic must remain aggregate-only and establish
+whether a structurally bound, validated attribute source exists before it can
+be admitted as a new candidate provider.
+
 ## TASK-018 latest bounded transition acceptance — 2026-09-06
 
 The bounded Stage-10 run with the safe DOM-confirmation and authenticated
