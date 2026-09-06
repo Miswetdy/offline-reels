@@ -326,6 +326,13 @@ choose between those explanations. Further live downloads are paused until the
 operator workflow visibly verifies the dialog state in Collector's persistent
 profile context.
 
+The first inspect attempt showed a black external viewer, so it did not provide
+evidence about the dialog. Internal control and noVNC asset checks passed. The
+operator viewer now reports relay connection state through the maintained
+noVNC Core client, while retaining the one-time signed gateway path and no
+automatic session completion. Verify that transport state before relying on
+manual dialog results.
+
 The next diagnostic build records only aggregate role and interaction-state
 facts of that hit's already-detected interactive ancestor: native/ARIA control
 kind, disabled state, focusability, dialog/modal ancestry and

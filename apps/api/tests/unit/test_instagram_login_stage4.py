@@ -257,7 +257,9 @@ def test_connected_profile_inspection_viewer_does_not_poll_or_complete() -> None
         json={"launch_token": created.launch_token},
     ).status_code == 204
     viewer = client.get(f"/remote/{created.session_id}/interactive")
-    assert "Откройте Instagram и вручную проверьте диалог" in viewer.text
+    assert "new RFB" in viewer.text
+    assert "addEventListener('connect'" in viewer.text
+    assert "addEventListener('disconnect'" in viewer.text
     assert "setInterval(poll,5000)" not in viewer.text
     assert app.state.login_sessions.status(created.session_id) is LoginSessionStatus.ACTIVE
 

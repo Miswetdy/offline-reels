@@ -1,5 +1,21 @@
 # Status
 
+## TASK-016 inspect viewer connection state — 2026-09-06
+
+The first inspect attempt reached a black viewer and later displayed reconnect
+required, so no feed dialog was reviewed. Private server checks returned HTTP
+200 for both the browser control endpoint and the noVNC asset; the failure is
+therefore in the external viewer path, not authentication or the private
+browser process. The operator-only `/interactive` route now uses noVNC Core
+directly and displays explicit connected/disconnected state. It neither polls
+profile readiness nor completes the session, and still exposes no public VNC,
+CDP or browser control endpoint.
+
+The focused gateway suite passed 13 tests; Ruff and diff validation passed.
+Next: deploy this viewer, create a new inspect session, confirm the displayed
+connection state, then manually inspect the dialog before any further Collector
+run.
+
 ## TASK-016 bounded run after manual inspect — 2026-09-06
 
 The inspect session was closed and its one-time link removed before the next

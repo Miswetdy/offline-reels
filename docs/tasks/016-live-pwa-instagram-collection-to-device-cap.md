@@ -41,6 +41,16 @@ media change и canonical confirmation отсутствуют, post-action JSON 
 в persistent profile/context Collector. Endpoint hit-test, JSON-gate, лимиты,
 3/3 и 50 не меняются.
 
+Первая inspect-попытка показала чёрный viewer, а после обновления страницы —
+`Reconnect is required`; dialog не был просмотрен. Private browser control и
+noVNC asset на сервере отвечают HTTP 200, поэтому это проблема внешнего viewer
+path, а не авторизации или процесса браузера. `/interactive` переведён на
+same-origin noVNC Core с явным текстовым состоянием connected/disconnected. Он
+сохраняет one-time signed gateway path, не poll-ит readiness, не complete-ит
+сессию и не публикует VNC/CDP/control service. До нового Collector run оператор
+должен сначала увидеть состояние connected в этом viewer и только затем вручную
+проверить dialog.
+
 Bounded Linux run `d5d3dc5` (2026-09-06) дал 1/3 source-коммит, 0 переходов
 и `TRANSITION_FAILED`, но установил причину. Верхнее препятствие — focusable
 `role=button`, найденный через interactive ancestor внутри modal/dialog

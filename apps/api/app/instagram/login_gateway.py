@@ -176,7 +176,7 @@ def create_login_gateway(
         _require_session(request.cookies.get("login_gateway_session"), session_id, settings)
         if app.state.login_sessions.status(session_id) is not LoginSessionStatus.ACTIVE:
             return _unavailable_page("Reconnect is required.")
-        return _full_bleed_remote_viewer_page(session_id, inspection=True)
+        return _inspection_remote_viewer_page(session_id)
 
     @app.get("/remote/{session_id}/layout-preview", response_class=HTMLResponse)
     async def layout_preview(session_id: UUID, request: Request) -> HTMLResponse:
@@ -449,6 +449,29 @@ const labels={{preparing:'Подготовка браузера…',login:'Во�
 function showChecking(title='Проверяем подключение…',detail='Instagram подтверждает авторизацию.'){{checkingTitle.textContent=title;checkingDetail.textContent=detail;checking.hidden=false;viewer.style.visibility='hidden';open.style.display='none';keyboard.style.display='none'}}function showRemote(){{checking.hidden=true;viewer.style.visibility='visible';open.style.display='';keyboard.style.display=''}}
 async function poll(){{const r=await fetch('/remote/{sid}/state',{{cache:'no-store'}});if(!r.ok)return;const s=await r.json();state.textContent=labels[s.state]||'Требуется повторное подключение.';if(s.state==='verifying')showChecking();else if(['login','challenge'].includes(s.state))showRemote();if(['connected','completed'].includes(s.state)){{showChecking('Instagram подключён','Профиль подтверждён. Возвращаемся на главную…');viewer.remove();open.remove();keyboard.remove();location.replace('/')}}else if(['expired','cancelled'].includes(s.state)){{showChecking(labels[s.state],'Создайте новую защищённую ссылку.');viewer.remove();open.remove();keyboard.remove()}}}}
 {viewer_lifecycle}
+</script></html>"""
+    return HTMLResponse(html, headers=_security_headers())
+
+
+def _inspection_remote_viewer_page(session_id: UUID) -> HTMLResponse:
+    """One-time operator viewer with explicit noVNC connection state."""
+    sid = escape(str(session_id))
+    html = f"""<!doctype html>
+<html lang="ru"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Проверка Instagram</title>
+<style>
+html,body,main{{width:100%;height:100%;margin:0;overflow:hidden;background:#162033;color:#fff;font:16px system-ui}}
+main{{display:grid;grid-template-rows:auto 1fr auto}}header,footer{{padding:12px 16px;background:#162033}}#state{{font-weight:700}}#screen{{min-height:0;background:#000;touch-action:none}}button{{min-height:44px;border:0;border-radius:10px;padding:10px 13px;background:#ea5701;color:#fff;font:inherit;font-weight:700}}button:disabled{{opacity:.55}}
+</style>
+<main><header><div id="state">Подключаем удалённый браузер…</div></header><div id="screen" aria-label="Удалённый Chromium"></div><footer><button id="open">Открыть Instagram</button></footer></main>
+<script type="module">
+import RFB from '/remote/{sid}/vnc/core/rfb.js';
+const screen=document.querySelector('#screen'),state=document.querySelector('#state'),open=document.querySelector('#open');
+const rfb=new RFB(screen,`wss://${{location.host}}/remote/{sid}/websockify`);
+rfb.scaleViewport=true;rfb.resizeSession=true;
+rfb.addEventListener('connect',()=>{{state.textContent='Удалённый браузер подключён. Откройте Instagram и вручную проверьте dialog.'}});
+rfb.addEventListener('disconnect',()=>{{state.textContent='Нет соединения с удалённым браузером. Не обновляйте ссылку; сообщите оператору.'}});
+open.addEventListener('click',async()=>{{open.disabled=true;const r=await fetch('/remote/{sid}/open-login',{{method:'POST',credentials:'same-origin'}});state.textContent=r.ok?'Instagram открыт. Проверьте dialog вручную.':'Не удалось открыть Instagram.';if(!r.ok)open.disabled=false;}});
 </script></html>"""
     return HTMLResponse(html, headers=_security_headers())
 
