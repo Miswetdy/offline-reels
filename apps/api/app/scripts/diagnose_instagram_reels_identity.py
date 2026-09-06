@@ -21,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--account-id", default=os.environ["COLLECTOR_ACCOUNT_ID"], type=UUID)
     parser.add_argument("--transition", action="store_true")
+    parser.add_argument("--refresh", action="store_true")
     arguments = parser.parse_args(argv)
     runtime = CollectorRuntimeSettings.from_environment()
     feed: PlaywrightReelsFeed | None = None
@@ -32,12 +33,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         result = {"before": feed.identity_structure_diagnostics()}
         result["embedded_application_data"] = feed.embedded_application_data_diagnostics()
-        if arguments.transition:
+        if arguments.transition or arguments.refresh:
             previous = feed.current()
+        if arguments.transition:
             feed.advance()
             result["candidate_confirmed"] = feed.wait_for_next(previous.shortcode) is not None
             result["after"] = feed.identity_structure_diagnostics()
             result["transition"] = asdict(feed.transition_diagnostics)
+        if arguments.refresh:
+            result["embedded_queue_before_refresh"] = feed.feed_queue_diagnostics()
+            feed.navigate_to_reels()
+            feed.current()
+            result["embedded_queue_after_refresh"] = feed.feed_queue_diagnostics()
+            result["embedded_application_data_after_refresh"] = (
+                feed.embedded_application_data_diagnostics()
+            )
         result["authenticated_json_source_classes"] = feed.feed_source_diagnostics()
     except CollectorRuntimeError as error:
         print(json.dumps({"phase": "identity-diagnostic", "reason_code": error.code.value}))

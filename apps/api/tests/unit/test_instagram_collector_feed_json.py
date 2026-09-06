@@ -216,3 +216,25 @@ def test_catalog_removes_current_embedded_candidate_before_reservation():
 
     assert candidate is not None and candidate.shortcode == "NEXT_2"
     assert catalog.next_from_current_feed("NEXT_2") is None
+
+
+def test_catalog_refresh_keeps_only_new_embedded_candidates():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    catalog.observe_embedded_candidates(["CURRENT_1", "QUEUED_2"])
+    catalog.mark_used("CURRENT_1")
+
+    assert catalog.queue_diagnostics() == {
+        "pending_candidate_count": 1,
+        "known_candidate_count": 2,
+    }
+
+    catalog.reset_for_feed_navigation()
+    catalog.observe_embedded_candidates(["CURRENT_1", "QUEUED_2", "REFRESHED_3"])
+
+    assert catalog.queue_diagnostics() == {
+        "pending_candidate_count": 1,
+        "known_candidate_count": 3,
+    }
+    candidate = catalog.next_from_current_feed("CURRENT_1")
+    assert candidate is not None and candidate.shortcode == "REFRESHED_3"

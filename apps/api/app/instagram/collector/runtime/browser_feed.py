@@ -766,6 +766,13 @@ class PlaywrightReelsFeed:
             **self._feed_json.non_json_response_class_counts(),
         }
 
+    def feed_queue_diagnostics(self) -> dict[str, int]:
+        """Return only aggregate queue counts for no-download acceptance."""
+
+        if self._feed_json is None:
+            return {"pending_candidate_count": 0, "known_candidate_count": 0}
+        return self._feed_json.queue_diagnostics()
+
     def _wait_for_initial_reel(self) -> ReelCandidate:
         """Boundedly wait for the first async-rendered Reel without scrolling."""
         polls = max(1, int(self._limits.timeout_seconds / self._limits.polling_seconds))

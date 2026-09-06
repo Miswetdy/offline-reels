@@ -10,6 +10,7 @@ from app.instagram.collector.canonical import SHORTCODE
 from app.instagram.collector.contracts import ReelCandidate
 
 _MAX_CODES = 32
+_MAX_KNOWN_CODES = 64
 _CANONICAL_CODE_KEYS = ("code", "shortcode", "media_code")
 _MAX_WEB_API_SCHEMA_RESPONSES = 2
 _MAX_JSON_SCHEMA_RESPONSES_PER_CLASS = 2
@@ -39,7 +40,11 @@ class AuthenticatedFeedSource:
 
     def __init__(self, page: ResponsePage) -> None:
         self._codes: deque[tuple[int, str]] = deque()
-        self._seen: set[str] = set()
+        # Values are kept only for the lifetime of one Collector process.
+        # Keeping a bounded session-wide memory prevents a fixed Reels refresh
+        # from returning an ID already observed on the previous document.
+        self._known_codes: set[str] = set()
+        self._known_order: deque[str] = deque()
         self._observation = 0
         self._source_classes = {"graphql": 0, "web_api": 0, "other": 0}
         self._non_json_response_classes = {"html": 0, "javascript": 0, "other": 0}
@@ -69,11 +74,23 @@ class AuthenticatedFeedSource:
         return self._observation
 
     def reset_for_feed_navigation(self) -> None:
-        """Forget candidates from an earlier page before fixed Reels navigation."""
+        """Discard pending candidates before fixed Reels navigation.
+
+        The bounded session memory remains so the new document can contribute
+        only candidates not already observed in this process.  It contains no
+        metadata beyond validated canonical IDs and is never persisted.
+        """
 
         self._codes.clear()
-        self._seen.clear()
         self._observation = 0
+
+    def queue_diagnostics(self) -> dict[str, int]:
+        """Return aggregate-only queue state for no-download acceptance."""
+
+        return {
+            "pending_candidate_count": len(self._codes),
+            "known_candidate_count": len(self._known_codes),
+        }
 
     def next_after(
         self, previous_shortcode: str, *, after_observation: int = 0
@@ -117,9 +134,13 @@ class AuthenticatedFeedSource:
         if not isinstance(payload, list):
             return
         for code in payload[:_MAX_CODES]:
-            if not isinstance(code, str) or not SHORTCODE.fullmatch(code) or code in self._seen:
+            if (
+                not isinstance(code, str)
+                or not SHORTCODE.fullmatch(code)
+                or code in self._known_codes
+            ):
                 continue
-            self._seen.add(code)
+            self._remember(code)
             self._codes.append((0, code))
             if len(self._codes) > _MAX_CODES:
                 self._codes.popleft()
@@ -129,7 +150,7 @@ class AuthenticatedFeedSource:
 
         if not SHORTCODE.fullmatch(shortcode):
             return
-        self._seen.add(shortcode)
+        self._remember(shortcode)
         self._codes = deque(
             (observation, code) for observation, code in self._codes if code != shortcode
         )
@@ -198,15 +219,25 @@ class AuthenticatedFeedSource:
                     if (
                         isinstance(code, str)
                         and SHORTCODE.fullmatch(code)
-                        and code not in self._seen
+                        and code not in self._known_codes
                     ):
-                        self._seen.add(code)
+                        self._remember(code)
                         self._codes.append((observation, code))
                         if len(self._codes) > _MAX_CODES:
                             self._codes.popleft()
                 stack.extend(reversed(tuple(value.values())))
             elif isinstance(value, list):
                 stack.extend(reversed(value))
+
+    def _remember(self, code: str) -> None:
+        """Keep session deduplication bounded without retaining any metadata."""
+
+        if code in self._known_codes:
+            return
+        self._known_codes.add(code)
+        self._known_order.append(code)
+        if len(self._known_order) > _MAX_KNOWN_CODES:
+            self._known_codes.discard(self._known_order.popleft())
 
     def _inspect_web_api_schema_response(self, response: JsonResponse) -> None:
         if self._schema_counts["web_api_schema_responses"] >= _MAX_WEB_API_SCHEMA_RESPONSES:
