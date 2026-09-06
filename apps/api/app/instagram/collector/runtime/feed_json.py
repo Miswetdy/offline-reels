@@ -44,6 +44,7 @@ class AuthenticatedFeedSource:
             "web_api_media_nodes": 0,
             "web_api_canonical_shaped_values": 0,
             "web_api_allowed_canonical_alias_values": 0,
+            "web_api_tree_allowed_canonical_alias_values": 0,
             "web_api_schema_responses": 0,
         }
         page.on("response", self._observe)
@@ -170,6 +171,13 @@ class AuthenticatedFeedSource:
             visited += 1
             value = stack.pop()
             if isinstance(value, dict):
+                self._schema_counts["web_api_tree_allowed_canonical_alias_values"] += sum(
+                    bool(
+                        isinstance(value.get(key), str)
+                        and SHORTCODE.fullmatch(value[key])
+                    )
+                    for key in _CANONICAL_CODE_KEYS
+                )
                 if "media_type" in value or "video_versions" in value:
                     self._schema_counts["web_api_media_nodes"] += 1
                     self._schema_counts["web_api_canonical_shaped_values"] += sum(

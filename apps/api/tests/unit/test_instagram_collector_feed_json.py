@@ -131,7 +131,8 @@ def test_catalog_inspects_only_two_web_api_responses_as_aggregate_schema():
                             "unrelated": "CANONICAL_SHAPED_ONLY",
                             "video_versions": [],
                         }
-                    ]
+                    ],
+                    "nested": {"shortcode": "WEB_API_TREE_CODE"},
                 },
                 url=web_api_url,
             )
@@ -144,6 +145,7 @@ def test_catalog_inspects_only_two_web_api_responses_as_aggregate_schema():
         "web_api_media_nodes": 2,
         "web_api_canonical_shaped_values": 4,
         "web_api_allowed_canonical_alias_values": 2,
+        "web_api_tree_allowed_canonical_alias_values": 4,
         "web_api_schema_responses": 2,
     }
     assert catalog.next_from_current_feed("PREVIOUS") is None
