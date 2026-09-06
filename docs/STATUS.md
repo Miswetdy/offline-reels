@@ -1,5 +1,23 @@
 # Status
 
+## TASK-018 latest bounded transition acceptance — 2026-09-06
+
+The bounded Stage-10 run with the safe DOM-confirmation and authenticated
+`code`/`shortcode`/`media_code` alias catalog remains unaccepted: it committed
+one durable source, confirmed zero transitions and stopped with
+`TRANSITION_FAILED` after the fixed retry. It did observe a stable changed
+central-media identity and a post-input authenticated JSON response, but did
+not observe a different safe-DOM canonical candidate or any accepted canonical
+field in that response. No second download was started and partial artifacts
+were cleaned.
+
+This rules out the current DOM probe and the three explicit JSON canonical
+aliases for this mobile presentation. Do not repeat the same collecting run or
+raise target/retry/device limits. The next task is a no-download,
+aggregate-only transition diagnostic that distinguishes available structural
+identity sources without retaining DOM text, URLs, response bodies, cookies or
+media identifiers.
+
 ## TASK-018 authenticated feed-queue transition candidate — 2026-09-06
 
 The Stage-10 passive probe showed that the fixed full-viewport top hit is an
