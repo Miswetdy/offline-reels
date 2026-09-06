@@ -1,5 +1,24 @@
 # Status
 
+## TASK-016 Linux structural blocker evidence — 2026-09-06, db8a67c
+
+The bounded Stage-10 target-3 run committed one real source and stopped
+`TRANSITION_FAILED` with zero confirmed advances. The probe successfully found
+the selected video in viewport, but no sampled endpoint hit it, so no touch was
+sent. The obstruction facts were: control inherited from an interactive
+ancestor, while the control neither contains the video nor covers its visible
+area. The hit itself is neither inside nor contains the video, is not a video
+sibling, has no recorded near shared ancestor, and does not cover the visible
+video area. Native controls and pointer-events:none remain false.
+
+This evidence rules out treating the observed control as the active-card
+gesture surface. It suggests an external intercepting surface, but fixed
+boolean facts do not identify it or justify targeting it. Post-action JSON was
+observed, but there was no stable media change or canonical confirmation. Next:
+add bounded, non-content structural evidence sufficient to distinguish a global
+overlay from a coordinate/viewport mismatch, then choose a repair. 3/3 and 50
+remain blocked.
+
 ## TASK-016 structural obstruction diagnostics
 
 The probe now reports structural boolean facts independently of the existing

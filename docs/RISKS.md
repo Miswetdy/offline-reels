@@ -274,6 +274,14 @@ Control classification includes interactive ancestors and takes precedence
 over structural categories. Establish the relationship to the active card
 before selecting an input repair; retain the endpoint and canonical JSON gates.
 
+The bounded `db8a67c` run refined that evidence: the control classification is
+inherited from an interactive ancestor, but neither that control nor the hit
+contains or covers the selected video. The hit is not within the video, its
+sibling, or a recorded near shared ancestor. This excludes the observed control
+as a demonstrated active-card gesture surface, but does not identify an overlay
+or establish an alternative. Retain direct endpoint hits and inspect only safe
+structural viewport/overlay facts before another repair.
+
 The structural diagnostic build separates self/inherited controls and reports
 containment, sibling/shared-near-ancestor relationships and rectangle coverage
 independently of control precedence. Shared ancestry cannot establish that an
