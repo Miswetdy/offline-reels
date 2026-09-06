@@ -649,6 +649,7 @@ class PlaywrightReelsFeed:
                 "canonical_shaped_values": 0,
                 "web_api_media_nodes": 0,
                 "web_api_canonical_shaped_values": 0,
+                "web_api_allowed_canonical_alias_values": 0,
                 "web_api_schema_responses": 0,
             }
         return {**self._feed_json.source_class_counts(), **self._feed_json.schema_counts()}

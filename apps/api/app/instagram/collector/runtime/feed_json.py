@@ -43,6 +43,7 @@ class AuthenticatedFeedSource:
             "canonical_shaped_values": 0,
             "web_api_media_nodes": 0,
             "web_api_canonical_shaped_values": 0,
+            "web_api_allowed_canonical_alias_values": 0,
             "web_api_schema_responses": 0,
         }
         page.on("response", self._observe)
@@ -174,6 +175,13 @@ class AuthenticatedFeedSource:
                     self._schema_counts["web_api_canonical_shaped_values"] += sum(
                         bool(isinstance(item, str) and SHORTCODE.fullmatch(item))
                         for item in value.values()
+                    )
+                    self._schema_counts["web_api_allowed_canonical_alias_values"] += sum(
+                        bool(
+                            isinstance(value.get(key), str)
+                            and SHORTCODE.fullmatch(value[key])
+                        )
+                        for key in _CANONICAL_CODE_KEYS
                     )
                 stack.extend(reversed(tuple(value.values())))
             elif isinstance(value, list):

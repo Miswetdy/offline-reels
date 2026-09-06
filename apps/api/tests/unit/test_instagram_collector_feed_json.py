@@ -123,7 +123,16 @@ def test_catalog_inspects_only_two_web_api_responses_as_aggregate_schema():
     for code in ("WEB_API_1", "WEB_API_2", "WEB_API_3"):
         page.handler(
             _Response(
-                {"items": [{"media_type": 2, "code": code, "video_versions": []}]},
+                {
+                    "items": [
+                        {
+                            "media_type": 2,
+                            "code": code,
+                            "unrelated": "CANONICAL_SHAPED_ONLY",
+                            "video_versions": [],
+                        }
+                    ]
+                },
                 url=web_api_url,
             )
         )
@@ -133,7 +142,8 @@ def test_catalog_inspects_only_two_web_api_responses_as_aggregate_schema():
         "media_nodes": 0,
         "canonical_shaped_values": 0,
         "web_api_media_nodes": 2,
-        "web_api_canonical_shaped_values": 2,
+        "web_api_canonical_shaped_values": 4,
+        "web_api_allowed_canonical_alias_values": 2,
         "web_api_schema_responses": 2,
     }
     assert catalog.next_from_current_feed("PREVIOUS") is None
