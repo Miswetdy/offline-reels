@@ -888,6 +888,16 @@ instead of falling back to page input. Legacy fixture feeds retain their
 existing scroll-transition contract. Unit acceptance covers a durable
 source-only advance with no page input; Linux no-download acceptance is next.
 
+## Stage 10 login profile-check polling fix — 2026-09-06
+
+The protected mobile login screen now issues at most one `/reels/` profile
+verification navigation per active login session. Previously its polling loop
+could repeatedly send that navigation while Chromium was still loading it,
+leaving the user on the neutral verification screen indefinitely. The gateway
+keeps the page hidden during the single verification and still returns to
+manual reauthentication if the browser reports `login` or `challenge`.
+Unit coverage proves repeated state polls do not repeat browser navigation.
+
 ## Next step
 
 Next, deploy and preflight the opt-in hardened Stage 10 login boundary. After a

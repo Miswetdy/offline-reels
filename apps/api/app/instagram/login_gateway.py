@@ -126,6 +126,10 @@ def create_login_gateway(
     app.state.session_factory = create_session_factory(settings)
     app.state.login_sessions = LoginSessionService(app.state.session_factory)
     app.state.browser = browser or BrowserController(settings)
+    # A profile check may take longer than the phone's state polling interval.
+    # Remember that its single navigation has already been requested so polling
+    # cannot continually cancel Chromium's in-flight /reels/ load.
+    app.state.profile_verifications_started: set[UUID] = set()
     app.state.handoffs = (
         HandoffStateStore(Path(settings.handoff_state_root))
         if settings.handoff_state_root
@@ -217,8 +221,12 @@ def create_login_gateway(
             session_id
         ):
             raise HTTPException(status_code=409)
-        if not await app.state.browser.verify_profile():
-            raise HTTPException(status_code=503)
+        started = app.state.profile_verifications_started
+        if session_id not in started:
+            started.add(session_id)
+            if not await app.state.browser.verify_profile():
+                started.discard(session_id)
+                raise HTTPException(status_code=503)
         return Response(status_code=202, headers=_security_headers())
 
     @app.get("/remote/{session_id}/state")
@@ -231,7 +239,11 @@ def create_login_gateway(
         if durable_status is LoginSessionStatus.ACTIVE:
             browser_state = await app.state.browser.readiness()
             if browser_state == "verifying":
-                await app.state.browser.verify_profile()
+                started = app.state.profile_verifications_started
+                if session_id not in started:
+                    started.add(session_id)
+                    if not await app.state.browser.verify_profile():
+                        started.discard(session_id)
             elif browser_state == "connected":
                 durable_status = app.state.login_sessions.complete(session_id)
                 await app.state.browser.close()

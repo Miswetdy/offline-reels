@@ -153,6 +153,18 @@ class _VerifyingBrowser(_ConnectedBrowser):
         return True
 
 
+class _StillVerifyingBrowser(_ConnectedBrowser):
+    def __init__(self) -> None:
+        self.profile_checks = 0
+
+    async def readiness(self) -> str:
+        return "verifying"
+
+    async def verify_profile(self) -> bool:
+        self.profile_checks += 1
+        return True
+
+
 def test_gateway_requires_host_cookie_and_origin_and_closes_on_connected() -> None:
     engine = _engine()
     Base.metadata.create_all(engine)
@@ -293,6 +305,34 @@ def test_post_login_verification_hides_remote_view_before_reels_check() -> None:
     assert first.json() == {"state": "verifying"}
     assert browser.profile_checks == 1
     assert client.get(f"/remote/{created.session_id}/state").json() == {"state": "completed"}
+
+
+def test_profile_verification_navigation_is_not_repeated_while_loading() -> None:
+    engine = _engine()
+    Base.metadata.create_all(engine)
+    settings = LoginGatewaySettings.model_validate(
+        {
+            "DATABASE_URL": "sqlite://",
+            "LOGIN_GATEWAY_ORIGIN": "https://login.example.test",
+            "LOGIN_GATEWAY_SESSION_SECRET": "a" * 32,
+            "LOGIN_BROWSER_CONTROL_SECRET": "b" * 32,
+        }
+    )
+    browser = _StillVerifyingBrowser()
+    app = create_login_gateway(settings, browser)
+    app.state.session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app.state.login_sessions = LoginSessionService(app.state.session_factory)
+    created = app.state.login_sessions.create(uuid4())
+    client = TestClient(app, base_url="https://login.example.test")
+    assert client.post(
+        f"/connect/{created.session_id}/activate",
+        headers={"origin": "https://login.example.test"},
+        json={"launch_token": created.launch_token},
+    ).status_code == 204
+
+    assert client.get(f"/remote/{created.session_id}/state").json() == {"state": "verifying"}
+    assert client.get(f"/remote/{created.session_id}/state").json() == {"state": "verifying"}
+    assert browser.profile_checks == 1
 
 
 def test_gateway_rejects_reused_link_and_bad_websocket_origin() -> None:
