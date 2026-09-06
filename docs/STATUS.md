@@ -899,6 +899,9 @@ manual reauthentication if the browser reports `login` or `challenge`.
 An authenticated Instagram account boundary is also classified as a manual
 login boundary, so the remote browser is shown for the user to decide rather
 than being hidden behind an endless profile check.
+For a reauthentication session, every authenticated Instagram page outside a
+real Reels boundary remains visible for that same manual decision; only an
+actual Reels page completes the flow.
 Unit coverage proves repeated state polls do not repeat browser navigation.
 
 ## Next step

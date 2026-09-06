@@ -191,10 +191,11 @@ class BrowserRuntime:
             if {"sessionid", "csrftoken"}.issubset(names):
                 if state["reel"] or state["reelsPath"]:
                     return "connected"
-                # The credentials were accepted, but the controller has not
-                # yet verified the personal Reels boundary. The phone must
-                # see a neutral progress screen rather than Instagram home.
-                return "verifying"
+                # A valid session can still be held at a user-only account
+                # confirmation page (for example, an email-change request).
+                # Keep that real Instagram page visible; only an actual
+                # Reels boundary may complete the login flow.
+                return "login"
             return "login"
         except Exception:
             return "preparing"
