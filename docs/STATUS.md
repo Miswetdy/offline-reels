@@ -1,5 +1,18 @@
 # Status
 
+## TASK-018 narrow feed-shell transition repair — 2026-09-06
+
+The active-input probe now admits a native swipe through a semantic feed shell
+only when the exact same noninteractive `main`/`role=main` element is the
+full-viewport top hit at both endpoints and the selected central video is
+directly below it in both hit stacks. Dialogs, controls, descendants of the
+shell, hidden/inert surfaces, arbitrary overlays and other-video relations
+remain rejected. This retains the direct-video path as the preferred case and
+does not change the bounded native-touch action, JSON/canonical gate, retry or
+timeouts. Chromium tests cover both admission and rejection cases; Stage-10
+deployment must first passively verify that the live surface satisfies this
+exact contract before another 3/3 attempt.
+
 ## TASK-018 Collector same-process handoff implementation — 2026-09-06
 
 An opt-in `collector-handoff` implementation now retains one persistent

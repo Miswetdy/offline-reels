@@ -293,6 +293,8 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     hit_test_hit_direct_body_child: false,
     hit_test_control_direct_body_child: false,
     hit_test_hit_shell_semantic_ancestor: false,
+    hit_test_hit_is_shell_surface: false,
+    hit_test_shell_surface_eligible: false,
     hit_test_control_native_button: false,
     hit_test_control_anchor: false,
     hit_test_control_form_element: false,
@@ -342,6 +344,7 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     diagnostics.hit_test_hit_direct_body_child ||= hit.parentElement === document.body;
     diagnostics.hit_test_control_direct_body_child ||= control?.parentElement === document.body;
     diagnostics.hit_test_hit_shell_semantic_ancestor ||= Boolean(hit.closest(shell));
+    diagnostics.hit_test_hit_is_shell_surface ||= hit.matches('main,[role="main"]');
     for (let node = hit; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
       if (getComputedStyle(node).position === 'fixed') { diagnostics.hit_test_hit_fixed_ancestor = true; break; }
     }
@@ -385,6 +388,20 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     else diagnostics.hit_test_miss_other_element = true;
     return false;
   };
+  const isEligibleShellSurface = (hit, other, stack) => {
+    // A direct video hit is always preferred.  This narrowly admits the
+    // actual full-viewport feed shell only when it is itself the hit surface
+    // at both gesture endpoints.  A descendant, arbitrary overlay, control,
+    // dialog, hidden or inert element never qualifies.
+    if (!(hit instanceof HTMLElement) || hit !== other || !hit.matches('main,[role="main"]')) return false;
+    if (hit.closest('[role="dialog"],[aria-modal="true"]') || hit.closest(controls)) return false;
+    if (hit.inert || hit.getAttribute('aria-hidden') === 'true' || getComputedStyle(hit).pointerEvents === 'none') return false;
+    const rect = hit.getBoundingClientRect();
+    if (!(rect.left <= 0 && rect.right >= width && rect.top <= 0 && rect.bottom >= height)) return false;
+    if (!stack.includes(selected.video)) return false;
+    if (visible.some((item) => item.video !== selected.video && stack.includes(item.video))) return false;
+    return stack.indexOf(selected.video) > 0;
+  };
   let gesture = null;
   for (const x of xValues) for (const [startRatio, endRatio] of yPairs) {
     const startY = top + (bottom - top) * startRatio;
@@ -398,13 +415,17 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
         diagnostics.hit_test_stack_contains_video = true;
         if (videoIndex > 0) diagnostics.hit_test_stack_video_below_hit = true;
       }
-      return classify(document.elementFromPoint(x, y));
+      const hit = document.elementFromPoint(x, y);
+      return { direct: classify(hit), hit, stack };
     };
     const startHit = observePoint(x, startY);
     const endHit = observePoint(x, endY);
-    diagnostics.hit_test_start_video_observed ||= startHit;
-    diagnostics.hit_test_end_video_observed ||= endHit;
-    if (startHit && endHit) { gesture = [x, startY, endY]; break; }
+    diagnostics.hit_test_start_video_observed ||= startHit.direct;
+    diagnostics.hit_test_end_video_observed ||= endHit.direct;
+    const shellEligible = isEligibleShellSurface(startHit.hit, endHit.hit, startHit.stack)
+      && isEligibleShellSurface(endHit.hit, startHit.hit, endHit.stack);
+    diagnostics.hit_test_shell_surface_eligible ||= shellEligible;
+    if ((startHit.direct && endHit.direct) || shellEligible) { gesture = [x, startY, endY]; break; }
   }
   if (!gesture) return { available: true, in_viewport: true, hit_testable: false, ...diagnostics };
   const [x, startY, endY] = gesture;

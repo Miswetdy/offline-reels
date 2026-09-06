@@ -321,6 +321,38 @@ def test_page_shell_layer_has_no_visible_video_relation(page):
     assert not result["hit_test_hit_has_other_video_relation"]
 
 
+def test_noninteractive_main_shell_is_a_narrowly_allowed_swipe_surface(page):
+    page.set_content('''<style>html,body{margin:0;overflow:hidden}
+      video,main{position:fixed;inset:0;width:430px;height:800px}
+      main{z-index:2}</style><video></video><main></main>''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert result["hit_testable"]
+    assert result["hit_test_hit_is_shell_surface"]
+    assert result["hit_test_shell_surface_eligible"]
+    assert result["hit_test_stack_contains_video"]
+    assert result["hit_test_stack_video_below_hit"]
+    assert not result["hit_test_miss_control"]
+
+
+@pytest.mark.parametrize("attributes", ['role="button"', 'aria-hidden="true"', 'inert'])
+def test_interactive_or_hidden_main_shell_is_never_a_swipe_surface(page, attributes):
+    page.set_content(f'''<style>html,body{{margin:0;overflow:hidden}}
+      video,main{{position:fixed;inset:0;width:430px;height:800px}}
+      main{{z-index:2}}</style><video></video><main {attributes}></main>''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert not result["hit_test_shell_surface_eligible"]
+    # An inert element is removed from hit-testing, so the direct video path
+    # may legitimately become available again.  The shell branch itself must
+    # never admit it.
+    if result["hit_testable"]:
+        assert result["hit_test_start_video_observed"]
+        assert result["hit_test_end_video_observed"]
+
+
 @pytest.mark.parametrize(
     ("overlay", "expected"),
     [

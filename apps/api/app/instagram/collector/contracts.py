@@ -93,6 +93,8 @@ class ScrollTargetDiagnostics:
     hit_test_hit_direct_body_child: bool = False
     hit_test_control_direct_body_child: bool = False
     hit_test_hit_shell_semantic_ancestor: bool = False
+    hit_test_hit_is_shell_surface: bool = False
+    hit_test_shell_surface_eligible: bool = False
     hit_test_control_native_button: bool = False
     hit_test_control_anchor: bool = False
     hit_test_control_form_element: bool = False
@@ -175,6 +177,8 @@ HIT_TEST_DIAGNOSTIC_FLAGS = (
     "hit_test_hit_direct_body_child",
     "hit_test_control_direct_body_child",
     "hit_test_hit_shell_semantic_ancestor",
+    "hit_test_hit_is_shell_surface",
+    "hit_test_shell_surface_eligible",
     "hit_test_control_native_button",
     "hit_test_control_anchor",
     "hit_test_control_form_element",
