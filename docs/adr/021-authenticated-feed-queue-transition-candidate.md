@@ -11,7 +11,7 @@ already supplied unused, canonical candidates before that checkpoint.
 
 ## Decision
 
-The Collector resets its bounded in-memory feed candidate catalog immediately
+The Collector resets its bounded in-memory `AuthenticatedFeedSource` immediately
 before navigating to the fixed `/reels/` URL. After both the stable-media and
 post-input JSON gates pass, it first prefers a different canonical code from
 the existing safe central-video DOM probe, then a different canonical code
@@ -20,7 +20,8 @@ observed after the input checkpoint.
 If and only if the media identity has changed stably and at least one
 authenticated JSON response arrived after the bounded input, it may instead
 reserve the next unused, different candidate from that same current-navigation
-catalog. The catalog accepts only validated values under the canonical response
+source. The source accepts only JSON GraphQL responses from the current
+authenticated Chromium context and only validated values under the canonical response
 keys `code`, `shortcode`, or `media_code`; no generic string/URL scanning is
 permitted. The fallback is one-shot: a reserved code is removed from the
 queue, the queue is bounded, and candidates are never recovered from a prior

@@ -53,6 +53,7 @@ def test_local_synthetic_page_selects_central_video_and_confirms_scroll(tmp_path
 
 class _Response:
     headers = {"content-type": "application/json"}
+    url = "https://www.instagram.com/graphql/query/"
 
     def __init__(self, payload: object) -> None:
         self._payload = payload

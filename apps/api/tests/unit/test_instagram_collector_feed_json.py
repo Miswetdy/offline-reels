@@ -8,6 +8,8 @@ class _Page:
 
 
 class _Response:
+    url = "https://www.instagram.com/graphql/query/"
+
     def __init__(self, payload, content_type="application/json"):
         self.headers = {"content-type": content_type}
         self._payload = payload

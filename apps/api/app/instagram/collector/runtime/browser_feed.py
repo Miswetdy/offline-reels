@@ -19,7 +19,7 @@ from app.instagram.collector.contracts import (
     TransitionSamplingDiagnostics,
 )
 from app.instagram.collector.runtime.errors import CollectorRuntimeError, RuntimeReasonCode
-from app.instagram.collector.runtime.feed_json import FeedJsonCandidateCatalog
+from app.instagram.collector.runtime.feed_json import AuthenticatedFeedSource
 from app.instagram.collector.runtime.profile_lock import ProfileLock, profile_path
 from app.instagram.collector.runtime.settings import CollectorRuntimeSettings
 
@@ -522,7 +522,7 @@ class PlaywrightReelsFeed:
         self._feed_json = None
         if observe_feed_json:
             try:
-                self._feed_json = FeedJsonCandidateCatalog(page)
+                self._feed_json = AuthenticatedFeedSource(page)
             except Exception:
                 self._feed_json = None
 

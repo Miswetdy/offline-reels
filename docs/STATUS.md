@@ -1,5 +1,15 @@
 # Status
 
+## TASK-018 authenticated GraphQL feed source — 2026-09-06
+
+`AuthenticatedFeedSource` is now an isolated, bounded in-memory provider. It
+subscribes only to JSON GraphQL responses of the current authenticated browser
+context; web API and other response classes are counted only as aggregates and
+are discarded before parsing. It admits only validated canonical aliases and
+consumes each candidate once. Swipe remains a media-transition signal and is
+not an ID source. Focused source and Chromium transition tests pass; a live
+no-download source acceptance remains required before it can enable collection.
+
 ## TASK-018 no-download transition identity diagnostic — 2026-09-06
 
 The explicit no-download diagnostic performed one bounded transition with no

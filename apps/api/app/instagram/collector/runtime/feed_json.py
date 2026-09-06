@@ -24,8 +24,8 @@ class ResponsePage(Protocol):
     def on(self, event: str, handler: Callable[[JsonResponse], None]) -> None: ...
 
 
-class FeedJsonCandidateCatalog:
-    """Extract only validated ``code`` fields; URLs and response bodies never escape."""
+class AuthenticatedFeedSource:
+    """In-memory canonical candidates from authenticated GraphQL responses only."""
 
     def __init__(self, page: ResponsePage) -> None:
         self._codes: deque[tuple[int, str]] = deque()
@@ -89,7 +89,6 @@ class FeedJsonCandidateCatalog:
             content_type = response.headers.get("content-type", "").lower()
             if "json" not in content_type:
                 return
-            self._observation += 1
             url = str(getattr(response, "url", "")).lower()
             source_class = (
                 "graphql"
@@ -99,6 +98,9 @@ class FeedJsonCandidateCatalog:
                 else "other"
             )
             self._source_classes[source_class] += 1
+            if source_class != "graphql":
+                return
+            self._observation += 1
             self._collect(response.json(), observation=self._observation)
         except Exception:
             return
@@ -124,3 +126,7 @@ class FeedJsonCandidateCatalog:
                 stack.extend(reversed(tuple(value.values())))
             elif isinstance(value, list):
                 stack.extend(reversed(value))
+
+
+# Compatibility name retained while callers migrate to the explicit source boundary.
+FeedJsonCandidateCatalog = AuthenticatedFeedSource
