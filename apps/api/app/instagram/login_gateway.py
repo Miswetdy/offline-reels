@@ -351,7 +351,12 @@ def create_login_gateway(
     @app.websocket("/handoff/{session_id}/websockify")
     async def handoff_websockify(session_id: UUID, websocket: WebSocket) -> None:
         if (
-            not _websocket_allowed(websocket, session_id, settings)
+            not _websocket_allowed(
+                websocket,
+                session_id,
+                settings,
+                cookie_name="handoff_gateway_session",
+            )
             or not _valid_cookie(
                 websocket.cookies.get("handoff_gateway_session"), session_id, settings
             )
@@ -429,12 +434,16 @@ def _require_origin(request: Request, settings: LoginGatewaySettings) -> None:
 
 
 def _websocket_allowed(
-    websocket: WebSocket, session_id: UUID, settings: LoginGatewaySettings
+    websocket: WebSocket,
+    session_id: UUID,
+    settings: LoginGatewaySettings,
+    *,
+    cookie_name: str = "login_gateway_session",
 ) -> bool:
     return (
         websocket.headers.get("host", "").lower() == settings.host.lower()
         and websocket.headers.get("origin", "").rstrip("/") == settings.origin
-        and _valid_cookie(websocket.cookies.get("login_gateway_session"), session_id, settings)
+        and _valid_cookie(websocket.cookies.get(cookie_name), session_id, settings)
     )
 
 
