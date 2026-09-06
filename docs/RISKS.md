@@ -370,6 +370,18 @@ and endpoint inclusion are recorded separately. These values are aggregates
 only. They cannot identify an overlay or establish that an obscuring surface is
 safe to target, so the two-endpoint and canonical JSON gates remain mandatory.
 
+The Stage-10 `modal-lifecycle-diagnostic` run at `786dbcb` established that
+the interceptor is not a transient readiness condition. The immediate
+post-navigation sample already had the video below a top stack hit, although
+that hit was not yet classified as interactive. After the first fixed wait it
+was an inherited, focusable role-button under a dialog/modal ancestor and
+remained so through the input-point and second-wait samples; neither direct
+video endpoint is available. A bounded wait would therefore preserve the
+blocker, not repair it. Treat the remaining cause as a browser
+launch/navigation-context difference or recurring external UI state. Do not
+click, dismiss, bypass, or run another live collection until a separate
+aggregate-only context-comparison task identifies a safe change.
+
 ---
 
 # Risk 4: Video storage and synchronization complexity

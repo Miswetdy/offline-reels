@@ -1,5 +1,21 @@
 # Status
 
+## TASK-017 Stage-10 diagnostic result — 2026-09-06
+
+One and only one `modal-lifecycle-diagnostic` run completed on Stage 10 from
+`786dbcb`. It launched the persistent profile and reached Reels, produced five
+redacted snapshots, and had no Collector persistence credentials or data-plane
+services. A central video was present after Reels navigation, but neither
+direct endpoint hit was ever true. From the first bounded readiness wait
+through `before_collector_input` and the second wait, the top hit remained an
+inherited interactive, focusable role-button with a modal/dialog ancestor and
+the video below it in the point stack. Visual and layout viewport did not
+differ. The interceptor therefore persists; it is not a transient readiness
+condition and no safe wait/readiness repair exists. No new live 3/3 or 50-Reel
+run is permitted. The next bounded task must compare browser launch/navigation
+state without revealing Instagram content or automatically acting on the
+modal.
+
 ## TASK-017 modal lifecycle diagnostic implementation — 2026-09-06
 
 The Collector now has an explicit `modal-lifecycle-diagnostic` one-shot

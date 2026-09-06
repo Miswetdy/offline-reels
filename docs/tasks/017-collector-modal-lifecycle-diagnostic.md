@@ -1,6 +1,6 @@
 # TASK-017: Диагностика жизненного цикла modal-layer в Instagram Collector
 
-**Статус:** подготовлено к реализации, live-сбор не разрешён.
+**Статус:** выполнено на Stage 10; live-сбор по-прежнему не разрешён.
 
 ## Цель
 
@@ -134,8 +134,8 @@ identity и нового post-action authenticated feed JSON с другим can
 | Тариф | DEs-3: 4 vCPU, 8 GB RAM, 120 GB NVMe, сеть до 25 Gbit/s |
 | SSH user | `offline-reels` |
 | Репозиторий на VPS | `/srv/offline-reels` |
-| Развёрнутый код | `b62cf06` (`fix: expose inspection viewer connection state`) |
-| Git `main` | `9480788`; это последующий documentation-only commit |
+| Развёрнутый код | `786dbcb` (`feat: add collector modal lifecycle diagnostic`) |
+| Git `main` | `786dbcb` |
 | Compose | `/srv/offline-reels/deploy/docker-compose.stage10.yml` с `.env.stage10` |
 | Публичный тестовый вход | `https://offline-reels-associated-teal.tail5b33a7.ts.net` |
 | Постоянные сервисы | `web`, `api`, `postgres`, `redis`, `minio`, `normalizer`, `stage10-ingress` — healthy/running |
@@ -159,3 +159,17 @@ IMAGE_TAG=b62cf06 docker compose --env-file .env.stage10 -f docker-compose.stage
 Не выполнять `cat .env.stage10`, `docker inspect` с environment, вывод
 одноразовой login URL в общий чат или передачу cookie/profile files. Их значения
 не нужны для реализации и приёмки этой диагностики.
+
+## Результат Stage-10 diagnostic-only run
+
+Один запуск выполнил все пять фиксированных фаз и вернул только разрешённые
+агрегаты. Chromium запустился, persistent profile был configured, переход к
+Reels достигнут. После navigation central video был найден, но оба direct-hit
+endpoint оставались false. Начиная с первого bounded wait, и также в фазах
+`before_collector_input` и после второго wait, верхний hit оставался
+interactive/inherited, focusable, `role=button` с modal/dialog ancestor; video
+оставался ниже него в point stack. visual viewport не отличался от layout
+viewport. Следовательно, interceptor не исчезает без input, а его безопасный
+wait/readiness repair отсутствует. Ни 3/3 live, ни acceptance на 50 Reel не
+допускаются; следующий этап — отдельное aggregate-only сравнение browser
+launch/navigation contexts.
