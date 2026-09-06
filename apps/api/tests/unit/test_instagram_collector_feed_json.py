@@ -8,11 +8,15 @@ class _Page:
 
 
 class _Response:
-    url = "https://www.instagram.com/graphql/query/"
-
-    def __init__(self, payload, content_type="application/json"):
+    def __init__(
+        self,
+        payload,
+        content_type="application/json",
+        url="https://www.instagram.com/graphql/query/",
+    ):
         self.headers = {"content-type": content_type}
         self._payload = payload
+        self.url = url
 
     def json(self):
         return self._payload
@@ -108,4 +112,28 @@ def test_catalog_accepts_only_valid_canonical_code_aliases():
 
     assert first is not None and first.shortcode == "SHORTCODE_2"
     assert second is not None and second.shortcode == "MEDIA_CODE_3"
+    assert catalog.next_from_current_feed("PREVIOUS") is None
+
+
+def test_catalog_inspects_only_two_web_api_responses_as_aggregate_schema():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    web_api_url = "https://www.instagram.com/api/v1/feed/reels_tray/"
+
+    for code in ("WEB_API_1", "WEB_API_2", "WEB_API_3"):
+        page.handler(
+            _Response(
+                {"items": [{"media_type": 2, "code": code, "video_versions": []}]},
+                url=web_api_url,
+            )
+        )
+
+    assert catalog.source_class_counts() == {"graphql": 0, "web_api": 3, "other": 0}
+    assert catalog.schema_counts() == {
+        "media_nodes": 0,
+        "canonical_shaped_values": 0,
+        "web_api_media_nodes": 2,
+        "web_api_canonical_shaped_values": 2,
+        "web_api_schema_responses": 2,
+    }
     assert catalog.next_from_current_feed("PREVIOUS") is None

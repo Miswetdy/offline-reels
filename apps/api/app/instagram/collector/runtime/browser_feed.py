@@ -641,7 +641,16 @@ class PlaywrightReelsFeed:
 
     def feed_source_diagnostics(self) -> dict[str, int]:
         if self._feed_json is None:
-            return {"graphql": 0, "web_api": 0, "other": 0, "media_nodes": 0, "canonical_shaped_values": 0}
+            return {
+                "graphql": 0,
+                "web_api": 0,
+                "other": 0,
+                "media_nodes": 0,
+                "canonical_shaped_values": 0,
+                "web_api_media_nodes": 0,
+                "web_api_canonical_shaped_values": 0,
+                "web_api_schema_responses": 0,
+            }
         return {**self._feed_json.source_class_counts(), **self._feed_json.schema_counts()}
 
     def _wait_for_initial_reel(self) -> ReelCandidate:

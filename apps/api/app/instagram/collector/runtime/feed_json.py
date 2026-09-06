@@ -11,6 +11,7 @@ from app.instagram.collector.contracts import ReelCandidate
 
 _MAX_CODES = 32
 _CANONICAL_CODE_KEYS = ("code", "shortcode", "media_code")
+_MAX_WEB_API_SCHEMA_RESPONSES = 2
 
 
 class JsonResponse(Protocol):
@@ -25,14 +26,25 @@ class ResponsePage(Protocol):
 
 
 class AuthenticatedFeedSource:
-    """In-memory canonical candidates from authenticated GraphQL responses only."""
+    """In-memory canonical candidates from authenticated GraphQL responses only.
+
+    The first two same-session web-API JSON responses are inspected only for
+    aggregate schema evidence.  They never enter the candidate queue and their
+    fields, values, URLs and payloads are not retained.
+    """
 
     def __init__(self, page: ResponsePage) -> None:
         self._codes: deque[tuple[int, str]] = deque()
         self._seen: set[str] = set()
         self._observation = 0
         self._source_classes = {"graphql": 0, "web_api": 0, "other": 0}
-        self._schema_counts = {"media_nodes": 0, "canonical_shaped_values": 0}
+        self._schema_counts = {
+            "media_nodes": 0,
+            "canonical_shaped_values": 0,
+            "web_api_media_nodes": 0,
+            "web_api_canonical_shaped_values": 0,
+            "web_api_schema_responses": 0,
+        }
         page.on("response", self._observe)
 
     def checkpoint(self) -> int:
@@ -102,10 +114,14 @@ class AuthenticatedFeedSource:
                 else "other"
             )
             self._source_classes[source_class] += 1
+            if source_class == "web_api":
+                self._inspect_web_api_schema_response(response)
+                return
             if source_class != "graphql":
                 return
+            payload = response.json()
             self._observation += 1
-            self._collect(response.json(), observation=self._observation)
+            self._collect(payload, observation=self._observation)
         except Exception:
             return
 
@@ -123,7 +139,7 @@ class AuthenticatedFeedSource:
                 if is_media_node:
                     self._schema_counts["media_nodes"] += 1
                     self._schema_counts["canonical_shaped_values"] += sum(
-                        isinstance(item, str) and SHORTCODE.fullmatch(item)
+                        bool(isinstance(item, str) and SHORTCODE.fullmatch(item))
                         for item in value.values()
                     )
                 for key in _CANONICAL_CODE_KEYS:
@@ -137,6 +153,28 @@ class AuthenticatedFeedSource:
                         self._codes.append((observation, code))
                         if len(self._codes) > _MAX_CODES:
                             self._codes.popleft()
+                stack.extend(reversed(tuple(value.values())))
+            elif isinstance(value, list):
+                stack.extend(reversed(value))
+
+    def _inspect_web_api_schema_response(self, response: JsonResponse) -> None:
+        if self._schema_counts["web_api_schema_responses"] >= _MAX_WEB_API_SCHEMA_RESPONSES:
+            return
+        self._schema_counts["web_api_schema_responses"] += 1
+        self._inspect_web_api_schema(response.json())
+
+    def _inspect_web_api_schema(self, payload: object) -> None:
+        stack, visited = [payload], 0
+        while stack and visited < 20_000:
+            visited += 1
+            value = stack.pop()
+            if isinstance(value, dict):
+                if "media_type" in value or "video_versions" in value:
+                    self._schema_counts["web_api_media_nodes"] += 1
+                    self._schema_counts["web_api_canonical_shaped_values"] += sum(
+                        bool(isinstance(item, str) and SHORTCODE.fullmatch(item))
+                        for item in value.values()
+                    )
                 stack.extend(reversed(tuple(value.values())))
             elif isinstance(value, list):
                 stack.extend(reversed(value))

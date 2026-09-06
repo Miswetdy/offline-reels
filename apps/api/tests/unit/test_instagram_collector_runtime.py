@@ -824,6 +824,7 @@ class _FakeMouse:
 
 class _JsonResponse:
     headers = {"content-type": "application/json"}
+    url = "https://www.instagram.com/graphql/query/"
 
     def __init__(self, code: str) -> None:
         self._code = code
