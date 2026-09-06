@@ -93,6 +93,17 @@ class ScrollTargetDiagnostics:
     hit_test_hit_direct_body_child: bool = False
     hit_test_control_direct_body_child: bool = False
     hit_test_hit_shell_semantic_ancestor: bool = False
+    hit_test_control_native_button: bool = False
+    hit_test_control_anchor: bool = False
+    hit_test_control_form_element: bool = False
+    hit_test_control_role_button: bool = False
+    hit_test_control_role_slider: bool = False
+    hit_test_control_contenteditable: bool = False
+    hit_test_control_disabled: bool = False
+    hit_test_control_aria_disabled: bool = False
+    hit_test_control_focusable: bool = False
+    hit_test_control_modal_or_dialog_ancestor: bool = False
+    hit_test_control_touch_action_none: bool = False
 
 
 # Fixed allowlist shared by probe decoding and operator aggregation.
@@ -131,6 +142,17 @@ HIT_TEST_DIAGNOSTIC_FLAGS = (
     "hit_test_hit_direct_body_child",
     "hit_test_control_direct_body_child",
     "hit_test_hit_shell_semantic_ancestor",
+    "hit_test_control_native_button",
+    "hit_test_control_anchor",
+    "hit_test_control_form_element",
+    "hit_test_control_role_button",
+    "hit_test_control_role_slider",
+    "hit_test_control_contenteditable",
+    "hit_test_control_disabled",
+    "hit_test_control_aria_disabled",
+    "hit_test_control_focusable",
+    "hit_test_control_modal_or_dialog_ancestor",
+    "hit_test_control_touch_action_none",
 )
 
 

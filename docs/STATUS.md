@@ -1,5 +1,22 @@
 # Status
 
+## TASK-016 local-blocker role/state diagnostics — 2026-09-06
+
+The probe now records only fixed aggregate booleans about the interactive
+ancestor which intercepts a sampled endpoint: native button, anchor, form,
+ARIA button/slider or contenteditable role; disabled/ARIA-disabled,
+focusability, dialog/modal ancestry and `touch-action:none`. It does not emit
+tag text, attributes, selectors, IDs, coordinates or other DOM content.
+
+These facts are diagnostic-only. The target remains eligible only when both
+endpoints directly hit the selected central `<video>`; an intercepted control
+is never selected, and the JSON gate, bounded limits and fail-closed behavior
+are unchanged. Actual Chromium fixtures cover disabled native, ARIA dialog
+control and anchor/touch-action cases. Verification: 29 touch-target tests and
+Ruff pass. Next: deploy this diagnostic build for one bounded 3/3 run and use
+its aggregates to select an evidence-backed input repair. The 3/3 acceptance
+and 50-Reel run remain blocked.
+
 ## TASK-016 Linux card-layer and shell evidence — 2026-09-06, 4d77c2d
 
 The bounded Stage-10 target-3 run committed one real source, confirmed zero

@@ -297,6 +297,14 @@ Repeatedly trying more coordinates would add collection side effects without
 answering the interaction cause. Establish only fixed, non-content semantic or
 state facts about the blocker before an evidence-backed input repair.
 
+The next diagnostic build records only aggregate role and interaction-state
+facts of that hit's already-detected interactive ancestor: native/ARIA control
+kind, disabled state, focusability, dialog/modal ancestry and
+`touch-action:none`. It neither exposes DOM content nor authorizes the
+interceptor as a touch target. A fresh bounded Linux run is required to collect
+the evidence; direct two-endpoint video hits, canonical post-action JSON and
+all fail-closed limits remain mandatory.
+
 The local-card diagnostic records a hit's bounded relation to non-selected
 visible videos separately from page-shell facts. A relationship may indicate a
 neighbouring card layer but does not prove ownership or make that layer a safe

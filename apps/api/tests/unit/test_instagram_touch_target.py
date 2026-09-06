@@ -319,3 +319,49 @@ def test_page_shell_layer_has_no_visible_video_relation(page):
     assert result["hit_test_hit_shell_semantic_ancestor"]
     assert result["hit_test_hit_no_visible_video_relation"]
     assert not result["hit_test_hit_has_other_video_relation"]
+
+
+@pytest.mark.parametrize(
+    ("overlay", "expected"),
+    [
+        (
+            '<button class="layer" disabled></button>',
+            {
+                "hit_test_control_native_button",
+                "hit_test_control_disabled",
+                "hit_test_control_focusable",
+            },
+        ),
+        (
+            (
+                '<div role="dialog" aria-modal="true"><div class="layer" '
+                'role="button" aria-disabled="true" tabindex="0"></div></div>'
+            ),
+            {
+                "hit_test_control_role_button",
+                "hit_test_control_aria_disabled",
+                "hit_test_control_focusable",
+                "hit_test_control_modal_or_dialog_ancestor",
+            },
+        ),
+        (
+            '<a class="layer" href="#" style="touch-action:none"></a>',
+            {
+                "hit_test_control_anchor",
+                "hit_test_control_focusable",
+                "hit_test_control_touch_action_none",
+            },
+        ),
+    ],
+)
+def test_local_interactive_blocker_reports_only_safe_role_and_state_flags(page, overlay, expected):
+    page.set_content(f'''<style>html,body{{margin:0;overflow:hidden}}
+      video{{position:fixed;inset:0;width:430px;height:800px}}
+      .layer{{position:fixed;inset:0;z-index:2}}</style><video></video>{overlay}''')
+
+    result = page.evaluate(ACTIVE_FEED_INPUT_TARGET_PROBE)
+
+    assert not result["hit_testable"]
+    assert result["hit_test_miss_control"]
+    assert all(result[flag] for flag in expected)
+    assert all(type(result[flag]) is bool for flag in HIT_TEST_DIAGNOSTIC_FLAGS)

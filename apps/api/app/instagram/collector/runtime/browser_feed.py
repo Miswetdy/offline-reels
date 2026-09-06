@@ -282,6 +282,17 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     hit_test_hit_direct_body_child: false,
     hit_test_control_direct_body_child: false,
     hit_test_hit_shell_semantic_ancestor: false,
+    hit_test_control_native_button: false,
+    hit_test_control_anchor: false,
+    hit_test_control_form_element: false,
+    hit_test_control_role_button: false,
+    hit_test_control_role_slider: false,
+    hit_test_control_contenteditable: false,
+    hit_test_control_disabled: false,
+    hit_test_control_aria_disabled: false,
+    hit_test_control_focusable: false,
+    hit_test_control_modal_or_dialog_ancestor: false,
+    hit_test_control_touch_action_none: false,
   };
   const visual = window.visualViewport;
   if (visual) {
@@ -289,6 +300,22 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
   }
   const controls = 'button,a,input,select,textarea,[role="button"],[role="slider"],[contenteditable="true"]';
   const shell = 'main,header,footer,nav,[role="main"],[role="navigation"],[role="banner"],[role="contentinfo"]';
+  const observeControlState = (control) => {
+    if (!control) return;
+    const tag = control.tagName;
+    const role = control.getAttribute('role');
+    diagnostics.hit_test_control_native_button ||= tag === 'BUTTON';
+    diagnostics.hit_test_control_anchor ||= tag === 'A';
+    diagnostics.hit_test_control_form_element ||= tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+    diagnostics.hit_test_control_role_button ||= role === 'button';
+    diagnostics.hit_test_control_role_slider ||= role === 'slider';
+    diagnostics.hit_test_control_contenteditable ||= control.isContentEditable;
+    diagnostics.hit_test_control_disabled ||= control.matches(':disabled');
+    diagnostics.hit_test_control_aria_disabled ||= control.getAttribute('aria-disabled') === 'true';
+    diagnostics.hit_test_control_focusable ||= control.tabIndex >= 0;
+    diagnostics.hit_test_control_modal_or_dialog_ancestor ||= Boolean(control.closest('[role="dialog"],[aria-modal="true"]'));
+    diagnostics.hit_test_control_touch_action_none ||= getComputedStyle(control).touchAction === 'none';
+  };
   const coversVideo = (element) => {
     const r = element.getBoundingClientRect();
     return r.left <= selected.left && r.right >= selected.right && r.top <= selected.top && r.bottom >= selected.bottom;
@@ -310,6 +337,7 @@ ACTIVE_FEED_INPUT_TARGET_PROBE = "() => {" + _CENTRAL_MEDIA_SELECTION + """
     const hitRect = hit.getBoundingClientRect();
     diagnostics.hit_test_hit_covers_viewport ||= hitRect.left <= 0 && hitRect.right >= width && hitRect.top <= 0 && hitRect.bottom >= height;
     if (control) {
+      observeControlState(control);
       diagnostics.hit_test_control_contains_video ||= control.contains(selected.video);
       diagnostics.hit_test_control_covers_visible_video ||= coversVideo(control);
     }
