@@ -1044,16 +1044,17 @@ class PlaywrightReelsFeed:
                     self._feed_json is not None
                     and self._feed_json.observed_after(self._transition_json_checkpoint)
                 )
-                if stable_count >= 2 and post_action_json_observed and self._feed_json is not None:
+                if stable_count >= 2 and self._feed_json is not None:
                     self._capture_embedded_feed_candidates()
-                    candidate = self._candidate_or_none()
-                    if candidate is not None and candidate.shortcode != previous_shortcode:
-                        dom_confirmation_observed = True
-                    else:
-                        candidate = self._feed_json.next_after(
-                            previous_shortcode,
-                            after_observation=self._transition_json_checkpoint,
-                        )
+                    if post_action_json_observed:
+                        candidate = self._candidate_or_none()
+                        if candidate is not None and candidate.shortcode != previous_shortcode:
+                            dom_confirmation_observed = True
+                        else:
+                            candidate = self._feed_json.next_after(
+                                previous_shortcode,
+                                after_observation=self._transition_json_checkpoint,
+                            )
                     if candidate is None:
                         candidate = self._feed_json.next_from_current_feed(previous_shortcode)
                         queue_fallback_observed = candidate is not None

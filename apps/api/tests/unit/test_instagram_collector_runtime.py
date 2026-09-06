@@ -59,6 +59,7 @@ class FakePage:
         media_identity_samples: list[str] | None = None,
         embedded_codes: list[str] | None = None,
         transition_response_code: str | None = None,
+        emit_transition_response: bool = True,
     ) -> None:
         self._candidates = candidates
         self._index = 0
@@ -87,6 +88,7 @@ class FakePage:
         self._media_identity_samples = list(media_identity_samples or [])
         self._embedded_codes = list(embedded_codes or [])
         self._transition_response_code = transition_response_code
+        self._emit_transition_response = emit_transition_response
         self._input_performed = False
         self._response_handler = None
 
@@ -158,7 +160,7 @@ class FakePage:
         self._input_performed = True
         if self._index < len(self._candidates) - 1:
             self._index += 1
-            if self._response_handler is not None:
+            if self._response_handler is not None and self._emit_transition_response:
                 self._response_handler(
                     _JsonResponse(self._transition_response_code or self._candidates[self._index].shortcode)
                 )
@@ -198,6 +200,24 @@ def test_browser_feed_uses_embedded_queue_after_stable_transition() -> None:
 
     next_candidate = adapter.wait_for_next("ONE")
     assert next_candidate is not None and next_candidate.shortcode == "TWO"
+    assert adapter.transition_diagnostics.canonical_queue_fallback_observed
+
+
+def test_browser_feed_uses_embedded_queue_without_post_input_json() -> None:
+    page = FakePage(
+        [candidate("ONE"), candidate("TWO")],
+        embedded_codes=["TWO"],
+        emit_transition_response=False,
+        transition_samples=[None, None, None],
+    )
+    adapter = feed(page)
+
+    assert adapter.current().shortcode == "ONE"
+    adapter.advance()
+
+    next_candidate = adapter.wait_for_next("ONE")
+    assert next_candidate is not None and next_candidate.shortcode == "TWO"
+    assert not adapter.transition_diagnostics.post_action_json_observed
     assert adapter.transition_diagnostics.canonical_queue_fallback_observed
 
 
