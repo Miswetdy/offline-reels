@@ -1,5 +1,22 @@
 # Status
 
+## TASK-016 post-profile-check Linux run — 2026-09-06
+
+The one-time profile check reported that Instagram is connected, but this
+establishes authentication only; it did not establish that the feed modal was
+reviewed or dismissed. The subsequent bounded Stage-10 target-3 run committed
+one real source and terminated `TRANSITION_FAILED` with zero confirmed
+advances. The same focusable role-button under a modal/dialog ancestor still
+intercepted endpoints, so touch was not dispatched.
+
+This run additionally observed stable media change and post-action feed JSON,
+but no canonical confirmation. The JSON gate therefore correctly remained
+fail-closed. A profile-check viewer is not a sufficient manual-resolution flow:
+it completes automatically when authentication is detected. Next: provide an
+explicitly operator-controlled private viewer for reviewing the existing
+authenticated feed dialog without auto-completing the profile-check session,
+then repeat 3/3. The 50-Reel gate remains blocked.
+
 ## TASK-016 Linux blocker role evidence — 2026-09-06, d5d3dc5
 
 The bounded Stage-10 target-3 run committed one real source, confirmed zero

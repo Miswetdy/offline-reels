@@ -2,6 +2,22 @@
 
 ## Проблема
 
+После ручной profile-check с сообщением «Instagram подключён» bounded Linux run
+(2026-09-06) снова дал 1/3 source-коммит, 0 подтверждённых переходов и
+`TRANSITION_FAILED`. Это сообщение подтвердило авторизацию профиля, но не
+подтвердило просмотр или закрытие modal dialog. Тот же focusable role-button
+под modal/dialog ancestor продолжает перехватывать endpoints, поэтому touch
+не отправлен.
+
+В этом run наблюдались stable media change и post-action feed JSON, но не
+canonical confirmation. JSON-gate корректно оставил сценарий fail-closed.
+Profile-check viewer автоматически завершает сессию при обнаружении connected,
+поэтому он не подходит для ручного разрешения existing feed dialog. Нужен
+отдельный operator-controlled private viewer для просмотра авторизованной
+ленты без auto-complete profile-check; только после ручного разрешения dialog
+допустим новый bounded 3/3. Лимиты, endpoint hit-test, JSON-gate и блокировка
+50 не меняются.
+
 Bounded Linux run `d5d3dc5` (2026-09-06) дал 1/3 source-коммит, 0 переходов
 и `TRANSITION_FAILED`, но установил причину. Верхнее препятствие — focusable
 `role=button`, найденный через interactive ancestor внутри modal/dialog

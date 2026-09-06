@@ -304,6 +304,13 @@ safety, consent or account-control prompt and is outside the Collector's
 bounded feed-input contract. Resolve it manually in the authenticated session,
 then repeat the same 3/3 verification with all direct-hit and JSON gates intact.
 
+A completed profile check only proves the persistent Instagram profile is
+authenticated. The subsequent live run retained the modal interceptor, so a
+profile-check viewer cannot be treated as proof that a feed dialog was reviewed
+or dismissed. Its auto-completion removes the viewer when connected. Provide a
+separate private operator viewer for this narrow inspection before attempting
+another input repair or accepting 3/3.
+
 The next diagnostic build records only aggregate role and interaction-state
 facts of that hit's already-detected interactive ancestor: native/ARIA control
 kind, disabled state, focusability, dialog/modal ancestry and
