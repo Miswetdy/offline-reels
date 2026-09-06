@@ -126,10 +126,16 @@ IDENTITY_STRUCTURE_PROBE = """
   const pageReelAnchorCount = [...document.querySelectorAll('a[href]')].filter(reelAnchor).length;
   let nearbyReelAnchorCount = 0;
   let ancestorDataAttributeCount = 0;
+  let boundCanonicalDataAttributeCount = 0;
   if (visible.length) {
     let node = visible[0].video;
     for (let depth = 0; depth < 8 && node; depth += 1) {
-      ancestorDataAttributeCount += node.getAttributeNames().filter((name) => name.startsWith('data-')).length;
+      const dataNames = node.getAttributeNames().filter((name) => name.startsWith('data-'));
+      ancestorDataAttributeCount += dataNames.length;
+      for (const name of dataNames) {
+        const value = node.getAttribute(name) || '';
+        if (/^[A-Za-z0-9_-]{1,64}$/.test(value)) boundCanonicalDataAttributeCount += 1;
+      }
       nearbyReelAnchorCount += [...node.querySelectorAll?.('a[href]') || []].filter(reelAnchor).length;
       node = node.parentElement;
     }
@@ -141,6 +147,7 @@ IDENTITY_STRUCTURE_PROBE = """
     page_reel_anchor_count: pageReelAnchorCount,
     nearby_reel_anchor_count: nearbyReelAnchorCount,
     ancestor_data_attribute_count: ancestorDataAttributeCount,
+    bound_canonical_data_attribute_count: boundCanonicalDataAttributeCount,
     location_is_specific_reel: validPath(location.pathname),
   };
 }
@@ -1279,6 +1286,7 @@ def _empty_identity_structure_diagnostics() -> dict[str, int | bool]:
         "page_reel_anchor_count": 0,
         "nearby_reel_anchor_count": 0,
         "ancestor_data_attribute_count": 0,
+        "bound_canonical_data_attribute_count": 0,
         "location_is_specific_reel": False,
     }
 
@@ -1293,6 +1301,7 @@ def _identity_structure_from_payload(payload: object) -> dict[str, int | bool]:
         "page_reel_anchor_count",
         "nearby_reel_anchor_count",
         "ancestor_data_attribute_count",
+        "bound_canonical_data_attribute_count",
     ):
         safe[key] = _nonnegative_integer(payload.get(key))
     safe["central_video_present"] = payload.get("central_video_present") is True

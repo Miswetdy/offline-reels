@@ -105,6 +105,7 @@ class FakePage:
                 "page_reel_anchor_count": 0,
                 "nearby_reel_anchor_count": 0,
                 "ancestor_data_attribute_count": 3,
+                "bound_canonical_data_attribute_count": 1,
                 "location_is_specific_reel": False,
                 "href": "must-not-leak",
             }
@@ -229,6 +230,7 @@ def test_identity_structure_diagnostics_are_aggregate_only() -> None:
         "page_reel_anchor_count": 0,
         "nearby_reel_anchor_count": 0,
         "ancestor_data_attribute_count": 3,
+        "bound_canonical_data_attribute_count": 1,
         "location_is_specific_reel": False,
     }
 
