@@ -1,5 +1,14 @@
 # Status
 
+## TASK-017 modal lifecycle diagnostic specification — 2026-09-06
+
+`docs/tasks/017-collector-modal-lifecycle-diagnostic.md` defines a bounded,
+diagnostic-only next step. It records no private Instagram content and performs
+no input, download or persistence; it must establish the modal interceptor's
+lifecycle in Collector before another live collection attempt. The VPS passport
+and safe operator commands are maintained in that task; one-time viewer
+services are stopped outside an active operator session.
+
 ## TASK-016 repeat after connected inspect viewer — 2026-09-06
 
 The operator confirmed that the repaired private viewer displayed a connected
