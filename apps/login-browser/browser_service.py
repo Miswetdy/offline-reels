@@ -176,7 +176,7 @@ class BrowserRuntime:
             pages = json.loads(urlopen("http://127.0.0.1:9222/json/list", timeout=1).read())
             page = next(item for item in pages if item.get("type") == "page")
             document = _cdp_call(page["webSocketDebuggerUrl"], "Runtime.evaluate", {
-                "expression": "JSON.stringify({href:location.href,login:!!document.querySelector('input[name=username],input[name=password],form[action*=login]')||/^\\/accounts\\/(?:login|onetap)(?:\\/|$)/.test(location.pathname),checkpoint:/checkpoint|challenge|two_factor|login/i.test(location.pathname),reel:!!document.querySelector('video,article[role=main],[role=main] video'),reelsPath:/^\\/reels(?:\\/|$)/.test(location.pathname)})",
+                "expression": "JSON.stringify({href:location.href,login:!!document.querySelector('input[name=username],input[name=password],form[action*=login]')||/^\\/accounts(?:\\/|$)/.test(location.pathname),checkpoint:/checkpoint|challenge|two_factor|login/i.test(location.pathname),reel:!!document.querySelector('video,article[role=main],[role=main] video'),reelsPath:/^\\/reels(?:\\/|$)/.test(location.pathname)})",
                 "returnByValue": True,
             })
             value = document["result"]["result"]["value"]
