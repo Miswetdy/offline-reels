@@ -58,6 +58,7 @@ class FakePage:
         scroll_container: bool = False,
         media_identity_samples: list[str] | None = None,
         embedded_codes: list[str] | None = None,
+        refresh_embedded_codes: list[str] | None = None,
         transition_response_code: str | None = None,
         emit_transition_response: bool = True,
     ) -> None:
@@ -87,10 +88,12 @@ class FakePage:
         }
         self._media_identity_samples = list(media_identity_samples or [])
         self._embedded_codes = list(embedded_codes or [])
+        self._refresh_embedded_codes = list(refresh_embedded_codes or [])
         self._transition_response_code = transition_response_code
         self._emit_transition_response = emit_transition_response
         self._input_performed = False
         self._response_handler = None
+        self.url = "https://www.instagram.com/reels/"
 
     def on(self, event, handler) -> None:
         assert event == "response"
@@ -149,6 +152,7 @@ class FakePage:
 
     def goto(self, url: str, *, wait_until: str):
         del url, wait_until
+        self._embedded_codes = list(self._refresh_embedded_codes)
 
     def wait_for_timeout(self, timeout: float) -> None:
         del timeout
@@ -171,6 +175,14 @@ def feed(page: FakePage) -> PlaywrightReelsFeed:
         page,
         limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=2),
     )
+
+
+class _LiveLikeContext:
+    def __init__(self, page: FakePage) -> None:
+        self.pages = [page]
+
+    def close(self) -> None:
+        return None
 
 
 def test_browser_feed_confirms_two_stable_samples_and_pauses_only_current() -> None:
@@ -219,6 +231,59 @@ def test_browser_feed_uses_embedded_queue_without_post_input_json() -> None:
     assert next_candidate is not None and next_candidate.shortcode == "TWO"
     assert not adapter.transition_diagnostics.post_action_json_observed
     assert adapter.transition_diagnostics.canonical_queue_fallback_observed
+
+
+def test_browser_feed_refreshes_only_after_stable_transition_and_empty_queue() -> None:
+    page = FakePage(
+        [candidate("ONE"), candidate("TWO")],
+        refresh_embedded_codes=["THREE"],
+        emit_transition_response=False,
+    )
+    adapter = PlaywrightReelsFeed(
+        page,
+        context=_LiveLikeContext(page),
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=2),
+    )
+
+    assert adapter.current().shortcode == "ONE"
+    adapter.advance()
+
+    next_candidate = adapter.wait_for_next("ONE")
+    assert next_candidate is not None and next_candidate.shortcode == "THREE"
+    assert adapter.transition_diagnostics.canonical_feed_refresh_observed
+
+
+def test_browser_feed_replenishes_after_consuming_the_initial_embedded_queue() -> None:
+    page = FakePage(
+        [candidate("ONE"), candidate("TWO"), candidate("THREE")],
+        embedded_codes=["TWO"],
+        refresh_embedded_codes=["FOUR"],
+        emit_transition_response=False,
+        media_identity_samples=[
+            "media-one",
+            "media-two",
+            "media-two",
+            "media-two",
+            "media-three",
+            "media-three",
+        ],
+    )
+    adapter = PlaywrightReelsFeed(
+        page,
+        context=_LiveLikeContext(page),
+        limits=TransitionLimits(polling_seconds=0.01, timeout_seconds=0.03, maximum_scroll_attempts=3),
+    )
+
+    assert adapter.current().shortcode == "ONE"
+    adapter.advance()
+    first = adapter.wait_for_next("ONE")
+    assert first is not None and first.shortcode == "TWO"
+    assert adapter.transition_diagnostics.canonical_queue_fallback_observed
+
+    adapter.advance()
+    second = adapter.wait_for_next(first.shortcode)
+    assert second is not None and second.shortcode == "FOUR"
+    assert adapter.transition_diagnostics.canonical_feed_refresh_observed
 
 
 def test_browser_feed_uses_bounded_pointer_wheel_when_scroll_container_is_unavailable() -> None:

@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--account-id", default=os.environ["COLLECTOR_ACCOUNT_ID"], type=UUID)
     parser.add_argument("--transition", action="store_true")
     parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--refresh-fallback", action="store_true")
     arguments = parser.parse_args(argv)
     runtime = CollectorRuntimeSettings.from_environment()
     feed: PlaywrightReelsFeed | None = None
@@ -33,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         result = {"before": feed.identity_structure_diagnostics()}
         result["embedded_application_data"] = feed.embedded_application_data_diagnostics()
-        if arguments.transition or arguments.refresh:
+        if arguments.transition or arguments.refresh or arguments.refresh_fallback:
             previous = feed.current()
         if arguments.transition:
             feed.advance()
@@ -48,6 +49,16 @@ def main(argv: list[str] | None = None) -> int:
             result["embedded_application_data_after_refresh"] = (
                 feed.embedded_application_data_diagnostics()
             )
+        if arguments.refresh_fallback:
+            feed.advance()
+            first = feed.wait_for_next(previous.shortcode)
+            second = None
+            if first is not None:
+                feed.advance()
+                second = feed.wait_for_next(first.shortcode)
+            result["first_transition_candidate_confirmed"] = first is not None
+            result["refresh_fallback_candidate_confirmed"] = second is not None
+            result["refresh_fallback_transition"] = asdict(feed.transition_diagnostics)
         result["authenticated_json_source_classes"] = feed.feed_source_diagnostics()
     except CollectorRuntimeError as error:
         print(json.dumps({"phase": "identity-diagnostic", "reason_code": error.code.value}))

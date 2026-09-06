@@ -117,6 +117,16 @@ class AuthenticatedFeedSource:
             return ReelCandidate(code, f"https://www.instagram.com/reel/{code}/")
         return None
 
+    def next_embedded_from_current_feed(self, previous_shortcode: str) -> ReelCandidate | None:
+        """Reserve a different candidate supplied by an embedded JSON script only."""
+
+        for index, (observation, code) in enumerate(self._codes):
+            if observation != 0 or code == previous_shortcode:
+                continue
+            del self._codes[index]
+            return ReelCandidate(code, f"https://www.instagram.com/reel/{code}/")
+        return None
+
     def observed_after(self, observation: int) -> bool:
         """Whether any authenticated JSON response arrived after a boundary."""
 

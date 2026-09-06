@@ -1009,6 +1009,8 @@ class PlaywrightReelsFeed:
         stable_count = 0
         dom_confirmation_observed = False
         queue_fallback_observed = False
+        feed_refresh_observed = False
+        feed_refresh_attempted = False
         # A one-element holder keeps the identity strictly in process memory
         # while allowing the bounded sampler below to update it.
         stable_media_identity: list[str | None] = [None]
@@ -1019,7 +1021,8 @@ class PlaywrightReelsFeed:
 
         def sample() -> ReelCandidate | None:
             nonlocal observed_different, poll_count, unchanged_count, missing_count, stable_count
-            nonlocal dom_confirmation_observed, queue_fallback_observed
+            nonlocal dom_confirmation_observed, queue_fallback_observed, feed_refresh_observed
+            nonlocal feed_refresh_attempted
             if should_stop is not None and should_stop():
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
                     poll_count=poll_count,
@@ -1065,8 +1068,21 @@ class PlaywrightReelsFeed:
                                 after_observation=self._transition_json_checkpoint,
                             )
                     if candidate is None:
-                        candidate = self._feed_json.next_from_current_feed(previous_shortcode)
+                        candidate = (
+                            self._feed_json.next_from_current_feed(previous_shortcode)
+                            if post_action_json_observed
+                            else self._feed_json.next_embedded_from_current_feed(
+                                previous_shortcode
+                            )
+                        )
                         queue_fallback_observed = candidate is not None
+                    if candidate is None and not feed_refresh_attempted:
+                        feed_refresh_attempted = True
+                        candidate = self._refresh_embedded_feed_candidate(
+                            previous_shortcode,
+                            should_stop,
+                        )
+                        feed_refresh_observed = candidate is not None
                 self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
             except CollectorRuntimeError as error:
                 self._transition_diagnostics = TransitionSamplingDiagnostics(
@@ -1110,6 +1126,7 @@ class PlaywrightReelsFeed:
                     canonical_confirmation_observed=True,
                     canonical_dom_confirmation_observed=dom_confirmation_observed,
                     canonical_queue_fallback_observed=queue_fallback_observed,
+                    canonical_feed_refresh_observed=feed_refresh_observed,
                 )
                 return candidate
             return None
@@ -1146,6 +1163,33 @@ class PlaywrightReelsFeed:
         if self._transition_media_confirmed:
             self._force_pointer_wheel_next_advance = True
         return None
+
+    def _refresh_embedded_feed_candidate(
+        self,
+        previous_shortcode: str,
+        should_stop: Callable[[], bool] | None,
+    ) -> ReelCandidate | None:
+        """Once per confirmed media transition, rebase the bounded feed queue.
+
+        This is deliberately a fixed document navigation, not an internal API
+        call.  The active document candidate is consumed and discarded; only a
+        distinct canonical ID admitted by the strict embedded JSON source may
+        be returned.  Session-wide deduplication prevents reuse after refresh.
+        """
+
+        if (
+            self._feed_json is None
+            or self._context is None
+            or not isinstance(getattr(self._context, "pages", None), list)
+            or not _is_instagram_page(self._page)
+            or (should_stop is not None and should_stop())
+        ):
+            return None
+        self.navigate_to_reels()
+        current = self._wait_for_initial_reel()
+        self._capture_embedded_feed_candidates()
+        self._feed_json.mark_used(current.shortcode)
+        return self._feed_json.next_embedded_from_current_feed(previous_shortcode)
 
     def _active_media_identity(self) -> str | None:
         try:

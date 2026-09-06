@@ -501,6 +501,7 @@ class CollectorEngine:
             "canonical_confirmation_observed": False,
             "canonical_dom_confirmation_observed": False,
             "canonical_queue_fallback_observed": False,
+            "canonical_feed_refresh_observed": False,
             "scroll_target_available": False,
             "scroll_target_in_viewport": False,
             "mouse_move_performed": False,
@@ -582,6 +583,7 @@ class CollectorEngine:
             "canonical_confirmation_observed",
             "canonical_dom_confirmation_observed",
             "canonical_queue_fallback_observed",
+            "canonical_feed_refresh_observed",
         ):
             destination[key] = bool(destination[key] or getattr(sampling, key))
         if isinstance(sampling.stop_reason_code, str):

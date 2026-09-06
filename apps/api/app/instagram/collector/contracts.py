@@ -43,6 +43,7 @@ class TransitionSamplingDiagnostics:
     canonical_confirmation_observed: bool = False
     canonical_dom_confirmation_observed: bool = False
     canonical_queue_fallback_observed: bool = False
+    canonical_feed_refresh_observed: bool = False
     stop_reason_code: str | None = None
 
 

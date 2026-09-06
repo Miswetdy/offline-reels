@@ -860,6 +860,22 @@ production environment.
 Not implemented in this block: backup/restore scripts, automated deployment,
 monitoring, or a concrete VPS configuration.
 
+## TASK-018 bounded embedded-feed replenishment — 2026-09-06
+
+The authenticated embedded-JSON provider now keeps a bounded, process-local
+set of already observed canonical Reel IDs across fixed `/reels/` document
+refreshes. Pending candidates from the old document are discarded; only a new
+strictly validated embedded candidate may enter the fresh queue. The Collector
+uses at most one fixed navigation fallback after a stable media transition and
+only when its current embedded queue is empty. It never calls an Instagram
+internal API, reads arbitrary DOM attributes, or persists candidate IDs.
+
+The isolated Stage-10 no-download refresh acceptance observed one fresh pending
+candidate after a fixed refresh. Unit coverage exercises consuming the initial
+queue followed by exactly one automatic replenishment. The next required gate
+is a no-download two-transition live acceptance of that automatic fallback;
+only then may a bounded durable-download run be attempted.
+
 ## Next step
 
 Next, deploy and preflight the opt-in hardened Stage 10 login boundary. After a
