@@ -31,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
             repository_root=collector_repository_root(Path(__file__)),
         )
         result = {"before": feed.identity_structure_diagnostics()}
+        result["embedded_application_data"] = feed.embedded_application_data_diagnostics()
         if arguments.transition:
             previous = feed.current()
             feed.advance()

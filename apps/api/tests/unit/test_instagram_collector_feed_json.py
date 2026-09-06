@@ -177,3 +177,17 @@ def test_catalog_inspects_only_two_other_json_responses_as_aggregate_schema():
         "other_schema_responses": 2,
     }
     assert catalog.next_from_current_feed("PREVIOUS") is None
+
+
+def test_catalog_classifies_non_json_responses_without_reading_them():
+    page = _Page()
+    catalog = FeedJsonCandidateCatalog(page)
+    page.handler(_Response({}, "text/html"))
+    page.handler(_Response({}, "application/javascript"))
+    page.handler(_Response({}, "video/mp4"))
+
+    assert catalog.non_json_response_class_counts() == {
+        "non_json_html": 1,
+        "non_json_javascript": 1,
+        "non_json_other": 1,
+    }

@@ -39,6 +39,7 @@ class AuthenticatedFeedSource:
         self._seen: set[str] = set()
         self._observation = 0
         self._source_classes = {"graphql": 0, "web_api": 0, "other": 0}
+        self._non_json_response_classes = {"html": 0, "javascript": 0, "other": 0}
         self._schema_counts = {
             "media_nodes": 0,
             "canonical_shaped_values": 0,
@@ -107,10 +108,19 @@ class AuthenticatedFeedSource:
     def schema_counts(self) -> dict[str, int]:
         return dict(self._schema_counts)
 
+    def non_json_response_class_counts(self) -> dict[str, int]:
+        return {f"non_json_{key}": value for key, value in self._non_json_response_classes.items()}
+
     def _observe(self, response: JsonResponse) -> None:
         try:
             content_type = response.headers.get("content-type", "").lower()
             if "json" not in content_type:
+                if "html" in content_type:
+                    self._non_json_response_classes["html"] += 1
+                elif "javascript" in content_type or "ecmascript" in content_type:
+                    self._non_json_response_classes["javascript"] += 1
+                else:
+                    self._non_json_response_classes["other"] += 1
                 return
             url = str(getattr(response, "url", "")).lower()
             source_class = (

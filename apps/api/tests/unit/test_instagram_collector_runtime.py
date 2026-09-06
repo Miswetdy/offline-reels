@@ -16,6 +16,7 @@ from app.instagram.collector.contracts import ReelCandidate
 from app.instagram.collector.runtime.browser_feed import (
     ACTIVE_FEED_INPUT_TARGET_PROBE,
     ACTIVE_MEDIA_IDENTITY_PROBE,
+    EMBEDDED_APPLICATION_DATA_PROBE,
     IDENTITY_PROBE,
     IDENTITY_STRUCTURE_PROBE,
     PAUSE_PROBE,
@@ -109,6 +110,13 @@ class FakePage:
                 "bound_canonical_data_attribute_changed": True,
                 "location_is_specific_reel": False,
                 "href": "must-not-leak",
+            }
+        if expression == EMBEDDED_APPLICATION_DATA_PROBE:
+            return {
+                "embedded_json_script_count": 2,
+                "parseable_embedded_json_script_count": 1,
+                "oversized_embedded_json_script_count": 1,
+                "embedded_tree_allowed_canonical_alias_values": 3,
             }
         if expression == PAUSE_PROBE:
             self.pause_calls += 1
@@ -234,6 +242,15 @@ def test_identity_structure_diagnostics_are_aggregate_only() -> None:
         "bound_canonical_data_attribute_count": 1,
         "bound_canonical_data_attribute_changed": True,
         "location_is_specific_reel": False,
+    }
+
+
+def test_embedded_application_data_diagnostics_are_aggregate_only() -> None:
+    assert feed(FakePage([candidate()])).embedded_application_data_diagnostics() == {
+        "embedded_json_script_count": 2,
+        "parseable_embedded_json_script_count": 1,
+        "oversized_embedded_json_script_count": 1,
+        "embedded_tree_allowed_canonical_alias_values": 3,
     }
 
 

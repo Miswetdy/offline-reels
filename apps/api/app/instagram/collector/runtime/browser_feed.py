@@ -162,6 +162,50 @@ IDENTITY_STRUCTURE_PROBE = """
 }
 """
 
+# Aggregate-only diagnostic for JSON data embedded in the rendered document.
+# It parses only explicit JSON script types; inline JavaScript is never read.
+EMBEDDED_APPLICATION_DATA_PROBE = """
+() => {
+  const acceptedKeys = new Set(['code', 'shortcode', 'media_code']);
+  const result = {
+    embedded_json_script_count: 0,
+    parseable_embedded_json_script_count: 0,
+    oversized_embedded_json_script_count: 0,
+    embedded_tree_allowed_canonical_alias_values: 0,
+  };
+  for (const script of document.querySelectorAll('script[type]')) {
+    const type = (script.getAttribute('type') || '').trim().toLowerCase();
+    if (type !== 'application/json' && type !== 'application/ld+json') continue;
+    result.embedded_json_script_count += 1;
+    const text = script.textContent || '';
+    if (text.length > 2_000_000) {
+      result.oversized_embedded_json_script_count += 1;
+      continue;
+    }
+    let payload;
+    try { payload = JSON.parse(text); } catch { continue; }
+    result.parseable_embedded_json_script_count += 1;
+    const stack = [payload];
+    let visited = 0;
+    while (stack.length && visited < 20_000) {
+      visited += 1;
+      const value = stack.pop();
+      if (Array.isArray(value)) {
+        stack.push(...value);
+      } else if (value && typeof value === 'object') {
+        for (const [key, child] of Object.entries(value)) {
+          if (acceptedKeys.has(key) && typeof child === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(child)) {
+            result.embedded_tree_allowed_canonical_alias_values += 1;
+          }
+          stack.push(child);
+        }
+      }
+    }
+  }
+  return result;
+}
+"""
+
 PAUSE_PROBE = """
 () => {
   const midpoint = window.innerHeight / 2;
@@ -639,6 +683,17 @@ class PlaywrightReelsFeed:
                 self._page.wait_for_timeout(self._limits.polling_seconds * 1000)
         return result
 
+    def embedded_application_data_diagnostics(self) -> dict[str, int]:
+        """Return aggregate evidence from explicit embedded JSON only."""
+        if self._closed:
+            raise CollectorRuntimeError(RuntimeReasonCode.BROWSER_CLOSED)
+        try:
+            return _embedded_application_data_from_payload(
+                self._page.evaluate(EMBEDDED_APPLICATION_DATA_PROBE)
+            )
+        except Exception:
+            return _empty_embedded_application_data_diagnostics()
+
     def feed_source_diagnostics(self) -> dict[str, int]:
         if self._feed_json is None:
             return {
@@ -656,8 +711,15 @@ class PlaywrightReelsFeed:
                 "graphql_schema_responses": 0,
                 "other_tree_allowed_canonical_alias_values": 0,
                 "other_schema_responses": 0,
+                "non_json_html": 0,
+                "non_json_javascript": 0,
+                "non_json_other": 0,
             }
-        return {**self._feed_json.source_class_counts(), **self._feed_json.schema_counts()}
+        return {
+            **self._feed_json.source_class_counts(),
+            **self._feed_json.schema_counts(),
+            **self._feed_json.non_json_response_class_counts(),
+        }
 
     def _wait_for_initial_reel(self) -> ReelCandidate:
         """Boundedly wait for the first async-rendered Reel without scrolling."""
@@ -1319,6 +1381,24 @@ def _empty_identity_structure_diagnostics() -> dict[str, int | bool]:
         "bound_canonical_data_attribute_changed": False,
         "location_is_specific_reel": False,
     }
+
+
+def _empty_embedded_application_data_diagnostics() -> dict[str, int]:
+    return {
+        "embedded_json_script_count": 0,
+        "parseable_embedded_json_script_count": 0,
+        "oversized_embedded_json_script_count": 0,
+        "embedded_tree_allowed_canonical_alias_values": 0,
+    }
+
+
+def _embedded_application_data_from_payload(payload: object) -> dict[str, int]:
+    safe = _empty_embedded_application_data_diagnostics()
+    if not isinstance(payload, dict):
+        return safe
+    for key in safe:
+        safe[key] = _nonnegative_integer(payload.get(key))
+    return safe
 
 
 def _identity_structure_from_payload(payload: object) -> dict[str, int | bool]:
