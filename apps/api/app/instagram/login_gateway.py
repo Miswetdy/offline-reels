@@ -128,7 +128,9 @@ def create_login_gateway(
     async def connect(session_id: UUID, request: Request) -> HTMLResponse:
         _require_host(request, settings)
         if app.state.login_sessions.status(session_id) is LoginSessionStatus.PENDING:
-            return _connection_start_page(session_id)
+            return _connection_start_page(
+                session_id, inspection=request.query_params.get("inspect") == "1"
+            )
         return _unavailable_page("Reconnect is required.")
 
     @app.post("/connect/{session_id}/activate")
@@ -169,11 +171,12 @@ def create_login_gateway(
 
     @app.get("/remote/{session_id}/interactive", response_class=HTMLResponse)
     async def interactive_login(session_id: UUID, request: Request) -> HTMLResponse:
+        """Operator viewer that does not poll or complete the login session."""
         _require_host(request, settings)
         _require_session(request.cookies.get("login_gateway_session"), session_id, settings)
         if app.state.login_sessions.status(session_id) is not LoginSessionStatus.ACTIVE:
             return _unavailable_page("Reconnect is required.")
-        return _full_bleed_remote_viewer_page(session_id)
+        return _full_bleed_remote_viewer_page(session_id, inspection=True)
 
     @app.get("/remote/{session_id}/layout-preview", response_class=HTMLResponse)
     async def layout_preview(session_id: UUID, request: Request) -> HTMLResponse:
@@ -393,10 +396,17 @@ reauth.addEventListener('click',()=>location.assign('/remote/{sid}/interactive')
     return HTMLResponse(html, headers=_security_headers())
 
 
-def _full_bleed_remote_viewer_page(session_id: UUID) -> HTMLResponse:
+def _full_bleed_remote_viewer_page(
+    session_id: UUID, *, inspection: bool = False
+) -> HTMLResponse:
     """Full-bleed, width-first mobile frame around maintained same-origin noVNC."""
     sid = escape(str(session_id))
     query = urlencode({"autoconnect": "true", "resize": "scale", "path": f"remote/{sid}/websockify"})
+    viewer_lifecycle = (
+        "state.textContent='Откройте Instagram и вручную проверьте диалог.';showRemote();"
+        if inspection
+        else "poll();setInterval(poll,5000);"
+    )
     html = f"""<!doctype html>
 <html lang="ru"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Подключение Instagram</title>
@@ -438,7 +448,7 @@ open.addEventListener('click',async()=>{{open.disabled=true;const r=await fetch(
 const labels={{preparing:'Подготовка браузера…',login:'Войдите в Instagram.',challenge:'Завершите 2FA или CAPTCHA.',verifying:'Проверяем подключение…',connected:'Instagram подключён.',expired:'Ссылка истекла.',cancelled:'Сессия отменена.',completed:'Instagram подключён.'}};
 function showChecking(title='Проверяем подключение…',detail='Instagram подтверждает авторизацию.'){{checkingTitle.textContent=title;checkingDetail.textContent=detail;checking.hidden=false;viewer.style.visibility='hidden';open.style.display='none';keyboard.style.display='none'}}function showRemote(){{checking.hidden=true;viewer.style.visibility='visible';open.style.display='';keyboard.style.display=''}}
 async function poll(){{const r=await fetch('/remote/{sid}/state',{{cache:'no-store'}});if(!r.ok)return;const s=await r.json();state.textContent=labels[s.state]||'Требуется повторное подключение.';if(s.state==='verifying')showChecking();else if(['login','challenge'].includes(s.state))showRemote();if(['connected','completed'].includes(s.state)){{showChecking('Instagram подключён','Профиль подтверждён. Возвращаемся на главную…');viewer.remove();open.remove();keyboard.remove();location.replace('/')}}else if(['expired','cancelled'].includes(s.state)){{showChecking(labels[s.state],'Создайте новую защищённую ссылку.');viewer.remove();open.remove();keyboard.remove()}}}}
-poll();setInterval(poll,5000);
+{viewer_lifecycle}
 </script></html>"""
     return HTMLResponse(html, headers=_security_headers())
 
@@ -458,10 +468,10 @@ def _remote_viewer_page(session_id: UUID) -> HTMLResponse:
     return HTMLResponse(html, headers=_security_headers())
 
 
-def _connection_start_page(session_id: UUID) -> HTMLResponse:
+def _connection_start_page(session_id: UUID, *, inspection: bool = False) -> HTMLResponse:
     """Read a fragment-only token and require a deliberate user activation."""
     sid = escape(str(session_id))
-    html = f"""<!doctype html><html lang=\"ru\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><title>Instagram connection</title><style>html,body{{height:100%;margin:0;background:#111;color:#fff;font:17px system-ui;display:grid;place-items:center}}main{{max-width:26rem;padding:2rem;text-align:center}}button{{font:inherit;padding:.8rem 1.1rem;border:0;border-radius:.6rem;background:#4d6fff;color:white}}p{{line-height:1.45}}</style><main><p id=\"state\">Tap to open the protected remote browser.</p><button id=\"open\">Open browser</button></main><script>const token=location.hash.slice(1)||new URLSearchParams(location.search).get('launch_token')||'';history.replaceState(null,'',location.pathname);const state=document.querySelector('#state'),button=document.querySelector('#open');button.addEventListener('click',async()=>{{if(!token){{state.textContent='Reconnect is required.';button.remove();return}}button.disabled=true;state.textContent='Preparing browser…';try{{const r=await fetch('/connect/{sid}/activate',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify({{launch_token:token}})}});if(!r.ok)throw new Error();location.replace('/remote/{sid}')}}catch(_error){{state.textContent='Reconnect is required.';button.remove()}}}});</script></html>"""
+    html = f"""<!doctype html><html lang=\"ru\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><title>Instagram connection</title><style>html,body{{height:100%;margin:0;background:#111;color:#fff;font:17px system-ui;display:grid;place-items:center}}main{{max-width:26rem;padding:2rem;text-align:center}}button{{font:inherit;padding:.8rem 1.1rem;border:0;border-radius:.6rem;background:#4d6fff;color:white}}p{{line-height:1.45}}</style><main><p id=\"state\">Tap to open the protected remote browser.</p><button id=\"open\">Open browser</button></main><script>const inspection={str(inspection).lower()};const token=location.hash.slice(1)||new URLSearchParams(location.search).get('launch_token')||'';history.replaceState(null,'',location.pathname);const state=document.querySelector('#state'),button=document.querySelector('#open');button.addEventListener('click',async()=>{{if(!token){{state.textContent='Reconnect is required.';button.remove();return}}button.disabled=true;state.textContent='Preparing browser…';try{{const r=await fetch('/connect/{sid}/activate',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify({{launch_token:token}})}});if(!r.ok)throw new Error();location.replace(inspection?'/remote/{sid}/interactive':'/remote/{sid}')}}catch(_error){{state.textContent='Reconnect is required.';button.remove()}}}});</script></html>"""
     return HTMLResponse(html.replace("vnc_lite.html", "vnc.html"), headers=_security_headers())
 
 

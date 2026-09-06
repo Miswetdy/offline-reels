@@ -230,6 +230,38 @@ def test_connected_profile_check_hides_remote_browser_until_reauth_is_required()
     assert client.get(f"/remote/{created.session_id}/state").json() == {"state": "completed"}
 
 
+def test_connected_profile_inspection_viewer_does_not_poll_or_complete() -> None:
+    engine = _engine()
+    Base.metadata.create_all(engine)
+    settings = LoginGatewaySettings.model_validate(
+        {
+            "DATABASE_URL": "sqlite://",
+            "LOGIN_GATEWAY_ORIGIN": "https://login.example.test",
+            "LOGIN_GATEWAY_SESSION_SECRET": "a" * 32,
+            "LOGIN_BROWSER_CONTROL_SECRET": "b" * 32,
+        }
+    )
+    app = create_login_gateway(settings, _ConnectedBrowser())
+    app.state.session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app.state.login_sessions = LoginSessionService(app.state.session_factory)
+    account_id = uuid4()
+    with app.state.session_factory.begin() as db:
+        db.add(InstagramAccount(id=account_id, status=AccountStatus.CONNECTED.value))
+    created = app.state.login_sessions.create(account_id, allow_connected_profile_check=True)
+    client = TestClient(app, base_url="https://login.example.test")
+    start = client.get(f"/connect/{created.session_id}?inspect=1")
+    assert "const inspection=true" in start.text
+    assert client.post(
+        f"/connect/{created.session_id}/activate",
+        headers={"origin": "https://login.example.test"},
+        json={"launch_token": created.launch_token},
+    ).status_code == 204
+    viewer = client.get(f"/remote/{created.session_id}/interactive")
+    assert "Откройте Instagram и вручную проверьте диалог" in viewer.text
+    assert "setInterval(poll,5000)" not in viewer.text
+    assert app.state.login_sessions.status(created.session_id) is LoginSessionStatus.ACTIVE
+
+
 def test_post_login_verification_hides_remote_view_before_reels_check() -> None:
     engine = _engine()
     Base.metadata.create_all(engine)

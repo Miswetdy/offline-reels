@@ -311,6 +311,13 @@ or dismissed. Its auto-completion removes the viewer when connected. Provide a
 separate private operator viewer for this narrow inspection before attempting
 another input repair or accepting 3/3.
 
+The separate `inspect=1` gateway viewer addresses that operational gap without
+making the dialog actionable to Collector code. It is reachable only after the
+same one-time activation and signed-cookie checks, relays the private viewer
+through the gateway, expires with the session, and deliberately does not poll
+or complete profile state. The operator must decide any dialog action manually;
+the next live run remains the only evidence of its effect.
+
 The next diagnostic build records only aggregate role and interaction-state
 facts of that hit's already-detected interactive ancestor: native/ARIA control
 kind, disabled state, focusability, dialog/modal ancestry and

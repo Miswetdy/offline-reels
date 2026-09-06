@@ -1,5 +1,19 @@
 # Status
 
+## TASK-016 private feed-dialog inspection viewer — 2026-09-06
+
+The login gateway now supports a one-time `inspect=1` launch for an explicitly
+operator-controlled private viewer. After the normal single-use activation, it
+opens `/interactive`, preserves the same signed cookie, origin checks and
+private VNC relay, but does not poll browser readiness or complete the profile
+check. The user can therefore inspect the authenticated feed dialog before the
+15-minute session expires. The viewer never exposes credentials, cookies, CDP
+or VNC publicly and does not automate any Instagram action.
+
+The focused login-gateway suite passed 13 tests; Ruff and diff validation
+passed. Next: deploy this gateway change, open an inspect session, manually
+resolve only the understood dialog, close the session, and repeat bounded 3/3.
+
 ## TASK-016 post-profile-check Linux run — 2026-09-06
 
 The one-time profile check reported that Instagram is connected, but this

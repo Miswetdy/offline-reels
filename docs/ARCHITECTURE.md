@@ -12,6 +12,13 @@ Next.js. The login route does not expose VNC, CDP or the browser controller
 directly. The obsolete frontend `/videos` redirect is removed so the namespace
 is unambiguous.
 
+For a connected-profile feed-dialog inspection, a one-time `/connect/{id}?inspect=1`
+launch activates the same signed session and redirects only that browser to
+`/remote/{id}/interactive`. This private viewer does not poll readiness or
+complete the profile-check session, allowing manual review until expiry. It
+uses the existing authenticated gateway relay; it does not publish VNC, CDP or
+the browser-control service.
+
 The opt-in one-shot Collector has its own outbound network; it also joins the
 internal application network for PostgreSQL and MinIO, has no port, and never
 starts with API or normalizer startup. Profile and workspace remain separate

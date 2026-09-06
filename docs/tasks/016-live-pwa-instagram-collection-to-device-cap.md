@@ -18,6 +18,15 @@ Profile-check viewer автоматически завершает сессию 
 допустим новый bounded 3/3. Лимиты, endpoint hit-test, JSON-gate и блокировка
 50 не меняются.
 
+Реализован отдельный one-time operator viewer: ссылка `/connect/{id}?inspect=1`
+после обычной single-use activation ведёт только на `/remote/{id}/interactive`.
+Он использует существующие signed cookie, origin checks и private gateway relay,
+но не poll-ит readiness и не complete-ит profile-check автоматически. До
+истечения TTL оператор может вручную посмотреть authenticated feed dialog. Этот
+viewer не публикует VNC/CDP/control service и не даёт Collector права нажимать
+dialog. После ручного действия сессию нужно закрыть, затем выполнить bounded
+3/3 как единственное доказательство результата.
+
 Bounded Linux run `d5d3dc5` (2026-09-06) дал 1/3 source-коммит, 0 переходов
 и `TRANSITION_FAILED`, но установил причину. Верхнее препятствие — focusable
 `role=button`, найденный через interactive ancestor внутри modal/dialog
