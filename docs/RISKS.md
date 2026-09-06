@@ -282,6 +282,14 @@ as a demonstrated active-card gesture surface, but does not identify an overlay
 or establish an alternative. Retain direct endpoint hits and inspect only safe
 structural viewport/overlay facts before another repair.
 
+The `d44d4c2` Linux evidence proves a local endpoint interception: the selected
+video appears below the top hit in the point stack, while the visual viewport
+matches layout and the hit is neither fixed nor viewport-covering. Thus it is
+not evidence for a global fixed overlay or viewport-coordinate mismatch. The
+interceptor is still not identified or demonstrated as a safe gesture target.
+Determine its bounded relationship to feed-card and page-shell layers before
+altering input targeting; retain direct endpoint and canonical JSON gates.
+
 The structural diagnostic build separates self/inherited controls and reports
 containment, sibling/shared-near-ancestor relationships and rectangle coverage
 independently of control precedence. Shared ancestry cannot establish that an

@@ -2,6 +2,22 @@
 
 ## Проблема
 
+В bounded Linux run `d44d4c2` (2026-09-06) по-прежнему 1/3 source-коммит,
+0 переходов и `TRANSITION_FAILED`. Video присутствует ниже верхнего hit в
+`elementsFromPoint()` stack, следовательно, выбранные endpoint-точки реально
+перекрыты верхней поверхностью. Обе точки находятся внутри visual viewport,
+а visual и layout viewport совпадают. Верхний hit не имеет fixed-предка и не
+покрывает ни viewport, ни видимую область video.
+
+Это исключает координатное/viewport-расхождение и глобальный fixed overlay.
+Препятствие локально для проверяемой области. Сохраняется inherited control,
+но ни hit, ни control не связаны с selected video по доступным bounded
+структурным признакам. Touch корректно не отправлен; стабильной media-смены и
+canonical confirmation нет, post-action JSON есть. Следующая диагностика
+должна безопасно отличить отдельный слой feed-card от page shell прежде чем
+менять target input. Нельзя направлять жест в найденный верхний элемент или
+ослаблять endpoint/JSON gates. 3/3 и 50 остаются заблокированными.
+
 Последний bounded Linux run `db8a67c` (2026-09-06) снова дал 1/3 source-коммит,
 0 переходов и `TRANSITION_FAILED`. Probe нашёл selected video в viewport, но
 ни одна endpoint-точка не попала в него, поэтому touch не отправлен. Внешний

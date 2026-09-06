@@ -1,5 +1,23 @@
 # Status
 
+## TASK-016 Linux stack and viewport evidence — 2026-09-06, d44d4c2
+
+The bounded Stage-10 target-3 run again committed one real source, confirmed
+zero advances and stopped `TRANSITION_FAILED`. The selected video was in the
+elementsFromPoint stack below the top hit for sampled endpoints, proving that a
+higher surface intercepts those points. Both points were inside the visual
+viewport; visual and layout viewports did not differ. The top hit has no fixed
+ancestor and does not cover either the viewport or the visible video area.
+
+This rules out a coordinate/visual-viewport mismatch and a viewport-wide fixed
+overlay. The observed blocker is local to the sampled area. The probe still
+reports an inherited interactive control, but neither the hit nor that control
+is structurally associated with the selected video under the current bounded
+relationships. Touch was correctly withheld; no stable media change or
+canonical JSON confirmation followed. Next: safely distinguish whether the
+local intercepting surface belongs to a separate feed-card layer or the page
+shell before changing input targeting. 3/3 and 50 remain blocked.
+
 ## TASK-016 overlay versus viewport diagnostic evidence
 
 The hit-test probe now samples `elementsFromPoint()` for every bounded endpoint
