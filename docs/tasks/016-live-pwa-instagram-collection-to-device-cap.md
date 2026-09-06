@@ -2,6 +2,21 @@
 
 ## Проблема
 
+Bounded Linux run `4d77c2d` (2026-09-06) повторил 1/3 source-коммит,
+0 подтверждённых переходов и `TRANSITION_FAILED`. Selected video остаётся ниже
+верхнего hit в point stack, поэтому touch не отправлен. Local blocker не имеет
+связи ни с одним visible video: не содержит и не находится в видео, не имеет
+bounded common ancestor и не является sibling. У hit и control-предка нет
+признака direct body child, у hit нет semantic page-shell ancestor.
+
+Тем самым исключены классификации «слой другой видимой карточки» и page shell,
+которые покрывает текущий probe. Это неопознанная локальная интерактивная
+поверхность; данные не делают её безопасной input-целью. Post-action JSON есть,
+стабильной media-смены и canonical confirmation нет. Далее нужно исследовать
+только безопасные фиксированные признаки semantic role/interaction state этой
+поверхности вместо расширения координат swipe. Endpoint hit-test, JSON-gate,
+лимиты, 3/3 и 50 не меняются.
+
 В bounded Linux run `d44d4c2` (2026-09-06) по-прежнему 1/3 source-коммит,
 0 переходов и `TRANSITION_FAILED`. Video присутствует ниже верхнего hit в
 `elementsFromPoint()` stack, следовательно, выбранные endpoint-точки реально

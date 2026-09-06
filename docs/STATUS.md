@@ -1,5 +1,22 @@
 # Status
 
+## TASK-016 Linux card-layer and shell evidence — 2026-09-06, 4d77c2d
+
+The bounded Stage-10 target-3 run committed one real source, confirmed zero
+advances and terminated `TRANSITION_FAILED`. The selected video remained below
+the top point-stack hit, so touch was not dispatched. The local blocker has no
+reported relation to any visible video: it neither contains nor lies within a
+visible video, shares no bounded near ancestor with one, and is not a sibling.
+It also has no recorded page-shell semantic ancestor and neither the hit nor its
+interactive control ancestor is a direct body child.
+
+This rules out the other-card-layer and page-shell classifications available to
+the diagnostic probe. It remains an unidentified local interactive surface;
+the data does not establish it as a safe input target. Post-action JSON was
+observed without stable media change or canonical confirmation. Next: inspect
+the surface's safe, fixed semantic role or interaction state rather than add
+more candidate gesture coordinates. 3/3 and 50 remain blocked.
+
 ## TASK-016 local-card versus page-shell evidence
 
 The probe now separately records a hit's relationship to any other visible

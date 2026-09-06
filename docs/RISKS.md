@@ -290,6 +290,13 @@ interceptor is still not identified or demonstrated as a safe gesture target.
 Determine its bounded relationship to feed-card and page-shell layers before
 altering input targeting; retain direct endpoint and canonical JSON gates.
 
+The `4d77c2d` run excludes the bounded alternative relationships: the local
+intercepting hit is unrelated to every visible video and lacks the recorded
+page-shell markers. This is still not evidence for a safe alternate target.
+Repeatedly trying more coordinates would add collection side effects without
+answering the interaction cause. Establish only fixed, non-content semantic or
+state facts about the blocker before an evidence-backed input repair.
+
 The local-card diagnostic records a hit's bounded relation to non-selected
 visible videos separately from page-shell facts. A relationship may indicate a
 neighbouring card layer but does not prove ownership or make that layer a safe
