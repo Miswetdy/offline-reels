@@ -12,8 +12,13 @@ samples, without persistence or downloading.
 The first real bounded run with the earlier, broader embedded source committed
 one durable source and confirmed its first queue-backed transition, then
 correctly stopped on `DIRECT_DOWNLOAD_EXTRACTOR_FAILED` for the next candidate.
-The source was narrowed before any retry; the stricter real `3/3` run remains
-pending server reachability. No `3/3` or `10/10` acceptance is claimed.
+The source was narrowed before any retry. The stricter run then committed two
+durable sources and confirmed two queue-backed transitions, but exposed that
+the fixed page initially supplies only two media candidates and still contained
+the initial Reel. The source now consumes the current and each reserved ID once
+to prevent `DUPLICATE_REEL`; a fresh `3/3` run is intentionally deferred until
+queue replenishment has a separate no-download acceptance. No `3/3` or `10/10`
+acceptance is claimed.
 
 ## TASK-018 authenticated JSON source-class discovery — 2026-09-06
 
