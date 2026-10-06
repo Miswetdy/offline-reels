@@ -1,221 +1,27 @@
-# Technical Decisions
-
-This document contains important technical decisions made during project development.
-
-Each decision should describe:
-- what was decided;
-- why this approach was chosen;
-- what alternatives were considered;
-- current status.
-
----
-
-# Decision 1: MVP target platform
-
-## Decision
-
-The first version targets iOS devices through a PWA approach.
-
-Android and desktop support are not part of the initial MVP.
-
-## Reason
-
-The primary use case is personal offline viewing of Reels on mobile devices.
-
-Starting with one platform allows faster validation of the core experience:
-- synchronization;
-- offline playback;
-- storage management;
-- feed experience.
-
-## Alternatives considered
-
-- Native iOS application.
-- Cross-platform mobile application.
-- Supporting iOS and Android simultaneously.
-
-## Status
-
-Accepted.
-
----
-
-# Decision 2: Instagram integration isolation
-
-## Decision
-
-Instagram interaction must be isolated inside a dedicated Instagram Collector component.
-
-Backend and frontend must not depend on Instagram-specific implementation details.
-
-## Reason
-
-Instagram integration is an external dependency that may change.
-
-The system should allow replacing the implementation without rewriting the core application.
-
-## Alternatives considered
-
-- Putting Instagram automation directly into Backend.
-- Using Instagram logic throughout the application.
-
-## Status
-
-Accepted.
-
----
-
-# Decision 3: Server-side preparation of content
-
-## Decision
-
-The server prepares the user's offline feed:
-- discovers Reels;
-- downloads videos;
-- prepares metadata.
-
-The client only synchronizes prepared content.
-
-## Reason
-
-Server-side processing gives more control over:
-- reliability;
-- retries;
-- storage;
-- background processing.
-
-## Alternatives considered
-
-- Downloading directly on the phone.
-- Fully client-side Instagram automation.
-
-## Status
-
-Accepted.
-
----
-
-# Decision 4: Backend as the only client communication layer
-
-## Decision
-
-The client communicates only with Backend API.
-
-The client should not directly interact with internal services.
-
-## Reason
-
-This keeps:
-- security boundaries clear;
-- infrastructure replaceable;
-- business logic centralized.
-
-## Status
-
-Accepted.
-
----
-
-# Decision 5: Offline storage approach
-
-## Decision
-
-For the MVP, store downloaded video files in Cache Storage and store ready-video metadata in IndexedDB.
-
-The exact saved-video size is calculated only from ready video `byteSize` values in IndexedDB. Browser storage usage is an approximate origin-wide diagnostic value and is displayed separately.
-
-## Experiment result
-
-TASK-001 was completed on an iPhone 16 Pro running iOS 26.5.2 with 44.2 GB of free device storage.
-
-- The PWA was installed successfully on the Home Screen.
-- A 13,864,238-byte video downloaded and played while online.
-- The saved video remained available after a full PWA restart.
-- The PWA started in Airplane Mode and played the video offline; a second offline launch also worked.
-- Deletion worked: the exact saved-video size immediately became `0 B`, and the removed video did not return after restarting the PWA.
-- Approximate browser storage can remain non-zero after deletion because it also includes the app shell, service worker, IndexedDB, and other origin data.
-
-## Remaining validation
-
-This experiment does not confirm long-term persistence, behavior near the storage quota, or behavior with a large number of videos.
-
-## Status
-
-Accepted.
-
----
-
-# Decision 6: iPhone media compatibility and installed-PWA storage
-
-## Decision
-
-Treat media codec compatibility as an ingestion concern and test offline
-downloads only from the installed Home Screen PWA.
-
-## Reason
-
-The iPhone acceptance run showed that Safari and the installed PWA have
-separate offline-storage contexts. A VP9 MP4 failed on iPhone, while H.264
-with `yuv420p` and `faststart` played correctly. Media normalization must run
-before stored media reaches playback.
-
-## Status
-
-Accepted. Stages 1A–1B implement the boundary and integrate it with new
-synchronous seed ingestion. Existing objects remain unchanged and require
-manual deletion/reseeding if incompatible.
-
----
-
-# Decision 7: Canonical media normalization boundary
-
-## Decision
-
-Use an API-local normalization boundary before future ingestion: MP4,
-H.264, `yuv420p`, AAC when present, and `faststart`. Remux an already
-compatible input; transcode all other supported input with `libx264`.
-
-## Reason
-
-This preserves compatible input where possible while addressing the confirmed
-iPhone VP9 failure. `ffprobe` metadata alone is insufficient, so both source
-and result must pass complete `ffmpeg` decode validation. The public API yields
-the result inside a deterministic context-managed temporary scope, and the seed
-service uploads it before cleanup. PostgreSQL metadata is committed only after
-the normalized object upload; a later DB failure triggers best-effort object
-compensation.
-
-## Status
-
-Accepted. Stages 1A and 1B are implemented for new synchronous seeds. Collector
-ingestion, background processing and migration of historical objects remain
-separate work.
-
----
-
-# Decision 8: Previous/current/next playback preload
-
-## Decision
-
-Keep at most three mounted media sources in the shared vertical feed: the
-previous, current and next item. The current item uses `preload="auto"` and is
-the only autoplay target; adjacent items use `preload="metadata"` and remain
-paused.
-
-## Reason
-
-The previous active-plus-next window released the previous item's source as
-soon as the user advanced, which made an immediate backward swipe noticeably
-slower. Retaining its source improves the Reels-like navigation path without
-duplicating online/offline playback code or changing API pagination.
-
-## Constraints
-
-`preload` is a browser hint, not a byte-budget guarantee. The offline Service
-Worker can materialize a cached MP4 for each Range request, so real iPhone
-memory, seek and rapid-swipe validation is mandatory before treating the
-change as accepted on iOS.
-
-## Status
-
-Accepted as post-iPhone hardening block 2; awaiting post-change iPhone smoke.
+# Действующие решения
+
+iPhone PWA — единственная целевая платформа MVP. Сервер готовит видео;
+клиент работает через Backend и воспроизводит локальные файлы.
+Текущее поведение — в [архитектуре](ARCHITECTURE.md), готовность — в [STATUS](STATUS.md).
+
+ADR фиксируют причины и ограничения решений, а не журнал выполнения.
+Устаревшие эксперименты и заменённые варианты доступны в Git; номера не перенумерованы.
+
+- [001 — Cache Storage + IndexedDB](adr/001-cache-storage-indexeddb-offline-video.md)
+- [002 — Видео через Backend API](adr/002-api-video-streaming.md)
+- [003 — Каталог с keyset pagination](adr/003-keyset-video-feed-pagination.md)
+- [004 — Согласованность локальной библиотеки](adr/004-offline-library-local-storage-foundation.md)
+- [005 — Один Serwist worker для PWA](adr/005-serwist-turbopack-application-shell.md)
+- [006 — Локальная media route](adr/006-service-worker-offline-media-route.md)
+- [007 — Collector и durable media pipeline](adr/007-instagram-collector-pipeline.md)
+- [009 — Отдельный Collector image](adr/009-server-ready-linux-collector-container.md)
+- [010 — Ручной login через серверный Chromium](adr/010-secure-mobile-instagram-login-browser.md)
+- [011 — Отдельный normalizer worker](adr/011-instagram-normalization-worker.md)
+- [012 — Защищённое управление](adr/012-protected-instagram-management-control-plane.md)
+- [013 — Локальный запас принадлежит устройству](adr/013-local-reserve-device-reports.md)
+- [014 — Просмотр после свайпа и локальное удаление](adr/014-viewed-reel-lifecycle.md)
+- [015 — Linux Chromium sandbox](adr/015-hardened-linux-chromium-collector.md)
+- [016 — Stage 10 single-origin ingress](adr/016-stage10-single-origin-ingress.md)
+- [017 — Linux login и общий профиль](adr/017-hardened-stage10-instagram-login.md)
+- [019 — Operator handoff в том же Chromium process](adr/019-same-process-collector-operator-handoff.md)
+- [022 — Следующий Reel из authenticated embedded JSON](adr/022-embedded-reels-feed-candidate-queue.md)

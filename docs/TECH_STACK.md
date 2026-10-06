@@ -1,82 +1,21 @@
-# Technology Stack
+# Стек
 
-## Frontend
+| Область | Реализация |
+| --- | --- |
+| Frontend | Next.js, React, TypeScript, Tailwind, Serwist PWA |
+| Локальные данные | Cache Storage, IndexedDB через idb |
+| Backend | Python, FastAPI, SQLAlchemy, Alembic |
+| Данные/файлы | PostgreSQL, Redis, MinIO |
+| Collector | Playwright, Chrome for Testing, yt-dlp |
+| Media | ffmpeg, ffprobe |
+| Развёртывание | Docker Compose, Caddy; Tailscale для staging HTTPS |
+| Проверки | pytest, Ruff, Vitest, Testing Library, Playwright E2E |
 
-Technology:
-- Next.js
-- TypeScript
-- Tailwind CSS
-- PWA
-- IndexedDB
+Node `24.14.0`, npm `11.9.0`, Python `3.14.3`.
+Источники версий: [Node](../.node-version), [Python](../apps/api/.python-version),
+[web package](../apps/web/package.json), [API project](../apps/api/pyproject.toml).
+Точное разрешение зависимостей хранится в package-lock.json и uv.lock;
+версии images/browser — в Dockerfile и Compose.
 
-Purpose:
-Build the mobile-friendly offline feed interface.
-
----
-
-## Backend
-
-Technology:
-- Python
-- FastAPI
-- SQLAlchemy
-- Alembic
-
-Purpose:
-Provide API, business logic, synchronization, and application state management.
-
----
-
-## Database
-
-Technology:
-- PostgreSQL
-
-Purpose:
-Store users, videos metadata, feed states, and synchronization information.
-
----
-
-## Background Processing
-
-Technology:
-- Redis
-- Celery
-
-Purpose:
-Handle asynchronous tasks:
-- collecting Reels;
-- downloading videos;
-- synchronization jobs.
-
----
-
-## Storage
-
-Technology:
-- S3-compatible storage
-- MinIO for local development
-
-Purpose:
-Store video files and media assets.
-
----
-
-## Instagram Integration
-
-Technology:
-- Playwright
-
-Purpose:
-Automate browser interaction with Instagram through isolated server-side sessions.
-
----
-
-## Development
-
-Technology:
-- Docker Compose
-- GitHub
-
-Purpose:
-Provide reproducible local development environment and version control.
+Collector dependencies устанавливаются отдельным extra/image; API не содержит
+Chromium. Normalizer — отдельный процесс. Celery и scheduler не реализованы.

@@ -1,36 +1,18 @@
-# 014. Viewed Reel lifecycle is local-first and account-scoped
+# ADR 014: Просмотр после свайпа и локальное удаление
 
-## Decision
+Принято. Только завершённый пользовательский pointer/touch свайп
+с full-screen A на другой B отмечает A просмотренным.
+Playback, duration, ended, reload и программная навигация не считаются.
 
-A Reel becomes viewed only when a user pointer/touch swipe from its active,
-full-screen card commits a transition to a different full-screen card. A short
-transition token binds the gesture to source A and is consumed by the matching
-A → B commit. Autoplay, `currentTime`, watch duration, ended events, visibility,
-reloads, preloads, pagination, layout, internal React updates and programmatic
-navigation are not viewed decisions. Accessibility navigation is not included
-in this MVP decision.
+Первый event атомарно записывает viewedAt, deleteAfter (+1 час),
+tombstone и outbox в IndexedDB. Повтор не продлевает срок.
+Удаляется только локальный MP4; пока этот ролик активен, удаление отложено.
+Закрытая iOS PWA выполняет overdue cleanup при следующем пробуждении.
 
-The first qualifying event writes `viewedAt`, `deleteAfter` (`viewedAt + 1h`),
-a deletion tombstone and a sync-outbox entry in the same IndexedDB transaction
-before any request. It is monotonic: subsequent playback never changes the
-first time. One hour later the foreground lifecycle marks deletion started,
-deletes only the Cache Storage object, then commits a retained `deleted`
-tombstone. A closed iOS PWA performs overdue work on its next launch,
-foreground or network return; it does not claim background execution.
+Backend хранит идемпотентный first-view по account/reel с серверным временем.
+Account-ready каталог исключает просмотренные Reel; глобальное media
+и другие аккаунты сохраняются. Tombstones блокируют повторное скачивание
+и остаются после clear. Cleanup не запускает refill.
 
-Backend persistence is `instagram_reel_views`, unique by `(account_id,
-reel_id)`. Its first `viewed_at` is immutable server time. The management batch API
-accepts only bounded canonical video UUIDs, resolves account ownership through
-collection run items, and is idempotent. The account-ready catalog excludes
-confirmed views. Global canonical MP4s and other accounts are unaffected.
-
-## Consequences
-
-The single `offlineVideos` IndexedDB store retains tombstones/outbox records;
-`cancelAndClear` removes eligible local media but not viewed history. The
-download queue and reserve candidates reject tombstoned IDs, including a late
-download completion. Deletion reconciliation is single-flight and never starts
-refill. Stage 8 infrastructure remains in the codebase but automatic refill is
-temporarily disabled for the MVP by a production-false compile-time gate.
-`viewed` is lifecycle data only: the ordinary Reels UI does not expose a watched
-marker or technical timestamps.
+Automatic reserve entry points отключены compile-time; ручная загрузка остаётся.
+UI не показывает viewed markers, timestamps, UUID или reason codes.

@@ -1,25 +1,16 @@
-# ADR 011: Durable Instagram normalization worker
+# ADR 011: Отдельный normalizer worker
 
-## Status
+Принято. Browser-free процесс получает PostgreSQL job через
+FOR UPDATE SKIP LOCKED и UUID lease. FastAPI его не запускает.
 
-Accepted.
+Committed source проходит ffprobe/full decode, remux или transcode в MP4:
+H.264/yuv420p, AAC при наличии audio, faststart. Attempt-owned staging
+публикуется в immutable SHA-256 final key до DB-транзакции ready/video/job.
+Source удаляется только после commit; неудачная очистка остаётся для reconcile.
 
-## Decision
+Staging не виден каталогу. Existing final objects проверяются и не затираются;
+compensation ограничена объектом текущей попытки без durable reference.
+Retries ограничены тремя попытками; expired leases и cleanup обрабатывает reconcile.
 
-Normalization is an explicit browser-free worker, never a FastAPI startup side
-effect. It claims jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, writes an
-opaque UUID worker id and bounded lease, and uses the existing media normalizer.
-Only H.264/yuv420p/AAC MP4 output can be published.
-
-Each attempt uploads to `instagram-normalizer-staging/<job>/<attempt>/`, which
-is never API-visible. Validated output is copied to deterministic
-`videos/<sha256>.mp4`; an existing final key is reused only if size, SHA-256 and
-media invariants match. PostgreSQL atomically upserts the video, links the Reel,
-marks it ready and completes the job. A new unreferenced final object is
-compensated after DB failure; existing final objects are never removed.
-
-Source cleanup begins only after that durable commit. A Reel stays
-cleanup-pending until source deletion succeeds or is already absent. The
-reconciler cleans stale attempt staging and retries ready-source cleanup without
-deleting durable source/final media. Failed jobs remain history; retries create
-new pending jobs and the Reel has at most three attempts.
+Команда `app.scripts.run_instagram_normalizer_worker` поддерживает
+`--once`, `--limit`, `--daemon`, `--status`, `--verify`, `--reconcile`.

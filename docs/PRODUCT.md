@@ -1,43 +1,21 @@
-# Product
+# Продукт
 
-## Vision
-
-Create a personal offline Reels experience.
-
-The user should be able to:
-- connect Instagram;
-- prepare a personalized Reels feed;
-- download videos;
-- watch them offline through a vertical feed.
+Персональная iPhone PWA: заранее подготовить рекомендации Instagram,
+скачать видео на телефон и смотреть вертикальную ленту без интернета.
 
 ## MVP
 
-The first version includes:
+- Серверный сбор персональных Reels и скачивание источников.
+- Подготовка совместимых с iPhone MP4.
+- Синхронизация через Backend API.
+- Локальное хранение, офлайн-воспроизведение и вертикальные свайпы.
+- Учёт просмотренных роликов и управление местом.
 
-- collecting personalized Reels;
-- downloading videos;
-- storing videos;
-- synchronizing with phone;
-- offline playback;
-- vertical swipe feed;
-- watched status;
-- storage management.
+Пароли, cookies и Instagram-профили остаются на сервере.
+Текущая реализация использует ручную загрузку; автоматическое пополнение
+и серверный scheduler не активны. Работа в закрытой iOS PWA не гарантируется.
 
-## Current Collector status
+Не входят: лайки, комментарии, ответы, публикации, социальные функции,
+собственный рекомендательный алгоритм, отдельные Android/desktop-продукты.
 
-The production repository currently implements only the Collector architecture
-foundation: states, integrity constraints and a migration. Users cannot connect
-Instagram through the application yet, and no automatic collection or
-normalization worker runs. The next planned step is an isolated Collector
-service with fixture mode. The separate research spike is not product runtime.
-
-## Out of scope
-
-The first version does not include:
-
-- comments;
-- likes;
-- replies;
-- publishing;
-- social features;
-- custom recommendations.
+Готовность реализации и ближайшие шаги — в [STATUS](STATUS.md).

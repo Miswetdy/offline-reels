@@ -1,33 +1,23 @@
-# ADR 022: Embedded Reels feed candidate queue
+# ADR 022: Следующий Reel из authenticated embedded JSON
 
-## Context
+Принято в текущем коде; source-only Linux live-приёмка остаётся открытой.
+Виртуализированная лента не даёт надёжной связи между свайпом и canonical ID,
+поэтому видимая смена видео больше не является источником следующего ID.
 
-The Stage-10 mobile presentation can confirm a stable active-media change but
-does not expose a safe DOM or URL binding to its canonical Reel ID. The
-authenticated GraphQL and Web API responses observed during the same flow did
-not contain an accepted canonical alias. In contrast, the authenticated fixed
-`/reels/` document contained explicit JSON scripts with validated alias values.
+После fixed /reels/ navigation provider читает только explicit
+application/json и application/ld+json scripts authenticated документа.
+Ограничены payload/tree traversal, очередь (32) и session memory IDs (64).
+Допускаются code/shortcode/media_code только под media-shaped ancestry
+и после strict canonical validator; arbitrary DOM attributes/inline JS исключены.
 
-## Decision
+После durable commit live adapter резервирует embedded-кандидата без
+swipe/keyboard/wheel. Если очередь пуста, выполняет один fixed refresh
+на переход; старые pending entries сбрасываются, bounded known-ID memory
+сохраняется. Initial и reserved кандидаты помечаются использованными.
+При отсутствии нового кандидата — AUTHENTICATED_FEED_EXHAUSTED.
 
-After fixed Reels navigation, `AuthenticatedFeedSource` may read only explicit
-`application/json` and `application/ld+json` scripts in the current
-authenticated document. It traverses each parsed payload with fixed size and
-node bounds, accepts only values under `code`, `shortcode` or `media_code` that
-pass the canonical shortcode validator and occur under an object carrying a
-media-shape marker, de-duplicates them, and retains at most 32 values only in
-process memory.
-
-The queue is independent of swipe. A candidate may be reserved only after the
-existing stable-media and post-input authenticated-JSON gates. It is not
-represented as a claim that the ID is the exact visual card after that swipe.
-Inline JavaScript, DOM attributes, URLs, generic response bodies, non-JSON
-assets, cookies, logs and persistent storage remain excluded from this source.
-
-## Consequences
-
-This supports a personalized recommendation queue while preserving bounded
-input and fail-closed behavior. The initial candidate and every queued
-candidate still pass the existing download, validation, normalization and
-durable-publish pipeline. A missing embedded candidate or gate remains a
-terminal transition failure; no retry or target limit is widened.
+Это очередь рекомендаций, а не доказательство ID конкретной видимой карточки.
+Provider также наблюдает GraphQL для diagnostic/legacy paths; Web API остаётся
+aggregate-only диагностикой и не поставляет кандидатов.
+Queue IDs живут в памяти; принятые Reel сохраняются обычным durable pipeline.
+Логи не содержат ID, URLs, cookies, response bodies или DOM text.

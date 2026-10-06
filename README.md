@@ -1,261 +1,77 @@
 # Offline Reels
 
-Personal application for preparing an Instagram Reels feed for offline viewing. The repository currently provides a backend-streamed multi-video feed, development MP4 seed flow, media normalization, and a local PWA library backed by IndexedDB, Cache Storage and one Service Worker. It now also contains Collector domain states and a database foundation, but has no Instagram runtime integration, authentication flow, browser worker, downloader, scheduler, watched state, Celery worker, or background downloading.
+Персональная PWA для подготовки ленты Instagram Reels и просмотра без интернета.
+Сервер собирает и нормализует видео; телефон скачивает их через Backend API
+и воспроизводит локально.
 
-## Supported versions
+**Сейчас:** офлайн-приложение и серверный конвейер реализованы. Stage 10 / TASK-018:
+проверка стабильного сбора на Linux. Успешный текущий live-run 3/3 и полный
+сценарий с 50 новыми роликами на iPhone ещё не подтверждены.
 
-| Component | Version |
+## Документация
+
+- [Текущее состояние и блокер](docs/STATUS.md)
+- [Границы MVP](docs/PRODUCT.md)
+- [Архитектура](docs/ARCHITECTURE.md), [стек](docs/TECH_STACK.md)
+- [Действующие решения](docs/TECH_DECISIONS.md), [риски](docs/RISKS.md)
+- [Активная задача](docs/tasks/018-collector-operator-handoff-to-working-live-run.md)
+- [Развёртывание](deploy/README.md), [Linux staging](docs/operations/stage-10-linux-staging.md)
+- [Приёмка на iPhone](docs/acceptance/iphone.md)
+
+Документы описывают актуальные контракты и незавершённую работу.
+История экспериментов и закрытых задач хранится в Git.
+
+## Локальный запуск
+
+Нужны Docker Compose; для проверок на хосте — Node/npm и Python/uv
+из [описания стека](docs/TECH_STACK.md). Команды выполняются из корня проекта.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build --detach
+docker compose ps
+```
+
+Откройте `http://localhost:3000`. Локальная Compose-конфигурация публикует
+служебные порты и не предназначена для VPS. Вход и сбор Instagram запускаются
+отдельно; обычный запуск API не запускает браузер или workers.
+
+Для тестового каталога используйте собственный разрешённый MP4:
+
+```powershell
+make seed-video FILE="C:\path\to\video.mp4"
+make seed-videos DIR="C:\path\to\videos"
+```
+
+Seed проверяет и нормализует файл, затем сохраняет его в MinIO и PostgreSQL.
+Не коммитьте media, реальные `.env`, профили, cookies или токены.
+
+## Проверки
+
+```powershell
+make check
+git diff --check
+```
+
+`make check` запускает frontend tests/lint/typecheck/build, Ruff, API unit tests
+и отдельную Docker-инфраструктуру integration tests. Требует GNU Make,
+PowerShell, Docker, npm и uv. Отдельно доступны `make web-check`,
+`make api-unit-check`, `make api-integration-check`.
+
+`make migration-check` делает downgrade до base: используйте только
+одноразовую базу, не staging/production.
+
+## Основные маршруты
+
+| Маршрут | Назначение |
 | --- | --- |
-| Node.js | 24.14.0 |
-| npm | 11.9.0 |
-| Next.js | 16.2.11 |
-| Python | 3.14.3 |
-| uv | 0.11.29 |
-| PostgreSQL image | `postgres:17.10-alpine3.23` |
-| Redis image | `redis:7.4.7-alpine3.21` |
-| MinIO image | `minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1` |
+| `/` | Панель подключения и ручной загрузки |
+| `/offline` | Локальная вертикальная лента |
+| `GET /videos` | Каталог с подписанным курсором |
+| `GET /videos/{id}/stream` | MP4 через API, single Range |
+| `/api/management/*` | Защищённое управление устройством и Instagram |
+| `/health/live`, `/health/ready` | API; готовность PostgreSQL и Redis |
+| `/health/minio` | Отдельная диагностика хранилища |
 
-Node is pinned in [`.node-version`](.node-version); Python is pinned in [`apps/api/.python-version`](apps/api/.python-version). Dependency resolution is committed in `apps/web/package-lock.json` and `apps/api/uv.lock`.
-
-## Quick start with Docker Compose
-
-Docker Compose is the reproducible development entry point. Copy `.env.example` to `.env` if local values or ports need changing; never commit `.env`.
-
-```powershell
-make up
-make ps
-```
-
-Open `http://localhost:3000`. The browser application calls the explicitly configured `NEXT_PUBLIC_API_BASE_URL` and displays the live Backend API state. The value is required and must be an absolute HTTP(S) URL without credentials, query, or fragment; the production client has no localhost fallback. Containers use internal URLs such as `postgres`, `redis`, and `minio`; `DATABASE_URL` and `REDIS_URL` in `.env.example` therefore target Docker service names. For local Docker development, the template uses `http://localhost:8000` deliberately as an environment value.
-
-The API permits CORS only from `FRONTEND_ORIGIN` (default `http://localhost:3000`), never a wildcard.
-
-## iPhone PWA staging and acceptance
-
-Use the one-origin Tailscale Funnel staging workflow in
-[`deploy/README.md`](deploy/README.md) for real-iPhone testing. Plain LAN HTTP
-is not a reliable secure context for Service Worker, Cache Storage,
-`navigator.storage`, or installed-PWA behavior on iOS.
-
-Safari and the installed Home Screen PWA use separate offline-storage contexts.
-Install the PWA first, then download videos from inside that installed PWA;
-downloads made in a Safari tab do not populate the installed app library. The
-completed acceptance also confirmed that MP4 codec parameters matter: VP9 in an
-MP4 container failed on iPhone, while H.264 with `yuv420p` and `faststart`
-played correctly. Media normalization now validates and prepares ingest media for that supported profile.
-
-## Commands
-
-When `make` is absent from `PATH`, set `$make` to the local GNU Make executable.
-
-```powershell
-$make = 'C:\path\to\make.exe'
-& $make check
-& $make config
-& $make up
-& $make ps
-& $make migration-check
-& $make minio-health
-& $make down
-```
-
-`make check` performs frontend tests, linting, type checking and production build, then API Ruff and pytest checks. `make migration-check` runs Alembic downgrade to base and upgrade to the empty `0001_initial_schema` migration. `make minio-health` is diagnostic only: MinIO intentionally does not affect API readiness.
-
-## Health endpoints
-
-- `GET /health/live` — confirms only that FastAPI is running.
-- `GET /health/ready` — confirms PostgreSQL and Redis; MinIO is deliberately excluded.
-- `GET /health/minio` — diagnostic MinIO check, independent from readiness.
-
-## Multi-video vertical feed
-
-`GET /videos` uses signed cursor pagination. It accepts `limit` (default `10`, range `1`–`30`) and an optional opaque `cursor`; the web client requests five entries at a time. The response is:
-
-```json
-{
-  "items": [],
-  "next_cursor": "v1.opaque-payload.opaque-signature-or-null"
-}
-```
-
-Videos are ordered by `created_at DESC, id DESC`. The cursor is an HMAC-SHA-256 signed transport value that carries the last item's timestamp and ID; clients must not parse it. An invalid cursor returns safe `400 invalid_cursor` without implementation details. `VIDEO_CURSOR_SECRET` is required, must have at least 32 characters, and must be a unique random secret outside local development. Never commit a production cursor secret.
-
-`GET /videos/{id}` returns metadata and `GET /videos/{id}/stream` streams MP4 through the Backend API with one HTTP byte range. The browser never accesses MinIO directly.
-
-Seed an existing local MP4 after starting Docker Compose:
-
-```powershell
-& $make seed-video FILE="C:\path\to\video.mp4"
-& $make seed-videos DIR="C:\path\to\directory-with-mp4-files"
-```
-
-The command accepts only a non-empty `.mp4` file, copies it temporarily into the API container, hashes it in chunks, and uses `videos/<sha256>.mp4` as the idempotent object key. The temporary container file is removed even if the seed fails. Do not add MP4 files to Git.
-
-`make seed-videos` processes regular `.mp4` files in deterministic name order. It continues after a failed file, always removes each temporary container file, groups results into created/restored, already existed and failed, and returns non-zero if any file failed. It is a development helper, not a user upload endpoint.
-
-The canonical user route is `/`: a mobile dashboard that reads the complete paginated Backend catalog and starts one sequential offline batch. It displays network, storage, and batch state only as user-facing percentages. `/videos` remains a legacy redirect to `/` for old links and older shells; API paths such as `GET /videos` and `GET /videos/{id}/stream` are unchanged.
-
-MinIO root credentials (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`) configure the MinIO server. Application credentials (`MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`) are used only by the API. They may be identical in `.env.example` for local development; production must use a separate least-privileged application user.
-
-`make check` starts and tears down isolated integration infrastructure automatically. It uses a separate Compose project, PostgreSQL volume and MinIO bucket, so it never changes the dev database, dev volume or `offline-reels` bucket.
-
-## Optional host-mode development
-
-Start infrastructure with Compose, then use host URLs for API variables:
-
-```powershell
-npm --prefix apps/web ci
-npm --prefix apps/web run dev
-uv --directory apps/api sync --all-groups --frozen
-$env:DATABASE_URL = 'postgresql+psycopg://offline_reels:change-me-local-postgres-password@localhost:5432/offline_reels'
-$env:REDIS_URL = 'redis://localhost:6379/0'
-$env:MINIO_ENDPOINT = 'http://localhost:9000'
-uv --directory apps/api run uvicorn app.main:app --reload
-```
-
-## Offline PWA
-
-The production build registers one Serwist worker at `/serwist/sw.js` with scope `/`. The manifest fixes `id`, `scope`, and `start_url` at `/`; `/`, `/offline`, the legacy `/videos` redirect, and `/manifest.webmanifest` are explicit revisioned shell entries. API and media routes remain outside shell caching. There is no runtime launch redirect: after changing the manifest start route, an existing iOS Home Screen installation must be reinstalled once. The precached shells still permit offline navigation between `/` and `/offline`. `offline-reels-media-v1` remains separate and `/offline-media/{id}` is served only from that local cache, without a Backend fallback. The dashboard does not request the server catalog while offline and resumes that request automatically when connectivity returns. The dashboard batch deduplicates catalog IDs, rejects cursor loops, skips valid completed records, retries failed records, and uses the existing one-at-a-time queue. Clear aborts the queue, waits for it to settle, then deletes only offline-owned media and IndexedDB metadata.
-
-`/offline` selects the Reels-like mode of the shared `VerticalVideoFeed`: native controls are removed, looping `playsInline` video fills the card with `object-cover`, and the UI intentionally shows no individual technical title, file size, summary, or deletion action. A short central tap pauses and reveals accessible play/sound controls. Reels begins with sound enabled and honestly attempts audible startup; if iOS requires a first gesture, it remains unmuted and paused with the Play button available rather than silently falling back to muted playback. A 250 ms centre hold pauses only its original item for the lifetime of that physical touch: movement, native scrolling, and an iOS `pointercancel` do not resume it; release resumes it only when the same item is active and was playing before the hold. Outer 10% edge zones use a 250 ms hold for temporary 2× playback, and neither hold exposes tap controls. Movement beyond 12 CSS px yields to native vertical scroll-snap. The active threshold controls only pause/play during a reversible drag; a full-screen commit prepares the prior card at 0:00 offscreen. Reels-only scoped styles suppress iOS callout, selection and media drag without preventing scrolling. The MVP retains normal audio and standard `preservesPitch`; on iOS WebKit a short frame freeze or clock jump can occur at the temporary 1×/2× boundary, an accepted platform limitation.
-
-When Serwist reports a waiting shell update, the installed PWA shows a safe-area-aware Russian notification. The user must select **«Обновить»**; only then does the app send Serwist's supported `SKIP_WAITING` message, wait for `controllerchange`, and reload once. This does not clear the media cache or IndexedDB. The dashboard uses `navigator.storage.estimate()` only for a percentage and keeps browser storage details out of the user interface.
-
-The lower visual layout uses shared CSS variables: the floating navigation reserves its safe-area plus a bounded adaptive lift. Reels keeps a transparent non-interactive progress layer and one fixed shared glass backdrop that continues behind progress, the pill and safe area. That layer alone uses scoped backdrop blur, saturation and a translucent gradient with an opaque fallback; it is never applied to the video element or playback lifecycle.
-
-## Security
-
-`.env.example` contains templates only. Do not commit real passwords, tokens, Instagram cookies, sessions, or production data. The client communicates only with the Backend API; external Instagram integration remains outside this bootstrap.
-
-## Stage 4 mobile Instagram connection
-
-Stage 4 adds isolated server-side headed Chromium login. Chrome on iPhone is
-not required: Safari/PWA receives a protected interactive view over HTTPS. The
-user enters credentials, 2FA and CAPTCHA directly in remote Instagram. The
-application business API neither requests nor persists them; the HTTPS
-gateway/VNC transport necessarily relays keyboard and pointer events but does
-not log, inspect or retain their contents. CAPTCHA is never bypassed. Follow
-[TASK-011](docs/tasks/011-instagram-login-stage-4.md). There is no dashboard
-button before protected management API exists. Collector, normalizer and
-`videos` are not started or changed; the saved browser profile is sensitive and
-is retained until an explicit destructive reset. The gateway hides the remote
-display while it verifies the completed login and shows a local “Instagram
-connected” result instead of exposing the authenticated Instagram feed.
-
-### Current deployment limitation
-
-The functional iPhone acceptance was performed with Windows Docker Desktop.
-`login-browser` runs as non-root and drops all Linux capabilities, but the
-current Windows-compatible Compose runtime applies `seccomp=unconfined` to
-that one isolated browser container only. It does not publish VNC, CDP or X11,
-and neither gateway nor database receives that exception. This is not a
-production-hardened Linux deployment. A real Linux server must complete a
-separate restricted-seccomp Chromium-sandbox acceptance before production use.
-Do not copy this sensitive Docker Desktop browser profile to Linux.
-
-## Instagram Collector foundation
-
-The backend has durable Collector domain contracts, an Alembic schema, a
-fixture-only sequential orchestration core and optional runtime adapter
-implementations. Fixture mode uses deterministic
-canonical Reel candidates, a temporary local source directory and SQLite; it
-never makes a network request or accesses an Instagram session. Its ordering is
-strict: pause, validate and publish a source, then atomically commit Reel,
-normalization-job and run-item state before one advance is permitted. A
-database failure after a newly published fixture object triggers best-effort
-compensation of that object only; a pre-existing object is never removed.
-
-Run the isolated fixture command with a bounded target and allowlisted scenario:
-
-```powershell
-uv --directory apps/api run python -m app.scripts.run_instagram_collector_fixture --scenario happy --target 3
-```
-
-The current catalog remains unchanged: only a future `ready` canonical MP4
-(H.264/yuv420p/AAC) may be linked to `videos`. There is no production Instagram
-connection from the application or scheduler. Stage 3B
-is an explicit, headed Windows operator command for exactly three Reels; a
-bounded test-account run has successfully confirmed three session-first
-downloads, ffprobe validations, MinIO publications, PostgreSQL commits, two
-targeted transitions and read-only post-run verification without changing
-`videos`. It
-uses a fresh in-memory session CookieJar for every download and commits source
-state before each of two controlled advances. It is not invoked by FastAPI.
-The optional `collector` extra pins Playwright and yt-dlp, but the ordinary API
-dependency set does not install Chromium or invoke those modules. Live Instagram
-remains a separately authorized manual action. Stage 3C.1 supplies a
-separate headed continuation command, `./scripts/run-collector-stage3c1.ps1`,
-which verifies the preserved account's initial durable total before browser
-startup and continues its account-owned reserve to exactly ten. One controlled
-continuation completed from three to ten; its final no-browser verification
-passed after a transcript-verifier false-negative fix. Mobile login remains
-outside Collector operation. See [ADR 011](docs/adr/011-instagram-normalization-worker.md).
-
-## Stage 5 normalization worker
-
-The explicit worker command is `python -m
-app.scripts.run_instagram_normalizer_worker`. It supports `--once`, bounded
-`--limit`, `--daemon`, read-only `--status`/`--verify`, and `--reconcile`.
-It has no Playwright, Chromium or yt-dlp. Production uses the opt-in
-non-root `normalizer` Compose profile; FastAPI/API startup never starts it.
-It validates committed sources, performs ffprobe/full decode, then exposes
-only committed H.264/yuv420p/AAC MP4 through the existing catalog. See
-[TASK-012](docs/tasks/012-instagram-normalization-queue.md) for the preserved
-Collector-smoke manual acceptance procedure.
-
-## Stage 3C.2 Linux Collector fixture
-
-Stage 3C.2 adds a server-ready, separate Linux `collector` Docker target. It
-contains the pinned Collector extra, Playwright-compatible Chromium, `yt-dlp`,
-`ffmpeg`, `ffprobe`, and `tini`, and runs as UID/GID `10001` rather than root.
-The normal API image remains free of Chromium, Playwright, and yt-dlp. Persistent
-profile and disposable attempt-workspace mounts are separate, and the entrypoint
-accepts only an explicit `fixture` command; it never starts a live Collector.
-
-`deploy/docker-compose.collector-stage3c2-fixture.yml` is a separate,
-internal-network-only smoke composition with PostgreSQL, MinIO, migration,
-bootstrap and one fixture Collector job. It creates three valid synthetic MP4s,
-validates them through `ffprobe`, publishes to MinIO and commits the real
-Collector persistence transaction. It makes no Instagram request, never reads
-cookies or a Windows profile, and does not run yt-dlp. The companion cleanup is
-restricted to the exact Compose project:
-
-```powershell
-docker compose --project-name offline-reels-stage3c2-fixture -f deploy/docker-compose.collector-stage3c2-fixture.yml up --build -d
-docker compose --project-name offline-reels-stage3c2-fixture -f deploy/docker-compose.collector-stage3c2-fixture.yml wait collector-fixture
-.\scripts\cleanup-collector-stage3c2.ps1
-```
-
-Live Instagram in a Linux container, mobile login and a remote browser UI are
-explicit Stage 4 work; Windows browser profiles are not copied or converted.
-# Protected Instagram management API and dashboard (Stages 6–7)
-
-Management endpoints are under `/api` and require a locally paired owner
-device. Run `python -m app.scripts.management create-pairing --account-id ...`
-only on the operator host; its short-lived secret is for local browser exchange
-and must not be pasted into chat, source control or logs. The paired browser
-uses a secure HTTP-only cookie plus Origin, CSRF and idempotency protections.
-
-The API creates login and Collector commands but does not run Playwright,
-Chromium, yt-dlp, ffmpeg, Collector or normalizer code. The `/` dashboard uses
-only the protected same-origin management API for pairing, Instagram state and
-collection commands; the existing video catalog and sequential device queue
-remain unchanged. Management/launch responses are `no-store` and excluded from
-Serwist caching. The pairing code is operator-assisted, input-only and never
-stored in the client; the management cookie stays HttpOnly and CSRF stays
-ephemeral in memory. The dashboard never renders IDs, shortcodes, object keys,
-codecs, byte sizes or raw backend errors. `scheduler_active=false`, therefore
-the UI correctly says **Автопополнение будет доступно позже** rather than
-promising automatic work. See [TASK-014](docs/tasks/014-pwa-instagram-dashboard-stage-7.md)
-and the [fixture acceptance worksheet](docs/acceptance/stage-7-dashboard.md).
-
-### Stage 7 acceptance status
-
-The disposable synthetic mobile fixture and the synthetic iPhone Stage 7 PWA
-acceptance passed. Stage 4 real remote login passed separately. The combined
-Stage 4 retained-profile → Collector → normalizer → PWA flow is **not accepted
-on Windows Docker Desktop**: an isolated non-root Chromium preflight, including
-direct private CDP, closed before browser readiness because of Docker Desktop
-sandbox incompatibility. It must be repeated on Linux staging or a real server.
-The project did not use `--no-sandbox`, a root browser, privileged containers
-or `SYS_ADMIN` to bypass that failure.
+Для iPhone используйте HTTPS и скачивайте видео внутри установленной
+Home Screen PWA: её хранилище отделено от Safari.
